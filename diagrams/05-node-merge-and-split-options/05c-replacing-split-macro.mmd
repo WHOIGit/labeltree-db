@@ -1,0 +1,23 @@
+%% REPLACING SPLIT (default preset): A's meaning is retired, two new nodes replace it
+flowchart LR
+    subgraph before["before"]
+        direction TB
+        P1[P] --> A1[A] --> a1_1[a1] & a2_1[a2]
+    end
+    subgraph ops["atomic changes · split#2"]
+        direction TB
+        r1["1 · add A1 under P"] --> r2["2 · add A2 under P"] --> r3["3 · move a1 → A1"] --> r4["4 · move a2 → A2"] --> r5["5 · deprecate A<br/>successors = [A1, A2]"]
+    end
+    subgraph after["after"]
+        direction TB
+        P2[P] --> N1[A1] --> a1_2[a1]
+        P2 --> N2[A2] --> a2_2[a2]
+        Ad["A (deprecated)<br/>old ROIs still point here"] -. successor .-> N1
+        Ad -. successor .-> N2
+    end
+    before --> ops --> after
+
+    classDef dep fill:#e5e7eb,stroke:#6b7280,stroke-dasharray:4 3,color:#6b7280
+    classDef new fill:#bbf7d0,stroke:#15803d
+    class Ad dep
+    class N1,N2 new

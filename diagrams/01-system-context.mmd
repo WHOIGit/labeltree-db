@@ -1,0 +1,36 @@
+flowchart LR
+    subgraph users["Browser App roles"]
+        R([reader<br/>(anyone)])
+        D([drafter])
+        A([approver])
+        AD([admin])
+    end
+
+    subgraph ltdb["labeltree-db"]
+        WEB["Management web app"]
+        API["REST API<br/>/api/v1"]
+        DB[("PostgreSQL<br/>trees · nodes · node versions<br/>revisions · changesets")]
+        WEB --> API
+        API --> DB
+    end
+
+    subgraph consumers["Consumers (pull only)"]
+        ROI["ROI Database"]
+        DSM["Dataset Manager"]
+        ANN["Annotation tool"]
+        CRAWL["other scripts and tools"]
+    end
+
+    WORMS[("WoRMS REST API<br/>marinespecies.org")]
+
+    R -->|browse| WEB
+    D -->|draft edits| WEB
+    A -->|review + publish| WEB
+    AD -->|roles, tree settings| WEB
+
+    ROI -->|"GET nodes, resolve, ?rev="| API
+    DSM -->|"GET export, diff"| API
+    ANN -->|"GET search, children"| API
+    CRAWL -->|"GET export ?rev="| API
+
+    API -->|"live lookups by AphiaID"| WORMS

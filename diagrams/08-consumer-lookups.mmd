@@ -1,0 +1,24 @@
+sequenceDiagram
+    autonumber
+    participant AN as Annotation tool
+    participant ROI as roi-db
+    participant LT as labeltree-db API
+
+    Note over AN,LT: Annotation time
+    AN->>LT: GET /trees/taxonomy/search?q=chaeto
+    LT-->>AN: [nodes…] + X-Tree-Revision: 42
+    AN->>ROI: label roi 9001 = node 431
+    ROI->>ROI: store (tree=taxonomy, node_id=431, rev=42)
+
+    Note over ROI,LT: Months later
+    ROI->>LT: GET /trees/taxonomy
+    LT-->>ROI: latest rev = 57 (changed → refresh)
+    ROI->>LT: GET /nodes/431
+    LT-->>ROI: deprecated: true, successors: [1201, 1202]
+    ROI->>LT: GET /nodes/431/successors
+    LT-->>ROI: active nodes 1201, 1202
+    ROI->>ROI: downstream decides: flag for re-annotation,<br/>display old label, etc.
+
+    Note over ROI,LT: Reproducing history
+    ROI->>LT: GET /nodes/431/ancestors?rev=42
+    LT-->>ROI: path as it was at rev 42 (immutable, cacheable)

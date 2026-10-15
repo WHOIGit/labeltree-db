@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> active: add (new id, v1)
+    active --> active: edit / alias / ref / move<br/>children set changed<br/>flags changed<br/>→ new node version
+    active --> deprecated: deprecate<br/>(requires no active children)<br/>successors optional
+    deprecated --> [*]
+
+    note right of deprecated
+        id never reused or removed
+        hidden by default in listings, search, exports
+        direct lookup returns deprecated: true + successors[]
+        old ROIs keep pointing here
+    end note

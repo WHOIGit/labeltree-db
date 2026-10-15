@@ -1,0 +1,18 @@
+flowchart LR
+    subgraph A["A: WoRMS portal + overlay (rejected)"]
+        direction TB
+        AC[consumer] --> AS[service]
+        AS --> AO{in overlay?}
+        AO -- yes --> AOV[custom node]
+        AO -- no --> AW[(WoRMS live)]
+        AW -. "reclassification silently<br/>changes old labels" .-> AC
+    end
+
+    subgraph B["B: owned tree, WoRMS-anchored (chosen)"]
+        direction TB
+        BC[consumer] --> BS[service]
+        BS --> BDB[("our tree<br/>stable node ids<br/>versioned")]
+        BDB -. "AphiaID refs" .-> BW[(WoRMS)]
+        BW -- "live checks at edit time<br/>+ drift reports" --> BR[reviewed draft]
+        BR --> BDB
+    end

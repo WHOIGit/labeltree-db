@@ -1,0 +1,20 @@
+%% NARROWING SPLIT: A keeps its (narrower) meaning; a new sibling takes some children
+%% Only safe when ROIs already labelled A remain correct as A.
+flowchart LR
+    subgraph before["before"]
+        direction TB
+        P1[P] --> A1[A] --> a1_1[a1] & a2_1[a2]
+    end
+    subgraph ops["atomic changes · split#1"]
+        direction TB
+        n1["1 · add A2 under P"] --> n2["2 · move a2 → A2"]
+    end
+    subgraph after["after"]
+        direction TB
+        P2[P] --> A2_[A] --> a1_2[a1]
+        P2 --> N2[A2] --> a2_2[a2]
+    end
+    before --> ops --> after
+
+    classDef new fill:#bbf7d0,stroke:#15803d
+    class N2 new

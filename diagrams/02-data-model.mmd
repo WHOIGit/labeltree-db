@@ -1,0 +1,78 @@
+erDiagram
+    TREE ||--o{ TREE_REVISION : "has revisions"
+    TREE ||--o{ NODE : owns
+    TREE ||--o{ CHANGESET : "edited by"
+    NODE ||--|{ NODE_VERSION : "has versions"
+    TREE_REVISION ||--o{ NODE_VERSION : "valid_from / valid_to"
+    NODE_VERSION ||--o{ ALIAS : has
+    NODE_VERSION ||--o{ EXTERNAL_REF : has
+    NODE_VERSION ||--o{ SUCCESSOR : "if deprecated"
+    NODE_VERSION }o--o| NODE : "parent (null = top-level)"
+    NODE_VERSION }o--o| NODE : "base_node (variants)"
+    SUCCESSOR }o--|| NODE : "points to"
+    CHANGESET ||--o{ CHANGE : "ordered (seq)"
+    CHANGESET |o--o| TREE_REVISION : "publishes"
+    CHANGE }o--o| NODE_VERSION : "produces"
+
+    TREE {
+        slug id PK
+        string title
+        string description
+    }
+    TREE_REVISION {
+        slug tree FK
+        int number
+        int changeset FK
+        datetime published_at
+        string published_by
+        string notes
+    }
+    NODE {
+        int id PK "global, never reused"
+        slug tree FK
+        int created_in_rev
+    }
+    NODE_VERSION {
+        int node FK
+        int version
+        int valid_from_rev
+        int valid_to_rev "null = current"
+        string label "machine-safe, not unique"
+        string node_type
+        string rank "free text"
+        int parent FK
+        int base_node FK
+        string description
+        string status "active | deprecated"
+        jsonb flags "warnings"
+        int change FK "provenance"
+    }
+    ALIAS {
+        string name "free text"
+        string kind "synonym | misspelling | legacy | common | display"
+    }
+    EXTERNAL_REF {
+        string source "worms | ..."
+        string external_id "AphiaID"
+        string relation "exact | broader | related"
+        jsonb cached_record
+        datetime checked_at
+        datetime source_modified
+    }
+    SUCCESSOR {
+        int deprecated_node FK
+        int successor_node FK
+    }
+    CHANGESET {
+        string state
+        int base_rev
+        string author
+        string approved_by
+    }
+    CHANGE {
+        int seq
+        string op "add | edit | add_alias | remove_alias | set_ref | remove_ref | move | deprecate"
+        string group "macro id, e.g. split#3"
+        jsonb payload
+        jsonb checks
+    }

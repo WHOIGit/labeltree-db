@@ -1,0 +1,20 @@
+%% MERGE preset: A into B = move children + deprecate
+flowchart LR
+    subgraph before["before"]
+        direction TB
+        P1[P] --> A1[A] --> a1_1[a1] & a2_1[a2]
+        P1 --> B1[B] --> b1_1[b1]
+    end
+    subgraph ops["atomic changes · merge#1"]
+        direction TB
+        m1["1 · move a1 → B"] --> m2["2 · move a2 → B"] --> m3["3 · deprecate A<br/>successors = [B]"]
+    end
+    subgraph after["after"]
+        direction TB
+        P2[P] --> B2[B] --> b1_2[b1] & a1_2[a1] & a2_2[a2]
+        Ad["A (deprecated)"] -. successor .-> B2
+    end
+    before --> ops --> after
+
+    classDef dep fill:#e5e7eb,stroke:#6b7280,stroke-dasharray:4 3,color:#6b7280
+    class Ad dep

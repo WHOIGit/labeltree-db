@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    actor U as approver / scheduled job
+    participant LT as labeltree-db
+    participant W as WoRMS API
+
+    U->>LT: GET /trees/taxonomy/drift
+    LT->>LT: last_drift_run, set of AphiaIDs used in latest rev
+    LT->>W: AphiaRecordsByDate(start=last_drift_run, end=now) (paged)
+    W-->>LT: records modified in window
+    LT->>LT: intersect with our AphiaIDs
+    loop each changed AphiaID
+        LT->>W: AphiaRecordByID + AphiaClassificationByAphiaID
+        W-->>LT: current status, valid_AphiaID, lineage
+        LT->>LT: compare with cached_record, re-run placement checks
+    end
+    LT-->>U: report: became unaccepted, lineage moved, rank changed, new warnings
+    opt accept proposals
+        U->>LT: open draft from report
+        LT-->>U: changeset with proposed atomic changes (normal review)
+    end

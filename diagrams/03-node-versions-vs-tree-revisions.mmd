@@ -1,0 +1,39 @@
+%% Example tree "taxonomy". Each row = one tree revision (a slice across all nodes).
+%% Boxes = node versions valid at that revision. Yellow = version bumped, green = new node.
+flowchart TB
+    subgraph r1["rev 1"]
+        direction TB
+        E1>"seed"]
+        G1["Chaetoceros v1<br/>children: {didymus}"]
+        S1["C_didymus v1"]
+    end
+    subgraph r2["rev 2"]
+        direction TB
+        E2>"add C_socialis"]
+        G2["Chaetoceros v2 ▲<br/>children changed"]
+        S2["C_didymus v1<br/>(unchanged)"]
+        N2["C_socialis v1 ✚"]
+    end
+    subgraph r3["rev 3"]
+        direction TB
+        E3>"rename C_didymus<br/>→ C_didymus_sl"]
+        G3["Chaetoceros v2<br/>(child rename: no bump)"]
+        S3["C_didymus_sl v2 ▲<br/>+ alias 'C_didymus'"]
+        N3["C_socialis v1"]
+    end
+    subgraph r4["rev 4"]
+        direction TB
+        E4>"alias on C_socialis;<br/>edit Chaetoceros<br/>description"]
+        G4["Chaetoceros v3 ▲"]
+        S4["C_didymus_sl v2"]
+        N4["C_socialis v2 ▲"]
+    end
+
+    r1 ~~~ r2 ~~~ r3 ~~~ r4
+
+    classDef bumped fill:#fde68a,stroke:#b45309
+    classDef added fill:#bbf7d0,stroke:#15803d
+    class G2,S3,G4,N4 bumped
+    class N2 added
+    classDef event fill:#dbeafe,stroke:#1d4ed8
+    class E1,E2,E3,E4 event

@@ -1,0 +1,22 @@
+stateDiagram-v2
+    [*] --> draft: drafter opens changeset<br/>(records base_rev)
+    draft --> draft: append / edit / reorder changes<br/>checks run live
+    draft --> discarded: drafter discards
+    draft --> submitted: drafter submits<br/>(checks re-run)
+    submitted --> draft: drafter withdraws
+    submitted --> rejected: approver rejects
+    rejected --> draft: drafter revises
+    submitted --> approved: approver approves<br/>(may be own changeset)
+    approved --> conflict: newer revision touched<br/>the same nodes
+    conflict --> draft: drafter rebases<br/>(checks re-run)
+    approved --> published: approver publishes<br/>atomic → TREE_REVISION r+1
+    published --> [*]
+    discarded --> [*]
+
+    note left of published
+        publish is blocked only by structural errors:
+        cycle, deprecated or foreign parent,
+        deprecate with active children,
+        non-machine-safe label, stale base_rev.
+        WoRMS issues are warnings.
+    end note
