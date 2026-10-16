@@ -1,0 +1,322 @@
+{
+  "tree": "NES2022_taxonomy",
+  "nodes": [
+    {"label": "Chromista", "aphia_id": 7, "children": [
+      {"label": "Acantharia", "aphia_id": 586732},
+      {"label": "Bacillariophyceae", "aphia_id": 148899, "children": [
+        {"label": "Asterionellopsis_glacialis", "aphia_id": 149139},
+        {"label": "Bacillariaceae", "aphia_id": 149002, "children": [
+          {"label": "Bacillaria", "aphia_id": 149148},
+          {"label": "Cylindrotheca", "aphia_id": 149003, "children": [
+            {"label": "Cylindrotheca_morphotype1"}
+          ]},
+          {"label": "Pseudo-nitzschia", "aphia_id": 149151, "children": [
+            {"label": "pennate_Pseudo-nitzschia"}
+          ]}
+        ]},
+        {"label": "Bacillariophyceae_morphotype1"},
+        {"label": "Biddulphia", "aphia_id": 148967},
+        {"label": "Chaetocerotaceae", "aphia_id": 148984, "children": [
+          {"label": "Bacteriastrum", "aphia_id": 149118},
+          {"label": "Chaetoceros", "aphia_id": 148985, "children": [
+            {"label": "Chaetoceros_concavicornis", "aphia_id": 156607},
+            {"label": "Chaetoceros_curvusetus", "aphia_id": 149221},
+            {"label": "Chaetoceros_danicus", "aphia_id": 149120},
+            {"label": "Chaetoceros_debilis", "aphia_id": 149219},
+            {"label": "Chaetoceros_didymus", "aphia_id": 149122, "children": [
+              {"label": "Chaetoceros_didymus_TAG_external_flagellate"}
+            ]},
+            {"label": "Chaetoceros_morphotype1"},
+            {"label": "Chaetoceros_peruvianis", "aphia_id": 961865},
+            {"label": "Chaetoceros_similis", "aphia_id": 149127},
+            {"label": "Chaetoceros_socialis", "aphia_id": 149123},
+            {"label": "Chaetoceros_subtilis", "aphia_id": 156621},
+            {"label": "Chaetoceros_tenuissimus", "aphia_id": 156623},
+            {"label": "Chaetoceros_throndsenii", "aphia_id": 163137},
+            {"label": "Chaetoceros_TAG_external_pennate"}
+          ]}
+        ]},
+        {"label": "Corethron_hystrix", "aphia_id": 179596},
+        {"label": "Coscinodiscus", "aphia_id": 148917},
+        {"label": "Delphineis", "aphia_id": 149179},
+        {"label": "Ditylum_brightwellii", "aphia_id": 149023},
+        {"label": "Hemiaulaceae", "aphia_id": 149235, "children": [
+          {"label": "Cerataulina_pelagica", "aphia_id": 149619},
+          {"label": "Eucampia", "aphia_id": 149130, "children": [
+            {"label": "Eucampia_morphotype2"},
+            {"label": "Eucampia_morphotype1", "aliases": ["Eucampia_morphytype1"]}
+          ]},
+          {"label": "Hemiaulus", "aphia_id": 163248, "children": [
+            {"label": "Hemiaulus_membranaceus", "aphia_id": 418540}
+          ]}
+        ]},
+        {"label": "Leptocylindrus", "aphia_id": 149038, "children": [
+          {"label": "Leptocylindrus_mediterraneus", "aphia_id": 149230}
+        ]},
+        {"label": "Licmophora", "aphia_id": 149342},
+        {"label": "Nanoneis", "aphia_id": 248179},
+        {"label": "Odontella", "aphia_id": 148963},
+        {"label": "Paralia_sulcata", "aphia_id": 149055},
+        {"label": "Pleurosigma", "aphia_id": 149181},
+        {"label": "Rhizosoleniaceae", "aphia_id": 149068, "children": [
+          {"label": "Dactyliosolen", "aphia_id": 149309, "children": [
+            {"label": "Dactyliosolen_blavyanus", "aphia_id": 179786},
+            {"label": "Dactyliosolen_fragilissimus", "aphia_id": 149310}
+          ]},
+          {"label": "Guinardia", "aphia_id": 149111, "children": [
+            {"label": "Guinardia_delicatula", "aphia_id": 149112, "children": [
+              {"label": "Guinardia_delicatula_TAG_Amphidinium_grazing"},
+              {"label": "Guinardia_delicatula_TAG_external_parasite"},
+              {"label": "Guinardia_delicatula_TAG_internal_parasite"}
+            ]},
+            {"label": "Guinardia_flaccida", "aphia_id": 149132},
+            {"label": "Guinardia_striata", "aphia_id": 149113}
+          ]},
+          {"label": "Rhizosolenia", "aphia_id": 149069}
+        ]},
+        {"label": "Stephanopyxis", "aphia_id": 149630},
+        {"label": "Striatella", "aphia_id": 149176},
+        {"label": "Thalassionema", "aphia_id": 149092, "children": [
+          {"label": "pennate_Thalassionema"}
+        ]},
+        {"label": "Thalassiosirales", "aphia_id": 148903, "children": [
+          {"label": "Lauderia_annulata", "aphia_id": 149135},
+          {"label": "Skeletonema", "aphia_id": 149073},
+          {"label": "Thalassiosiraceae", "aphia_id": 148904, "children": [
+            {"label": "Thalassiosira", "aphia_id": 148912, "children": [
+              {"label": "Thalassiosira_rotula", "aphia_id": 148942},
+              {"label": "Thalassiosira_sp_aff_mala"},
+              {"label": "Thalassiosira_sp_aff_mala_Nov2018"},
+              {"label": "Thalassiosira_sp_aff_mala_other"},
+              {"label": "Thalassiosira_sp_aff_mala_single"},
+              {"label": "Thalassiosira_TAG_external_detritus"}
+            ]}
+          ]}
+        ]}
+      ]},
+      {"label": "Ciliophora", "aphia_id": 11, "children": [
+        {"label": "Euplotes", "aphia_id": 179326, "children": [
+          {"label": "Euplotes_morphotype1"}
+        ]},
+        {"label": "Litostomatea", "aphia_id": 292892, "children": [
+          {"label": "Didinium", "aphia_id": 341301},
+          {"label": "Mesodinium", "aphia_id": 179320}
+        ]},
+        {"label": "Oligotrichea", "aphia_id": 732974, "children": [
+          {"label": "Choreotrichida", "aphia_id": 341353, "children": [
+            {"label": "Dictyocysta", "aphia_id": 196834},
+            {"label": "Eutintinnus", "aphia_id": 183543},
+            {"label": "Favella", "aphia_id": 172431},
+            {"label": "Helicostomella_subulata", "aphia_id": 240437},
+            {"label": "Leegaardiella_ovalis", "aphia_id": 101206},
+            {"label": "Pelagostrobilidium", "aphia_id": 101182, "children": [
+              {"label": "Pelagostrobilidium_morphotype1"}
+            ]},
+            {"label": "Stenosemella", "aphia_id": 178825, "children": [
+              {"label": "Stenosemella_morphotype1"},
+              {"label": "Stenosemella_pacifica", "aphia_id": 417165}
+            ]},
+            {"label": "Strobilidium", "aphia_id": 101185},
+            {"label": "Tintinnidium_mucicola", "aphia_id": 247944},
+            {"label": "Tintinnina", "aphia_id": 732976},
+            {"label": "Tintinnopsis", "aphia_id": 163780}
+          ]},
+          {"label": "Oligotrichida", "aphia_id": 595083, "children": [
+            {"label": "Strombidium", "aphia_id": 101195, "children": [
+              {"label": "Strombidium_capitatum", "aphia_id": 101282},
+              {"label": "Strombidium_conicum", "aphia_id": 101289},
+              {"label": "Strombidium_inclinatum", "aphia_id": 428332},
+              {"label": "Strombidium_morphotype1"},
+              {"label": "Strombidium_morphotype2"},
+              {"label": "Strombidium_tintinnodes", "aphia_id": 101337},
+              {"label": "Strombidium_wulffi", "aphia_id": 101344}
+            ]},
+            {"label": "Tontoniidae", "aphia_id": 425511, "children": [
+              {"label": "Laboea_strobila", "aphia_id": 101264},
+              {"label": "Paratontonia_gracillima", "aphia_id": 101268},
+              {"label": "Tontonia_appendiculariformis", "aphia_id": 101345}
+            ]}
+          ]}
+        ]},
+        {"label": "Pleuronema", "aphia_id": 163556},
+        {"label": "Prorodontida", "aphia_id": 425488, "children": [
+          {"label": "Balanion", "aphia_id": 292899},
+          {"label": "Tiarina_fusus", "aphia_id": 247943}
+        ]}
+      ]},
+      {"label": "Coccolithophyceae", "aphia_id": 592906, "children": [
+        {"label": "Emiliania_huxleyi", "aphia_id": 115104},
+        {"label": "Phaeocystis", "aphia_id": 115088, "children": [
+          {"label": "Phaeocystis_single"}
+        ]},
+        {"label": "Prymnesiales", "aphia_id": 115061, "children": [
+          {"label": "Chrysochromulina", "aphia_id": 115090, "children": [
+            {"label": "Chrysochromulina_lanceolata", "aphia_id": 388470}
+          ]},
+          {"label": "Corymbellus", "aphia_id": 162518}
+        ]},
+        {"label": "Syracosphaerales", "aphia_id": 493820, "children": [
+          {"label": "Calciosolenia_brasiliensis", "aphia_id": 555889},
+          {"label": "Rhabdosphaeraceae", "aphia_id": 115068, "children": [
+            {"label": "Acanthoica_quattrospina", "aphia_id": 235802},
+            {"label": "Rhabdolithes", "aphia_id": 603344}
+          ]},
+          {"label": "Syracosphaeraceae", "aphia_id": 146199, "children": [
+            {"label": "Calciopappus", "aphia_id": 235858},
+            {"label": "Ophiaster", "aphia_id": 115081},
+            {"label": "Syracosphaera_pulchra", "aphia_id": 235979}
+          ]}
+        ]}
+      ]},
+      {"label": "Cryptophyta", "aphia_id": 17638},
+      {"label": "Dinophyceae", "aphia_id": 19542, "children": [
+        {"label": "Amphidinium", "aphia_id": 109473},
+        {"label": "Dinophysis", "aphia_id": 109462, "children": [
+          {"label": "Dinophysis_acuminata", "aphia_id": 109603, "children": [
+            {"label": "Dinophysis_acuminata_TAG_bleb"},
+            {"label": "Dinophysis_acuminata_TAG_dividing"},
+            {"label": "Dinophysis_acuminata_TAG_mating"}
+          ]},
+          {"label": "Dinophysis_norvegica", "aphia_id": 109637},
+          {"label": "Dinophysis_tripos", "aphia_id": 109662}
+        ]},
+        {"label": "Gonyaulacales", "aphia_id": 109391, "children": [
+          {"label": "Alexandrium", "aphia_id": 109470, "children": [
+            {"label": "Alexandrium_catenella", "aphia_id": 231873, "children": [
+              {"label": "Alexandrium_catenella_TAG_chain"},
+              {"label": "Alexandrium_catenella_TAG_dividing"},
+              {"label": "Alexandrium_catenella_TAG_doublet"},
+              {"label": "Alexandrium_catenella_TAG_fusing"},
+              {"label": "Alexandrium_catenella_TAG_infected"}
+            ]}
+          ]},
+          {"label": "Gonyaulacaceae", "aphia_id": 109428, "children": [
+            {"label": "Amylax", "aphia_id": 109518},
+            {"label": "Gonyaulax", "aphia_id": 109519}
+          ]},
+          {"label": "Lingulodinium_polyedra", "aphia_id": 233592},
+          {"label": "Tripos", "aphia_id": 494057, "children": [
+            {"label": "Tripos_furca", "aphia_id": 840627},
+            {"label": "Tripos_fusus", "aphia_id": 840626},
+            {"label": "Tripos_lineatus", "aphia_id": 837459}
+          ]}
+        ]},
+        {"label": "Gymnodiniales", "aphia_id": 109392, "children": [
+          {"label": "Asterodinium", "aphia_id": 231769},
+          {"label": "Gymnodiniaceae", "aphia_id": 109410, "children": [
+            {"label": "Akashiwo", "aphia_id": 231787},
+            {"label": "Margalefidinium", "aphia_id": 990875, "children": [
+              {"label": "Margalefidinium_TAG_chain"},
+              {"label": "Margalefidinium_TAG_doublet"}
+            ]}
+          ]},
+          {"label": "Gyrodinium", "aphia_id": 109476},
+          {"label": "Karenia", "aphia_id": 231788, "children": [
+            {"label": "Karenia_brevis", "aphia_id": 233015, "children": [
+              {"label": "Karenia_brevis_TAG_dividing"},
+              {"label": "Karenia_brevis_TAG_stress"}
+            ]},
+            {"label": "Karenia_mikimotoi", "aphia_id": 233024}
+          ]},
+          {"label": "Polykrikos", "aphia_id": 109485},
+          {"label": "Warnowiaceae", "aphia_id": 109415, "children": [
+            {"label": "Proterythropsis", "aphia_id": 231794},
+            {"label": "Warnowia", "aphia_id": 109491}
+          ]}
+        ]},
+        {"label": "Oxyrrhis", "aphia_id": 109486},
+        {"label": "Peridiniales", "aphia_id": 109394, "children": [
+          {"label": "Heterocapsa_rotundata", "aphia_id": 110152},
+          {"label": "Kryptoperidinium", "aphia_id": 109541, "children": [
+            {"label": "Kryptoperidinium_triquetrum", "aphia_id": 1346683, "aliases": ["Kryptoperidinium triquetrum"], "children": [
+              {"label": "Kryptoperidinium_triquetrum_singlet_plan"},
+              {"label": "Kryptoperidinium_triquetrum_singlet_section"},
+              {"label": "Kryptoperidinium_triquetrum_TAG_doublet"}
+            ]}
+          ]},
+          {"label": "Oxytoxum", "aphia_id": 109528},
+          {"label": "Podolampas", "aphia_id": 109550},
+          {"label": "Protoperidinium", "aphia_id": 109553}
+        ]},
+        {"label": "Pronoctiluca", "aphia_id": 109487},
+        {"label": "Prorocentrum", "aphia_id": 109566, "children": [
+          {"label": "Prorocentrum_dentatum", "aphia_id": 110298},
+          {"label": "Prorocentrum_micans", "aphia_id": 110303},
+          {"label": "Prorocentrum_triestinum", "aphia_id": 110316}
+        ]},
+        {"label": "Scrippsiella", "aphia_id": 109545}
+      ]},
+      {"label": "Foraminifera", "aphia_id": 1410},
+      {"label": "Heterocapsa_triquetra", "aphia_id": 110153},
+      {"label": "Ochrophyta", "aphia_id": 345465, "children": [
+        {"label": "Dictyochophyceae", "aphia_id": 146232, "children": [
+          {"label": "Apedinella", "aphia_id": 248096},
+          {"label": "Dictyochaceae", "aphia_id": 157257, "children": [
+            {"label": "Dictyocha", "aphia_id": 157258},
+            {"label": "Vicicitus_globosus", "aphia_id": 707927}
+          ]},
+          {"label": "Pseudochattonella_farcimen", "aphia_id": 531467}
+        ]},
+        {"label": "Dinobryon", "aphia_id": 157240}
+      ]}
+    ]},
+    {"label": "Protozoa", "aphia_id": 5, "children": [
+      {"label": "Amoeba", "aphia_id": 120533},
+      {"label": "Choanozoa", "aphia_id": 562870, "children": [
+        {"label": "Choanoflagellate", "aphia_id": 580116},
+        {"label": "Parvicorbicula_socialis", "aphia_id": 105588}
+      ]},
+      {"label": "Euglena", "aphia_id": 8012}
+    ]},
+    {"label": "Plantae", "aphia_id": 3, "children": [
+      {"label": "Pyramimonas", "aphia_id": 134529, "children": [
+        {"label": "Pyramimonas_longicauda", "aphia_id": 160513},
+        {"label": "Pyramimonas_morphotype1"}
+      ]}
+    ]},
+    {"label": "Animalia", "aphia_id": 2, "children": [
+      {"label": "rotifer", "aphia_id": 14260}
+    ]},
+    {"label": "Bacteria", "aphia_id": 6, "children": [
+      {"label": "Trichodesmium", "aphia_id": 177604}
+    ]},
+    {"label": "other", "children": [
+      {"label": "ambiguous", "children": [
+        {"label": "bad"},
+        {"label": "Ephemera"},
+        {"label": "Katodinium_or_Torodinium"},
+        {"label": "mix_elongated"},
+        {"label": "nanoplankton_mix"},
+        {"label": "other"},
+        {"label": "unknown2"}
+      ]},
+      {"label": "artifact", "children": [
+        {"label": "bead"},
+        {"label": "bubble"},
+        {"label": "camera_spot"},
+        {"label": "detritus"},
+        {"label": "detritus_transparent"},
+        {"label": "fiber", "children": [
+          {"label": "fiber_TAG_external_detritus"}
+        ]}
+      ]},
+      {"label": "informal_group", "children": [
+        {"label": "coccolithophorid"},
+        {"label": "Copepod_nauplii"},
+        {"label": "flagellate"},
+        {"label": "flagellate_morphotype1"},
+        {"label": "flagellate_morphotype3"},
+        {"label": "pennate"},
+        {"label": "pennate_morphotype1"},
+        {"label": "shellfish_larvae"},
+        {"label": "zooplankton"}
+      ]},
+      {"label": "organic_debris", "children": [
+        {"label": "fecal_pellet"},
+        {"label": "Phaeocystis_debris"},
+        {"label": "pollen"},
+        {"label": "pollen_spikey_dino"}
+      ]}
+    ]}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "tree": "NES2022_tags",
+  "nodes": [
+    {"label": "external_detritus"},
+    {"label": "interaction", "children": [
+      {"label": "Amphidinium_grazing"},
+      {"label": "external_flagellate"},
+      {"label": "external_pennate"}
+    ]},
+    {"label": "morphology", "children": [
+      {"label": "chain"},
+      {"label": "doublet"}
+    ]},
+    {"label": "organism_state", "children": [
+      {"label": "bleb"},
+      {"label": "dividing"},
+      {"label": "fusing"},
+      {"label": "infected"},
+      {"label": "mating"},
+      {"label": "stress"}
+    ]},
+    {"label": "parasite", "children": [
+      {"label": "external_parasite"},
+      {"label": "internal_parasite"}
+    ]}
+  ]
+}
