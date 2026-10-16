@@ -13,6 +13,6 @@ flowchart LR
         BC[consumer] --> BS[service]
         BS --> BDB[("our tree<br/>stable node ids<br/>versioned")]
         BDB -. "AphiaID refs" .-> BW[(WoRMS)]
-        BW -- "live checks at edit time<br/>+ drift reports" --> BR[reviewed draft]
+        BW -- "edit-time checks and<br/>drift reports inform drafters" --> BR[reviewed draft]
         BR --> BDB
     end

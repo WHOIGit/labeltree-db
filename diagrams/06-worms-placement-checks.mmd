@@ -1,7 +1,7 @@
 flowchart TD
     start(["for each node N to recheck:<br/>N itself,<br/>nearest anchored descendants,<br/>same-aphia nodes"]) --> hasref{"N has<br/>aphia_id?"}
     hasref -- no --> skip["N skipped as anchor<br/>(its descendants still checked)"]
-    hasref -- yes --> fetch["live fetch: AphiaRecordByID(a)<br/>+ AphiaClassificationByAphiaID(a)"]
+    hasref -- yes --> fetch["live fetch: AphiaRecordByAphiaID(a)<br/>+ AphiaClassificationByAphiaID(a)"]
     fetch --> reach{"WoRMS reachable?"}
     reach -- no --> unavail["checks: unavailable<br/>(publish still allowed)"]
     reach -- yes --> c1{"status accepted?"}

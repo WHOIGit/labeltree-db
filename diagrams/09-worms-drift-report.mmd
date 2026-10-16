@@ -1,19 +1,17 @@
 sequenceDiagram
     autonumber
-    actor U as approver / scheduled job
+    actor U as drafter / approver / admin<br/>or scheduled job
     participant LT as labeltree-db
     participant W as WoRMS API
 
     U->>LT: POST /trees/taxonomy/drift (run now)
-    LT->>LT: last_drift_run, set of AphiaIDs used in latest rev
-    LT->>W: AphiaRecordsByDate(start=last_drift_run, end=now) (paged)
-    W-->>LT: records modified in window
-    LT->>LT: intersect with our AphiaIDs
-    loop each changed AphiaID
-        LT->>W: AphiaRecordByID + AphiaClassificationByAphiaID
+    LT->>LT: set of AphiaIDs used in latest rev
+    loop each AphiaID used
+        LT->>W: AphiaRecordByAphiaID + AphiaClassificationByAphiaID
         W-->>LT: current status, valid_AphiaID, lineage
-        LT->>LT: compare with cached WORMS_RECORD, re-run placement checks
+        LT->>LT: add WORMS_RECORD row if WoRMS modified changed
     end
-    LT->>LT: overwrite current NODE_FLAGS for affected nodes
-    LT-->>U: report: became unaccepted, lineage moved, new warnings
+    LT->>LT: re-run placement checks for the whole tree
+    LT->>LT: overwrite NODE_FLAGS (no drift history kept)
+    LT-->>U: nodes that currently have WoRMS warnings
     Note over U,LT: no changes are proposed. Any fix is an ordinary draft by a drafter

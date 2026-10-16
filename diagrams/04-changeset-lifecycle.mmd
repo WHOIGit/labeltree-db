@@ -1,18 +1,21 @@
 stateDiagram-v2
+    state publish_check <<choice>>
+
     [*] --> draft: drafter saves a new draft<br/>(changes composed in browser,<br/>records base_rev)
-    draft --> draft: drafter updates the draft<br/>(replaces changes, notes, base_rev)
-    draft --> discarded: drafter discards
-    draft --> conflict: publish attempted, but a newer<br/>revision touched the same nodes
-    conflict --> draft: drafter updates against<br/>latest revision
-    draft --> published: approver publishes<br/>(checks re-run; atomic → TREE_REVISION r+1)
+    draft --> draft: any drafter updates the draft<br/>(replaces changes, notes, base_rev)
+    draft --> discarded: any drafter discards
+    draft --> publish_check: approver publishes<br/>(checks re-run)
+    publish_check --> draft: blocked by a conflict with a newer revision<br/>or structural error → drafter updates
+    publish_check --> published: checks pass<br/>(atomic → TREE_REVISION r+1)
     published --> [*]
     discarded --> [*]
 
     note left of published
         publish is blocked only by structural errors:
-        cycle, deprecated or foreign parent,
-        deprecate with children,
-        non-machine-safe label, stale base_rev.
+        cycle, target or parent not in the tree,
+        foreign parent, deprecate with children,
+        non-machine-safe label, or a touched node
+        changed or deprecated since base_rev.
         WoRMS issues are warnings.
         Published changesets can't be edited.
     end note

@@ -22,7 +22,7 @@ erDiagram
     TREE_REVISION {
         slug tree FK
         int number
-        int changeset FK
+        int changeset FK "null for seed import"
         datetime published_at
         string published_by
         string notes
@@ -31,7 +31,7 @@ erDiagram
         int id PK "global, never reused"
         slug tree FK
         int created_in_rev
-        int created_by_change FK
+        int created_by_change FK "null for seed import"
         int deprecated_in_rev "null = still in tree"
     }
     NODE_VERSION {
@@ -43,7 +43,7 @@ erDiagram
         int parent FK
         int aphia_id "nullable"
         string description
-        int change FK "provenance"
+        int change FK "provenance; null for seed import"
     }
     NODE_ALIAS {
         int node FK
@@ -67,10 +67,14 @@ erDiagram
         int successor_node FK
     }
     CHANGESET {
+        int id PK
+        slug tree FK
         string state "draft | published | discarded"
         int base_rev
         string author
-        string published_by
+        string notes
+        datetime created_at
+        datetime updated_at
     }
     CHANGE {
         int seq

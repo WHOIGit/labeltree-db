@@ -19,7 +19,7 @@ used in two further ways:
 
 - *Import from WoRMS*: create a node or subtree from an AphiaID, pulling in
   name and lineage.
-- *Drift reports*: compare our anchored nodes with current WoRMS hierarchy to 
+- *Drift reports*: compare our anchored nodes with current WoRMS hierarchy to
   identify drift.
 
 This approach seemed better than the alternative of a WoRMS portal with an
@@ -47,7 +47,8 @@ and drift reports keep that cost low.
 ### Multiple trees
 
 - Trees are **disjoint**. Each has its own nodes and revisions. Two
-  examples are `taxonomy` (general) and `parasites` (internal/external).
+  examples are the seed trees `NES2022_taxonomy` and `NES2022_tags` (§9). API
+  examples in §7 use a hypothetical, more mature tree called `taxonomy`.
 - A ROI may be labelled in several trees at once, e.g. a taxon plus an external
   parasite. Combining those labels is up to downstream apps to handle.
 - Node ids are **globally unique across trees**, so a node id alone is enough to
@@ -91,7 +92,7 @@ and drift reports keep that cost low.
 | `successors[]` | set only on deprecated nodes, may be empty (§3). Not versioned. |
 
 The API also returns derived, read-only values:
-- `worms_data`: WoRMS name, rank, status and link from the cached record (§11);
+- `worms_data`: WoRMS name, rank, status and link from the cached record (§10);
   `null` when `aphia_id` is null
 - `worms_flags`: the node's **current** WoRMS placement warnings (§5), whatever
   revision is requested; empty list if none
@@ -160,7 +161,10 @@ revisions never change. Aliases and flags are the exception (see caching, §7).
 
 Children are not stored. They are found from the children's `parent` pointers
 at that revision, and the parent's version still increases when its set of
-children changes. With an index on `(parent, valid_from_rev)`, it's a single fast lookup. Ancestors and descendants use a recursive query on the same columns (WITH RECURSIVE), filtered to revision r.
+children changes. With an index on `(parent, valid_from_rev)`, it's a single
+fast lookup. Ancestors and descendants use a recursive query on the same columns
+(`WITH RECURSIVE`), filtered to revision r.
+
 ```sql
 SELECT * FROM node_version
 WHERE parent = X
@@ -170,11 +174,21 @@ WHERE parent = X
 
 #### Why not mptt or treebeard for tree management?
 
-Both libraries assume each node has exactly one position at any time. They keep extra bookkeeping columns per node (lft/rght numbers in mptt, a materialised path in treebeard) and rewrite them on every move.
+Both libraries assume each node has exactly one position at any time. They keep
+extra bookkeeping columns per node (lft/rght numbers in mptt, a materialised path
+in treebeard) and rewrite them on every move.
 
-Here, a node’s parent depends on which revision you ask about, because the parent lives on NODE_VERSION, which is valid for a range of revisions. A single set of bookkeeping columns can’t describe every revision at once. You’d have to recompute them for each revision, or keep a separate copy per revision, which works against how those libraries are designed.
+Here, a node's parent depends on which revision you ask about, because the
+parent lives on `NODE_VERSION`, which is valid for a range of revisions. A single
+set of bookkeeping columns can't describe every revision at once. You'd have to
+recompute them for each revision, or keep a separate copy per revision, which
+works against how those libraries are designed.
 
-At this scale (thousands of nodes, hundreds of revisions), the plain parent-pointer approach should be fast. If deep descendant queries ever get slow, a published revision never changes, so you could compute an ancestor/descendant table for it once at publish time and never update it. That’s an optimisation to add only if needed.
+At this scale (thousands of nodes, hundreds of revisions), the plain
+parent-pointer approach should be fast. If deep descendant queries ever get
+slow, a published revision never changes, so you could compute an
+ancestor/descendant table for it once at publish time and never update it.
+That's an optimisation to add only if needed.
 
 ### Atomic operations
 
@@ -206,6 +220,11 @@ belong to one of these now"). They are the only record that a merge or split
 happened. Old ROIs keep pointing to the deprecated id. How to display or migrate
 them is up to downstream apps.
 
+- Successors are optional. Merge and split macros always set them. A node that
+  is simply removed has none.
+- Successors may themselves be deprecated later, so a consumer may have to
+  follow a chain (A → B → C). That's acceptable.
+
 ### Merge and split are macros
 
 The UI offers presets that expand into ordered atomic changes sharing a `group`
@@ -216,6 +235,9 @@ id. Reviewers see the expanded list and every node it touches.
 1..n  move     each child of A → B
 n+1   deprecate A  successors=[B]
 ```
+
+Aliases aren't part of changesets, so after publishing the UI copies A's label
+and aliases into B's alias list.
 
 **Split A**, with two variants depending on whether A's meaning changes:
 
@@ -256,7 +278,8 @@ A changeset has three states: `draft`, `published` and `discarded`.
   a new changeset that records its `base_rev`. Updating a draft replaces the
   changeset's changes, notes and `base_rev`. Drafts can be updated any number of
   times and are visible to the tree's drafters, approvers and admins, who
-  review them there.
+  review them there. Any drafter may update or discard any draft, not only
+  their own.
 - **Publishing** is done by an approver, on a draft. All checks run again
   against the latest revision. If they pass, publishing atomically creates
   `TREE_REVISION r+1`, closes the old node versions (`valid_to_rev = r+1`) and
@@ -264,12 +287,15 @@ A changeset has three states: `draft`, `published` and `discarded`.
 - **Discarding** a draft deletes its pending changes. Discarded changesets are
   kept for the record but can't be edited or published.
 - **Conflict rule:** if any node touched by the changeset has a newer version
-  than at `base_rev`, publishing is blocked. The drafter fetches the latest
-  revision, adjusts the changes in the browser, and updates the draft with the
-  new `base_rev`.
+  than at `base_rev`, or has been deprecated since, publishing is blocked. The
+  drafter fetches the latest revision, adjusts the changes in the browser, and
+  updates the draft with the new `base_rev`. Touched nodes include parents
+  whose children change, so two drafts adding different children under the
+  same parent will conflict. That's accepted.
 
 **Blocking errors** (structural only):
 - a cycle
+- a target node that is not in the tree (deprecated)
 - a parent that is not in the tree (deprecated) or is in a different tree
 - deprecating (deleting) a node that still has children (must decide what happens to the children)
 - a label that isn't machine-safe
@@ -295,15 +321,20 @@ one, such as `morphotype1` or `artifact`, as if they weren't there.
 | `duplicate_aphia` | Another node in the same tree has the same AphiaID. | The same species added twice under different labels. |
 
 "WoRMS ancestors" means the node's lineage from WoRMS
-(`AphiaClassificationByAphiaID`).
+(`AphiaClassificationByAphiaID`). WoRMS lineages contain accepted names only, so
+if the nearest anchored ancestor has an unaccepted AphiaID, its `valid_AphiaID`
+is compared instead. Otherwise every descendant of a synonym would be flagged
+`out_of_lineage`. A node with no anchored ancestor gets no `out_of_lineage`
+check.
 
 ### When checks run
 
-The check that updates the WoRMS placement warning flags should happen during/as-a-part-of tree editing. 
-Updating flags can also be triggered manually or on a schedule.
+Checks run as part of tree editing: on `validate`, when saving a draft, and
+again on publish. A drift report (§10) reruns them for the whole tree, on
+demand or on a schedule.
 
-Moving or re-anchoring one node during tree-editing can change warnings on nearby nodes, so each
-run rechecks all of these:
+Moving or re-anchoring one node can change warnings on nearby nodes, so an
+edit rechecks all of these:
 
 - the node itself
 - **looking down:** the first anchored node on each path below it, since its
@@ -316,6 +347,9 @@ Ancestors don't need rechecking.
 The draft preview lists "warnings that will change" separately from "nodes whose
 version will increase", because the two don't always overlap: warning flags
 aren't versioned, and reflect the most recently fetched WoRMS data.
+
+If WoRMS can't be reached, the affected changes record "checks unavailable" and
+publishing is still allowed. The next drift report fills the flags in.
 
 ### How warnings are stored and shown
 
@@ -342,9 +376,12 @@ Roles are assigned per tree and can be combined:
 | Role | Can |
 |---|---|
 | `reader` | Read published revisions. Most downstream apps have this permission. |
-| `drafter` | Create, update and discard drafts, and run checks. Add and remove aliases. |
-| `approver` | Publish drafts. Holding both `drafter` and `approver` lets a user publish their own drafts. |
-| `admin` | Manage tree settings and assign roles. |
+| `drafter` | Create, update and discard any draft, and run checks and drift reports. Add and remove aliases. |
+| `approver` | Publish drafts and run drift reports. Holding both `drafter` and `approver` lets a user publish their own drafts. |
+| `admin` | Manage tree settings and assign roles. Run drift reports. |
+
+All access, including reads, requires authentication. There is no anonymous
+access.
 
 **Authentication** is kept simple:
 - Django users and sessions for the web app.
@@ -357,19 +394,23 @@ Service accounts for roi-db and datasetman get the `reader` role.
 
 ### Read
 
-#### Taxon Nodes
+#### Nodes
 
-Taxon node endpoints accept `?rev=N`, a tree revision (default: latest). Every
+Node endpoints accept `?rev=N`, a tree revision (default: latest). Every
 response is the tree as it was at that revision, including nodes that were
 deprecated later.
 
+Every endpoint that returns nodes includes all fields, even when empty, so
+clients can rely on the shape. `?dropempty=true` omits fields that are null,
+empty strings or empty lists, for smaller, more readable output.
+
 ```
-GET /nodes/{id}                        detailed taxon node at the latest version and revision
-GET /nodes/{id}?rev={r}                detailed taxon node at tree revision r
+GET /nodes/{id}                        detailed node at the latest version and revision
+GET /nodes/{id}?rev={r}                detailed node at tree revision r
 GET /nodes/{id}/ancestors              path from the top-level node down to the parent
 GET /nodes/{id}/descendants?depth={d}  subtree from the given node; depth=all (default) or an integer
 GET /nodes/{id}/versions               version history with tree-revision ranges
-GET /nodes/{id}/versions/{v}           detailed taxon node at version v 
+GET /nodes/{id}/versions/{v}           detailed node at version v
 ```
 
 `/versions` doesn't accept `?rev`. `/versions/{v}` does: a node's `children`,
@@ -380,7 +421,7 @@ default is the **last** revision in that range.
 
 ##### Lite shape
 
-Used wherever taxon nodes are listed or nested: children, descendants, ancestors and
+Used wherever nodes are listed or nested: children, descendants, ancestors and
 the `parent` of a detailed node.
 
 ```
@@ -390,6 +431,18 @@ the `parent` of a detailed node.
 - `num_children == 0` means the node is a leaf.
 - `children` is a list of lite nodes if the node was expanded, and `null` if it
   wasn't (depth limit reached, or an ancestors list). An expanded leaf node has `children: []`.
+
+##### Content shape
+
+Used for whole-tree listings (`GET /trees/{tree}/nodes`), and accepted as the
+**import format** (§9). It carries everything that defines the tree's content,
+without the detailed shape's derived and WoRMS fields:
+
+```
+{id, label, version, aphia_id, description, aliases, num_children, children}
+```
+
+`children` follows the same rules as in the lite shape, but holds content nodes.
 
 ##### Detailed shape
 
@@ -402,12 +455,13 @@ Used for `GET /nodes/{id}` and `GET /nodes/{id}/versions/{v}`.
   label: "Chaetoceros_didymus",
   description: "",
   aliases: ["Chaetoceros didymus"],
-  aphia_id: 149120,
+  aphia_id: 149122,
   worms_data: {scientificname: "Chaetoceros didymus", rank: "Species", status: "accepted",
-               link: "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149120",
+               link: "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149122",
                fetched_at: "2026-10-01T12:00:00Z"},
   worms_flags: [],
   tree_depth: 3,
+  num_children: 1,
   parent:   {id: 402, label: "Chaetoceros", version: 7, num_children: 2, children: null},
   children: [{id: 433, label: "Chaetoceros_didymus_TAG_external_flagellate",
               version: 1, num_children: 0, children: null}],
@@ -421,21 +475,22 @@ Used for `GET /nodes/{id}` and `GET /nodes/{id}/versions/{v}`.
 whole, not the requested revision. A node viewed at an earlier revision still shows that it was
 deprecated later.
 
-##### Deprecated taxon nodes
+##### Deprecated nodes
 
 If `{id}` isn't in the requested revision because it was deprecated, the API
-returns `200` with the deprecation record instead of a node:
+returns `200` with the deprecation record instead of a node. This applies to
+`/ancestors` and `/descendants` too.
 
 ```
 {
   id: 812, tree: "taxonomy", rev: 42,
-  label: "Chaetoceros_morphotype1",     # label of its last version
+  label: "Thalassiosira_morphotype1",   # label of its last version
   last_version: 4, deprecated_in_rev: 37,
   successors: [1201, 1202]
 }
 ```
 
-A taxon node that didn't exist yet at the requested revision returns `404`.
+A node that didn't exist yet at the requested revision returns `404`.
 
 ##### Example: ancestors
 
@@ -472,8 +527,8 @@ the immediate parent. The requested node is in `node`.
 ```
 
 With `GET /nodes/402/descendants?rev=42&depth=1`, nodes 431 and 440 would have
-`children: null`, because the depth limit stops expansion there. Node 440 still
-shows `num_children: 0`, so a client can tell it's a leaf.
+`children: null`, because the depth limit stops expansion there, and node 433 would be absent.
+Node 440 still shows `num_children: 0`, so a client can tell it's a leaf.
 
 ##### Example: versions
 
@@ -500,12 +555,12 @@ GET /trees/{tree}                            tree summary and revision metadata 
 GET /trees/{tree}/revisions                  all revisions, newest first
 GET /trees/{tree}/revisions/{r}/changes      the atomic changes published in revision r
 GET /trees/{tree}/diff?from={a}&to={b}       net difference between two revisions
-GET /trees/{tree}/nodes?depth={d}            top-level nodes as nested lite nodes; depth=all (default)
-GET /trees/{tree}/export                     whole tree as nested detailed nodes (JSON)
+GET /trees/{tree}/nodes?depth={d}            top-level nodes as nested content nodes; depth=all (default)
+GET /trees/{tree}/export?parents=false       whole tree as nested detailed nodes (JSON)
 GET /trees/{tree}/export_flat                whole tree as CSV, one detailed node per row
-GET /trees/{tree}/resolve?label=|name=|aphia_id=
+GET /trees/{tree}/resolve?label=_|name=_|aphia_id=_
                                              exact lookups; list of detailed nodes
-GET /trees/{tree}/search?q=                  ranked typeahead
+GET /trees/{tree}/search?q=&method=          ranked typeahead
 ```
 
 ##### Tree info
@@ -537,28 +592,31 @@ endpoint consumers poll to see whether the tree has moved on.
               notes, changeset: 117, num_changes: 5}, ...]}
 ```
 
-`GET /trees/{tree}/revisions/43/changes` lists every atomic change in order.
-`seq` runs 1, 2, 3, … with no gaps. `version_changes` lists every node whose
-version increased, including parents bumped only because their set of children
-changed.
+`GET /trees/{tree}/revisions/37/changes` lists every atomic change in `seq` order.
+`version_changes` lists every node whose version changed, including parents
+bumped only because their set of children changed.
 
 ```
-{tree: "taxonomy", rev: 43, notes,
+{tree: "taxonomy", rev: 37, notes,
  changes: [
-   {seq: 1, op: "add",       group: "split#3", node: 1201, label: "Chaetoceros_morphotype1a", parent: 402},
-   {seq: 2, op: "add",       group: "split#3", node: 1202, label: "Chaetoceros_morphotype1b", parent: 402},
+   {seq: 1, op: "add",       group: "split#3", node: 1201, label: "Thalassiosira_morphotype1a", parent: 450},
+   {seq: 2, op: "add",       group: "split#3", node: 1202, label: "Thalassiosira_morphotype1b", parent: 450},
    {seq: 3, op: "move",      group: "split#3", node: 830,  from_parent: 812, to_parent: 1201},
    {seq: 4, op: "move",      group: "split#3", node: 831,  from_parent: 812, to_parent: 1202},
    {seq: 5, op: "deprecate", group: "split#3", node: 812,  successors: [1201, 1202]}
  ],
- version_changes: [{node: 402, from: 7, to: 8}, {node: 830, from: 2, to: 3},
-                   {node: 831, from: 1, to: 2}, {node: 812, from: 4, to: null}]}
+ version_changes: [{node: 450, from: 3, to: 4},
+                   {node: 1201, from: null, to: 1}, {node: 1202, from: null, to: 1},
+                   {node: 830, from: 2, to: 3}, {node: 831, from: 1, to: 2},
+                   {node: 812, from: 4, to: null}]}
 ```
 
-`to: null` means the node's last version was closed by deprecation.
+`from: null` means the node was added. `to: null` means the node's last version
+was closed by deprecation.
+`to_parent: null` or `from_parent: null` denotes tree top-level.
 
-`GET /trees/{tree}/diff?from=3&to=42` collapses everything in between. Aliases
-and WoRMS flags aren't versioned, so they don't appear.
+`GET /trees/{tree}/diff?from=3&to=42` collapses everything in between.
+Aliases and WoRMS flags aren't versioned, so they don't appear.
 
 ```
 {tree: "taxonomy", from: 3, to: 42,
@@ -570,17 +628,27 @@ and WoRMS flags aren't versioned, so they don't appear.
 
 ##### Browsing and export
 
-`GET /trees/{tree}/nodes?rev=42&depth=1` returns the top-level nodes in the lite
-shape. It behaves like `descendants`, with the tree as the implicit root.
+`GET /trees/{tree}/nodes?rev=42` returns the whole tree as nested **content**
+nodes. It behaves like `descendants`, with the tree as the implicit root, and
+`?depth=` limits it as usual. With `?dropempty=true`, the response is the
+readable form used for import files, e.g.
+`GET /trees/taxonomy/nodes?rev=42&dropempty=true`:
 
 ```
-{tree: "taxonomy", rev: 42, depth: 1,
- nodes: [{id: 12, label: "Chromista", version: 4, num_children: 3, children: null}, ...]}
+{tree: "taxonomy", rev: 42,
+ nodes: [
+   {id: 12, label: "Chromista", version: 4, aphia_id: 7, num_children: 3, children: [
+     {id: 30, label: "Bacillariophyceae", version: 9, aphia_id: 148899, num_children: 5, children: [...]},
+     ...
+   ]},
+   {id: 200, label: "other", version: 1, num_children: 3, children: [...]}
+ ]}
 ```
 
 `GET /trees/{tree}/export?rev=42` returns the whole tree at that revision as
 nested **detailed** nodes. Each node's `children` holds its detailed children,
-recursively.
+recursively. Each node's `parent` is implied by the nesting, so it is omitted by
+default; `?parents=true` includes it.
 
 ```
 {tree: "taxonomy", rev: 42,
@@ -588,8 +656,9 @@ recursively.
 ```
 
 `GET /trees/{tree}/export_flat?rev=42` returns CSV, one row per node. `parent`
-and `children` are node ids. Columns holding lists use `|` as separator, and
-`worms_data` is flattened into `worms_*` columns:
+and `children` are node ids. Columns holding lists use `|` as separator,
+`worms_data` is flattened into `worms_*` columns, and `worms_flags` holds the
+flag names only:
 
 ```
 id,label,version,parent,children,tree_depth,description,aliases,aphia_id,worms_scientificname,worms_rank,worms_status,worms_link,worms_flags,created_in_rev
@@ -617,8 +686,8 @@ unique:
 ```
 
 `GET /trees/{tree}/search?q=chaeto` is a ranked typeahead over the same fields as
-`?name=`, using prefix, then substring, then fuzzy matching. 
-Method can be forced with `?method={prefix|substring|fuzzy}`. 
+`?name=`, using prefix, then substring, then fuzzy matching.
+Method can be forced with `?method={prefix|substring|fuzzy}`.
 Results are lite nodes with their path, to tell apart nodes with the same label:
 
 ```
@@ -629,10 +698,10 @@ Results are lite nodes with their path, to tell apart nodes with the same label:
 
 ### Write (token or session auth, role-checked)
 
-The browser composes tree and node changes as a "changeset" and previews the changes. 
-When a user saves a new set of changes, a draft changeset is created. It becomes an
-official tree revision when an approver publishes it, after which the changeset can't be updated.
-Some node changes, like adding or removing aliases, don't incur version changes.
+The browser composes tree and node changes as a changeset and previews them.
+When a user saves a new set of changes, a draft changeset is created. It becomes
+an official tree revision when an approver publishes it, after which the
+changeset can't be updated. Aliases are edited directly, outside changesets.
 
 ```
 # Checking (no side effects)
@@ -643,9 +712,9 @@ POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, WoRMS 
 GET    /trees/{tree}/changesets?state=  list changesets, eg to list drafts for approval
 POST   /trees/{tree}/changesets         {base_rev, changes[], notes} → new draft
 PUT    /changesets/{cs}                 replace/update a draft's changes, notes and base_rev
-GET    /changesets/{cs}                 Returns list of atomic changes, plus tree validation data
+GET    /changesets/{cs}                 the draft's atomic changes, plus validation results
 POST   /changesets/{cs}/publish         approver; draft → new tree revision
-DELETE /changesets/{cs}                 discard a draft
+DELETE /changesets/{cs}                 discard a draft (kept, with state "discarded")
 
 # WoRMS lookups (server-side cache; the browser never calls WoRMS directly)
 GET    /worms/search?name=              candidate WoRMS records
@@ -657,8 +726,8 @@ GET    /worms/{a}/common_ancestor/{b}   the nearest common WoRMS ancestor of a a
                                         if a is an ancestor of b, a is returned, and vice versa
 
 # Drift
-POST   /trees/{tree}/drift              run now: refreshes worms_flags server-side
-GET    /trees/{tree}/drift              latest report on nodes with WoRMS-related warnings
+POST   /trees/{tree}/drift              run now (drafter, approver, admin): refreshes worms_flags
+GET    /trees/{tree}/drift              nodes that currently have WoRMS warnings
 
 # Aliases (direct, no changeset)
 PUT    /nodes/{id}/aliases {aliases[]}  replace a node's alias list (drafter)
@@ -691,39 +760,45 @@ Same Django project, using server-rendered templates.
 - "Add from WoRMS": search by name, pick a record, and accept the suggested
   parent from the lineage.
 
-## 9. Bootstrapping
+## 9. Bootstrapping and import
 
-Revision 1 of `taxonomy` is seeded by an admin import, without approval, from
-`amplify-datasetman/data/labeltrees/Jan2022_NES_taxonomy.json`:
+### Import format
 
-- `aphia_id` → `aphia_id`. WoRMS lineage nodes become nodes with their own
-  AphiaIDs.
-- `non_worms` buckets (artifact, organic_debris, informal_group, ambiguous)
-  become top-level grouping nodes with no AphiaID. Morphotypes stay under their
-  parent taxon.
-- Dataset labels → labels (already machine-safe). The display form, with
-  spaces, becomes an alias.
-- `_TAG_` labels → ordinary nodes under their base taxon.
+The import format is the **content shape** (§7), nested, with only `label`
+required:
 
-Revision 1 of `parasites` is seeded from the parasite `_TAG_` suffixes.
+```
+{tree: "NES2022_taxonomy",
+ nodes: [
+   {label: "Chromista", aphia_id: 7, children: [
+     {label: "Acantharia", aphia_id: 586732},
+     ...
+   ]}
+ ]}
+```
 
-## 10. Decisions log (latest round)
+- The structure comes from the nesting.
+- Per node, only `label`, `aphia_id`, `description`, `aliases` and `children`
+  are read, and any of them except `label` may be left out.
+- Everything else is **ignored**, including `id`. The service assigns new ids,
+  versions and revisions on import. Any response in the content or detailed shape can
+  therefore be imported again as is, e.g. the output of `/trees/{tree}/nodes`
+  or `/export`.
+- Imports run the same checks as publishing. WoRMS warnings are computed after
+  import.
 
-- Successors on deprecate: **optional**. The UI nudges for them on merge and
-  split presets.
-- `node_type`, `base_node` and `rank` are **not** node fields. Combined labels
-  sit under their base taxon. WoRMS rank is still shown, read-only, from the
-  cached WoRMS record.
-- Aliases: a **plain list of strings**, unversioned and edited directly
-  (search aids only).
-- External references: a single **nullable `aphia_id`**.
-- Draft visibility: **drafters, approvers and admins** of that tree.
-- WoRMS checks run **live**, while editing and again at publish. The service
-  needs network access to marinespecies.org. If WoRMS is unreachable, the change
-  records `checks: unavailable` and publishing is still allowed, because WoRMS
-  issues are warnings only.
+### Seed trees
 
-## 11. WoRMS versioning and what we store
+Import creates a new tree, or inserted into an existing tree or as child of a given tree-node. 
+Revision 1 of each tree is created by an admin import (management command, 
+without a changeset or approval) from the files in `labeldata/`:
+
+| File | Tree | Contents |
+|---|---|---|
+| `labeldata/NES2022_taxonomy.json` | `NES2022_taxonomy` | 246 nodes. Top level: `Chromista`, `Protozoa`, `Plantae`, `Animalia`, `Bacteria`, `other` |
+| `labeldata/NES2022_tags.json` | `NES2022_tags` | 18 nodes. Tag categories: `interaction`, `morphology`, `organism_state`, `parasite`, plus `external_detritus` |
+
+## 10. WoRMS versioning and what we store
 
 WoRMS has no releases or version numbers. It is edited continuously.
 
@@ -733,8 +808,6 @@ WoRMS has no releases or version numbers. It is edited continuously.
 - Each record has a `modified` timestamp. `AphiaRecordsByDate` lists the
   records changed in a date range.
 - The API has no per-record history. The website shows some edit history.
-- Dated snapshots exist outside the live API: periodic DwC-A exports and
-  archived WoRMS versions in GBIF ChecklistBank.
 
 What this service does as a result:
 
@@ -744,16 +817,25 @@ What this service does as a result:
   published can always be looked up. This is our own snapshot of the parts of
   WoRMS we use. The cache is not a node field, so refreshing it doesn't change
   node versions.
-- **Drift reports** call `AphiaRecordsByDate` since the last drift run, filtered
-  to AphiaIDs used in the tree, and re-check lineage for those. They refresh
-  `NODE_FLAGS` directly and report nodes with warnings. They don't propose
+- **Drift reports** re-fetch the record and lineage of every AphiaID used in
+  the latest revision, and rerun the placement checks (§5) for the whole tree.
+  `AphiaRecordsByDate` isn't enough on its own: if WoRMS moves a family our
+  tree doesn't hold, only the family's record changes, not those of our genera
+  below it. A tree uses a few hundred AphiaIDs, so a full run takes minutes.
+- Drift runs keep no history. A run overwrites `NODE_FLAGS`, and the report is
+  simply the nodes that currently have warnings. Drift reports don't propose
   changes to the tree.
 - Citation and provenance: "WoRMS, accessed <fetched_at>", per AphiaID.
 
-## 12. Further development
+## 11. Further development
 
 - **Rank as a node field.** Whether to add `rank`, and if so where it comes
   from: WoRMS for anchored nodes and free text otherwise, free text always, or
   WoRMS only. It would allow ranks on un-anchored nodes, e.g. `morphotype`.
 - **References to sources other than WoRMS** (e.g. AlgaeBase, NCBI), which
   would turn `aphia_id` into a list of typed references.
+- **Historical WoRMS states.** The live WoRMS API has no history, so it can't
+  say what WoRMS looked like on a past date. If that's ever needed, e.g. to
+  re-check an old revision against WoRMS as it was then, dated snapshots exist
+  outside the API: periodic WoRMS exports in Darwin Core Archive (DwC-A) format,
+  and archived WoRMS versions in GBIF ChecklistBank.
