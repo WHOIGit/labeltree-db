@@ -14,9 +14,9 @@ sequenceDiagram
     ROI->>LT: GET /trees/taxonomy
     LT-->>ROI: latest rev = 57 (changed → refresh)
     ROI->>LT: GET /nodes/431
-    LT-->>ROI: deprecated: true, successors: [1201, 1202]
+    LT-->>ROI: deprecation record: deprecated_in_rev: 50, successors: [1201, 1202]
     ROI->>LT: GET /nodes/431/successors
-    LT-->>ROI: active nodes 1201, 1202
+    LT-->>ROI: nodes 1201, 1202 (still in the tree)
     ROI->>ROI: downstream decides: flag for re-annotation,<br/>display old label, etc.
 
     Note over ROI,LT: Reproducing history

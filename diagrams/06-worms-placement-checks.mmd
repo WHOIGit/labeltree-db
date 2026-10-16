@@ -1,5 +1,5 @@
 flowchart TD
-    start(["change adds/moves node N<br/>or sets its WoRMS ref"]) --> hasref{"N has exact<br/>WoRMS ref?"}
+    start(["for each node N to recheck:<br/>N itself,<br/>nearest anchored descendants,<br/>same-aphia nodes"]) --> hasref{"N has<br/>aphia_id?"}
     hasref -- no --> skip["N skipped as anchor<br/>(its descendants still checked)"]
     hasref -- yes --> fetch["live fetch: AphiaRecordByID(a)<br/>+ AphiaClassificationByAphiaID(a)"]
     fetch --> reach{"WoRMS reachable?"}
@@ -7,23 +7,15 @@ flowchart TD
     reach -- yes --> c1{"status accepted?"}
     c1 -- no --> f1["⚠ unaccepted_aphia<br/>suggest valid_AphiaID"]
     c1 -- yes --> c2
-    f1 --> c2["A = nearest ancestor with exact ref<br/>(walk up, skipping un-anchored nodes)"]
+    f1 --> c2["A = nearest ancestor with aphia_id<br/>(walk up, skipping un-anchored nodes)"]
     c2 --> c3{"A.aphia in lineage(a)?"}
     c3 -- no --> f3["⚠ out_of_lineage"]
-    c3 -- yes --> c4
-    f3 --> c4{"N.rank below A.rank?<br/>(only if both ranks known)"}
-    c4 -- no --> f4["⚠ rank_order"]
-    c4 -- yes --> c5
-    f4 --> c5["for each nearest anchored descendant D:<br/>a in lineage(D.aphia)?"]
-    c5 -- "any no" --> f5["⚠ encloses_foreign"]
-    c5 -- "all yes" --> c6
-    f5 --> c6{"WoRMS taxon between A and N<br/>exists elsewhere in tree?"}
-    c6 -- yes --> f6["⚠ skipped_known_taxon"]
-    c6 -- no --> c7
-    f6 --> c7{"another active node in tree<br/>with same exact aphia?"}
+    c3 -- yes --> c7
+    f3 --> c7
+    c7{"another node in tree<br/>with same exact aphia?"}
     c7 -- yes --> f7["⚠ duplicate_aphia"]
     c7 -- no --> done
-    f7 --> done(["store flags on change<br/>and on published node version<br/>has_worms_warnings = any(flags)"])
+    f7 --> done(["store flags on change;<br/>on publish overwrite current NODE_FLAGS<br/>(no history, no version bump)"])
 
     classDef warn fill:#fde68a,stroke:#b45309
-    class f1,f3,f4,f5,f6,f7,unavail warn
+    class f1,f3,f7,unavail warn

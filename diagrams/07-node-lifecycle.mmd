@@ -1,12 +1,14 @@
 stateDiagram-v2
-    [*] --> active: add (new id, v1)
-    active --> active: edit / alias / ref / move<br/>children set changed<br/>flags changed<br/>→ new node version
-    active --> deprecated: deprecate<br/>(requires no active children)<br/>successors optional
+    [*] --> in_tree: add (new id, v1)
+    in_tree --> in_tree: edit label, description or aphia_id<br/>move, children set changed<br/>→ new node version
+    in_tree --> deprecated: deprecate at rev r<br/>(requires no children)<br/>successors optional
     deprecated --> [*]
 
     note right of deprecated
-        id never reused or removed
-        hidden by default in listings, search, exports
-        direct lookup returns deprecated: true + successors[]
-        old ROIs keep pointing here
+        last version closed at rev r (no new version)
+        deprecated_in_rev = r, successors set on the node
+        still shown at revisions before r
+        absent from the tree at r and later
+        lookup by id returns the deprecation record
+        id never reused; old ROIs keep pointing here
     end note

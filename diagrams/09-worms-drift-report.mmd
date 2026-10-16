@@ -14,7 +14,8 @@ sequenceDiagram
         W-->>LT: current status, valid_AphiaID, lineage
         LT->>LT: compare with cached_record, re-run placement checks
     end
-    LT-->>U: report: became unaccepted, lineage moved, rank changed, new warnings
+    LT->>LT: overwrite current NODE_FLAGS for affected nodes
+    LT-->>U: report: became unaccepted, lineage moved, new warnings
     opt accept proposals
         U->>LT: open draft from report
         LT-->>U: changeset with proposed atomic changes (normal review)

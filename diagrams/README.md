@@ -40,10 +40,16 @@ Shows who talks to labeltree-db:
 *ER diagram. DESIGN §2, §3*
 
 - `NODE` is only an identity: a global id that is never reused.
-- Everything that can change lives in `NODE_VERSION`. Each node version records
-  the tree revisions it is valid for (`valid_from_rev` / `valid_to_rev`).
-- Aliases, external refs and successors belong to node versions, so changing
-  them creates a new version.
+- Versioned fields (label, description, `aphia_id`, parent) live in
+  `NODE_VERSION`. Each node version records the tree revisions it is valid for
+  (`valid_from_rev` / `valid_to_rev`).
+- WoRMS warning flags (`NODE_FLAGS`) hold **current values only**, outside
+  `NODE_VERSION`. They're overwritten on publish and by drift reports, and never
+  bump the node version.
+- Aliases (`NODE_ALIAS`) are search aids only. They are **not versioned**; they
+  are edited directly and record who added them and when.
+- WoRMS records live in a service-side cache (`WORMS_RECORD`), not in node
+  versions, so refreshing the cache never changes a node version.
 - `CHANGESET` → ordered `CHANGE`s → one `TREE_REVISION` on publish.
 - Labels are machine-safe but **not unique**. Only the node id is unique.
 
@@ -55,9 +61,9 @@ which is a slice across every node's current version.
 
 - **rev 2:** adding a child increases the parent's version (`Chaetoceros v2`).
 - **rev 3:** renaming a child does **not** increase the parent's version. The
-  renamed node gets v2, with its old label kept as an alias.
-- **rev 4:** one changeset touches two nodes. Each node's version increases once,
-  and the tree gets one new revision.
+  renamed node gets v2.
+- **rev 4:** editing `Chaetoceros`'s description bumps only that node (v3).
+  The other nodes keep their versions.
 
 ### 04 · Changeset lifecycle — `04-changeset-lifecycle.mmd`
 *State diagram. DESIGN §4, §6*
@@ -92,31 +98,34 @@ Comparing 05b and 05c shows why the replacing form is the default.
 ### 06 · WoRMS placement checks — `06-worms-placement-checks.mmd`
 *Flowchart. DESIGN §5*
 
-The checks that run, against live WoRMS, when a node with an AphiaID is added
-or moved, or when its WoRMS ref changes:
+The checks run against live WoRMS. For every node that was added, moved,
+deprecated or had its `aphia_id` changed, they recheck that node, its nearest
+anchored descendants (down the lineage) and nodes with the same AphiaID:
 
 | Flag | Raised when |
 |---|---|
 | `unaccepted_aphia` | WoRMS marks the AphiaID unaccepted |
 | `out_of_lineage` | The nearest anchored ancestor isn't in the node's WoRMS lineage |
-| `rank_order` | The node's rank is at or above its anchored ancestor's |
-| `encloses_foreign` | A nearest anchored descendant doesn't have this node in its lineage |
-| `skipped_known_taxon` | A WoRMS taxon between ancestor and node exists elsewhere in the tree |
-| `duplicate_aphia` | Another active node in the tree has the same AphiaID |
+| `duplicate_aphia` | Another node in the tree has the same AphiaID |
 
 Nodes without an AphiaID are skipped when walking up or down. Every outcome is a
-**warning**, stored on the change and on the published node version, and
-summarised as `has_worms_warnings`. If WoRMS can't be reached, the change records
+**warning**. Warnings are stored on the change and, on publish, overwrite the
+node's current flags in `NODE_FLAGS` (no history). They are summarised as `has_worms_warnings`, and flag
+changes never bump node versions. If WoRMS can't be reached, the change records
 "checks unavailable" and publishing is still allowed.
 
 ### 07 · Node lifecycle — `07-node-lifecycle.mmd`
 *State diagram. DESIGN §3*
 
-A node is `active` from creation until it is `deprecated`, which is only
-possible once it has no active children. Every edit, move, alias or ref change,
-children-set change or flag change while active creates a new node version.
-Deprecated nodes are hidden by default but can always be fetched by id, with
-`deprecated: true` and any successors.
+A node is in the tree from creation until it is deprecated, which is only
+possible once it has no children. Editing the label, description or `aphia_id`,
+moving the node, or a change to its set of children creates a new node version.
+Aliases and WoRMS flags aren't versioned at all.
+
+Deprecating at revision r closes the node's last version, with no new version,
+and records `deprecated_in_rev = r` and successors on the node. The node still
+appears at revisions before r and is absent from r onwards. A lookup by id
+always works and returns the deprecation record.
 
 ### 08 · Consumer lookups — `08-consumer-lookups.mmd`
 *Sequence diagram. DESIGN §3 "What consumers store", §7*
@@ -136,11 +145,12 @@ WoRMS has no releases, so drift is found incrementally:
 
 1. Call `AphiaRecordsByDate` for the period since the last run.
 2. Keep only the AphiaIDs our tree uses.
-3. Re-fetch those records and re-check them.
+3. Re-fetch those records, re-check them, and overwrite the affected nodes'
+   current flags.
 4. Report what changed. The report can be turned into an ordinary draft
    changeset.
 
-Published versions are never modified.
+Published node versions are never modified.
 
 ### 10 · Owned tree vs WoRMS portal — `10-owned-vs-portal.mmd`
 *Flowchart, side by side. DESIGN §1*

@@ -1,6 +1,6 @@
 flowchart LR
     subgraph users["Browser App roles"]
-        R([reader<br/>(anyone)])
+        R(["reader<br/>no-auth"])
         D([drafter])
         A([approver])
         AD([admin])
@@ -9,7 +9,7 @@ flowchart LR
     subgraph ltdb["labeltree-db"]
         WEB["Management web app"]
         API["REST API<br/>/api/v1"]
-        DB[("PostgreSQL<br/>trees · nodes · node versions<br/>revisions · changesets")]
+        DB[("PostgreSQL<br/>trees · nodes · revisions")]
         WEB --> API
         API --> DB
     end
@@ -28,9 +28,9 @@ flowchart LR
     A -->|review + publish| WEB
     AD -->|roles, tree settings| WEB
 
-    ROI -->|"GET nodes, resolve, ?rev="| API
-    DSM -->|"GET export, diff"| API
-    ANN -->|"GET search, children"| API
-    CRAWL -->|"GET export ?rev="| API
+    ROI -->|"GET"| API
+    DSM -->|"GET"| API
+    ANN -->|"GET"| API
+    CRAWL --> API
 
     API -->|"live lookups by AphiaID"| WORMS

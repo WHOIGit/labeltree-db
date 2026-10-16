@@ -4,11 +4,11 @@ erDiagram
     TREE ||--o{ CHANGESET : "edited by"
     NODE ||--|{ NODE_VERSION : "has versions"
     TREE_REVISION ||--o{ NODE_VERSION : "valid_from / valid_to"
-    NODE_VERSION ||--o{ ALIAS : has
-    NODE_VERSION ||--o{ EXTERNAL_REF : has
-    NODE_VERSION ||--o{ SUCCESSOR : "if deprecated"
+    NODE_VERSION }o--o| WORMS_RECORD : "aphia_id (cache)"
+    NODE ||--o{ NODE_ALIAS : "aliases (unversioned)"
+    NODE ||--o| NODE_FLAGS : "current flags"
+    NODE ||--o{ SUCCESSOR : "if deprecated"
     NODE_VERSION }o--o| NODE : "parent (null = top-level)"
-    NODE_VERSION }o--o| NODE : "base_node (variants)"
     SUCCESSOR }o--|| NODE : "points to"
     CHANGESET ||--o{ CHANGE : "ordered (seq)"
     CHANGESET |o--o| TREE_REVISION : "publishes"
@@ -30,7 +30,9 @@ erDiagram
     NODE {
         int id PK "global, never reused"
         slug tree FK
-        int created_in_rev
+        int added_in_rev
+        int created_by_change FK
+        int deprecated_in_rev "null = still in tree"
     }
     NODE_VERSION {
         int node FK
@@ -38,26 +40,27 @@ erDiagram
         int valid_from_rev
         int valid_to_rev "null = current"
         string label "machine-safe, not unique"
-        string node_type
-        string rank "free text"
         int parent FK
-        int base_node FK
+        int aphia_id "nullable"
         string description
-        string status "active | deprecated"
-        jsonb flags "warnings"
         int change FK "provenance"
     }
-    ALIAS {
-        string name "free text"
-        string kind "synonym | misspelling | legacy | common | display"
+    NODE_ALIAS {
+        int node FK
+        string alias "free text"
+        string added_by
+        datetime added_at
     }
-    EXTERNAL_REF {
-        string source "worms | ..."
-        string external_id "AphiaID"
-        string relation "exact | broader | related"
-        jsonb cached_record
-        datetime checked_at
-        datetime source_modified
+    NODE_FLAGS {
+        int node FK
+        jsonb flags "current WoRMS placement warnings"
+        datetime computed_at
+    }
+    WORMS_RECORD {
+        int aphia_id
+        jsonb record "name, rank, status, lineage"
+        datetime fetched_at
+        datetime worms_modified
     }
     SUCCESSOR {
         int deprecated_node FK
@@ -71,7 +74,7 @@ erDiagram
     }
     CHANGE {
         int seq
-        string op "add | edit | add_alias | remove_alias | set_ref | remove_ref | move | deprecate"
+        string op "add | edit | move | deprecate"
         string group "macro id, e.g. split#3"
         jsonb payload
         jsonb checks
