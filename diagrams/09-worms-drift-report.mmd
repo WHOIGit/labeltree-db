@@ -4,7 +4,7 @@ sequenceDiagram
     participant LT as labeltree-db
     participant W as WoRMS API
 
-    U->>LT: GET /trees/taxonomy/drift
+    U->>LT: POST /trees/taxonomy/drift (run now)
     LT->>LT: last_drift_run, set of AphiaIDs used in latest rev
     LT->>W: AphiaRecordsByDate(start=last_drift_run, end=now) (paged)
     W-->>LT: records modified in window
@@ -12,11 +12,8 @@ sequenceDiagram
     loop each changed AphiaID
         LT->>W: AphiaRecordByID + AphiaClassificationByAphiaID
         W-->>LT: current status, valid_AphiaID, lineage
-        LT->>LT: compare with cached_record, re-run placement checks
+        LT->>LT: compare with cached WORMS_RECORD, re-run placement checks
     end
     LT->>LT: overwrite current NODE_FLAGS for affected nodes
     LT-->>U: report: became unaccepted, lineage moved, new warnings
-    opt accept proposals
-        U->>LT: open draft from report
-        LT-->>U: changeset with proposed atomic changes (normal review)
-    end
+    Note over U,LT: no changes are proposed. Any fix is an ordinary draft by a drafter

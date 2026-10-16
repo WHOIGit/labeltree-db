@@ -30,7 +30,7 @@ erDiagram
     NODE {
         int id PK "global, never reused"
         slug tree FK
-        int added_in_rev
+        int created_in_rev
         int created_by_change FK
         int deprecated_in_rev "null = still in tree"
     }
@@ -67,10 +67,10 @@ erDiagram
         int successor_node FK
     }
     CHANGESET {
-        string state
+        string state "draft | published | discarded"
         int base_rev
         string author
-        string approved_by
+        string published_by
     }
     CHANGE {
         int seq

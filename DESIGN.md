@@ -247,19 +247,31 @@ too.
 
 ## 4. Changesets and concurrency
 
-- Edits accumulate in a draft changeset that records its `base_rev`.
-- When a draft is submitted, approved or published, all checks run again against
-  the latest revision.
+A changeset has three states: `draft`, `published` and `discarded`.
+
+- **Composing happens in the browser.** The user builds an ordered list of
+  atomic changes locally, including merge and split presets. The browser calls
+  `validate` (§7) as the list changes, so check results appear as the user works.
+- **Saving a draft** sends the whole list to the server. Creating a draft creates
+  a new changeset that records its `base_rev`. Updating a draft replaces the
+  changeset's changes, notes and `base_rev`. Drafts can be updated any number of
+  times and are visible to the tree's drafters, approvers and admins, who
+  review them there.
+- **Publishing** is done by an approver, on a draft. All checks run again
+  against the latest revision. If they pass, publishing atomically creates
+  `TREE_REVISION r+1`, closes the old node versions (`valid_to_rev = r+1`) and
+  opens the new ones. A published changeset can no longer be edited.
+- **Discarding** a draft deletes its pending changes. Discarded changesets are
+  kept for the record but can't be edited or published.
 - **Conflict rule:** if any node touched by the changeset has a newer version
-  than at `base_rev`, publishing is blocked. The drafter must rebase (re-apply on
-  latest, re-run checks) and resubmit.
-- Publishing is atomic. It creates `TREE_REVISION r+1`, closes the old node
-  versions (`valid_to_rev = r+1`) and opens the new ones.
+  than at `base_rev`, publishing is blocked. The drafter fetches the latest
+  revision, adjusts the changes in the browser, and updates the draft with the
+  new `base_rev`.
 
 **Blocking errors** (structural only):
 - a cycle
 - a parent that is not in the tree (deprecated) or is in a different tree
-- deprecating a node that still has children
+- deprecating (deleting) a node that still has children (must decide what happens to the children)
 - a label that isn't machine-safe
 - a conflicting base revision
 
@@ -280,14 +292,14 @@ one, such as `morphotype1` or `artifact`, as if they weren't there.
 |---|---|---|
 | `out_of_lineage` | The node's nearest anchored ancestor isn't one of its WoRMS ancestors. | *Chaetoceros* placed under *Dinophyceae*. Also catches rank inversions, e.g. a genus under a species. |
 | `unaccepted_aphia` | WoRMS marks this AphiaID as unaccepted (e.g. now a synonym). The accepted AphiaID is suggested. | A species renamed in WoRMS since it was added. |
-| `duplicate_aphia` | Another active node in the same tree has the same AphiaID. | The same species added twice under different labels. |
+| `duplicate_aphia` | Another node in the same tree has the same AphiaID. | The same species added twice under different labels. |
 
 "WoRMS ancestors" means the node's lineage from WoRMS
 (`AphiaClassificationByAphiaID`).
 
 ### When checks run
 
-The check that updates the WoRMs placement warning flags should happen during/as-a-part-of tree editing. 
+The check that updates the WoRMS placement warning flags should happen during/as-a-part-of tree editing. 
 Updating flags can also be triggered manually or on a schedule.
 
 Moving or re-anchoring one node during tree-editing can change warnings on nearby nodes, so each
@@ -302,8 +314,8 @@ run rechecks all of these:
 Ancestors don't need rechecking.
 
 The draft preview lists "warnings that will change" separately from "nodes whose
-version will increase", because the two don't always overlap, since warning flags aren't versioned.
-They reflect a check against the most recently polled WoRMs structure.
+version will increase", because the two don't always overlap: warning flags
+aren't versioned, and reflect the most recently fetched WoRMS data.
 
 ### How warnings are stored and shown
 
@@ -319,9 +331,9 @@ They reflect a check against the most recently polled WoRMs structure.
      detail: "Nearest anchored ancestor Dinophyceae is not in the WoRMS lineage of Chaetoceros."}
   ]
   ```
-- When a drift report finds something worth changing in the tree itself, such
-  as moving a node to follow a WoRMS reclassification, it proposes a draft
-  changeset for normal review. It never edits published node versions.
+- Drift reports only refresh flags and report on them. They never propose or
+  make changes to the tree, and never edit published node versions. Any fix is
+  made by a drafter in an ordinary draft.
 
 ## 6. Users and permissions
 
@@ -330,8 +342,8 @@ Roles are assigned per tree and can be combined:
 | Role | Can |
 |---|---|
 | `reader` | Read published revisions. Most downstream apps have this permission. |
-| `drafter` | Create and edit drafts, run checks, and submit. |
-| `approver` | Approve or reject submitted drafts, and publish. Holding both `drafter` and `approver` lets a user approve and publish their own changes. |
+| `drafter` | Create, update and discard drafts, and run checks. Add and remove aliases. |
+| `approver` | Publish drafts. Holding both `drafter` and `approver` lets a user publish their own drafts. |
 | `admin` | Manage tree settings and assign roles. |
 
 **Authentication** is kept simple:
@@ -360,7 +372,11 @@ GET /nodes/{id}/versions               version history with tree-revision ranges
 GET /nodes/{id}/versions/{v}           detailed taxon node at version v 
 ```
 
-`/versions/` and `/versions/{v}` do not accept `?rev` flag.
+`/versions` doesn't accept `?rev`. `/versions/{v}` does: a node's `children`,
+`num_children` and `parent` can change while it stays at version v (their labels
+and versions move on), so `?rev` picks which revision to show them at. It must
+fall within version v's revision range, otherwise the API returns `400`. The
+default is the **last** revision in that range.
 
 ##### Lite shape
 
@@ -507,7 +523,7 @@ endpoint consumers poll to see whether the tree has moved on.
 ```
 {id: "taxonomy", title, description,
  rev: 42, latest_rev: 42,
- published_at, published_by, author, approved_by, notes, changeset: 117,
+ published_at, published_by, author, notes, changeset: 117,
  num_nodes: 1180, num_top_level: 6, max_depth: 9}
 ```
 
@@ -517,7 +533,7 @@ endpoint consumers poll to see whether the tree has moved on.
 
 ```
 {tree: "taxonomy",
- revisions: [{rev: 42, published_at, published_by, author, approved_by,
+ revisions: [{rev: 42, published_at, published_by, author,
               notes, changeset: 117, num_changes: 5}, ...]}
 ```
 
@@ -613,23 +629,45 @@ Results are lite nodes with their path, to tell apart nodes with the same label:
 
 ### Write (token or session auth, role-checked)
 
-```
-POST /trees/{tree}/changesets                  open a draft (records base_rev)
-POST /changesets/{cs}/changes                  append one or more atomic changes (ordered)
-PATCH/DELETE /changesets/{cs}/changes/{seq}    edit, reorder or remove a pending change
-POST /changesets/{cs}/macros/merge {node, into}            expands to atomic changes
-POST /changesets/{cs}/macros/split {node, new_nodes, child_assignment, replace: true}
-POST /changesets/{cs}/import/worms {aphia_id, under, with_lineage}
-GET  /changesets/{cs}/preview                  draft tree, diff, check results
-POST /changesets/{cs}/rebase
-POST /changesets/{cs}/submit                   drafter
-POST /changesets/{cs}/approve | reject         approver
-POST /changesets/{cs}/publish                  approver
-GET  /trees/{tree}/drift                       WoRMS drift report (can open a draft)
+The browser composes tree and node changes as a "changeset" and previews the changes. 
+When a user saves a new set of changes, a draft changeset is created. It becomes an
+official tree revision when an approver publishes it, after which the changeset can't be updated.
+Some node changes, like adding or removing aliases, don't incur version changes.
 
-POST   /nodes/{id}/aliases {alias}             drafter; applies immediately, no changeset
-DELETE /nodes/{id}/aliases/{alias}             drafter; applies immediately
 ```
+# Checking (no side effects)
+POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, WoRMS warnings,
+                                        version bumps, flag changes, conflicts
+
+# Changesets
+GET    /trees/{tree}/changesets?state=  list changesets, eg to list drafts for approval
+POST   /trees/{tree}/changesets         {base_rev, changes[], notes} → new draft
+PUT    /changesets/{cs}                 replace/update a draft's changes, notes and base_rev
+GET    /changesets/{cs}                 Returns list of atomic changes, plus tree validation data
+POST   /changesets/{cs}/publish         approver; draft → new tree revision
+DELETE /changesets/{cs}                 discard a draft
+
+# WoRMS lookups (server-side cache; the browser never calls WoRMS directly)
+GET    /worms/search?name=              candidate WoRMS records
+GET    /worms/{aphia_id}                the WoRMS record alone
+GET    /worms/{aphia_id}/lineage        the record's WoRMS ancestors, top-level first
+GET    /worms/{a}/between/{b}           all records on the lineage path between a and b, inclusive.
+                                        400 unless one is an ancestor of the other.
+GET    /worms/{a}/common_ancestor/{b}   the nearest common WoRMS ancestor of a and b, inclusive:
+                                        if a is an ancestor of b, a is returned, and vice versa
+
+# Drift
+POST   /trees/{tree}/drift              run now: refreshes worms_flags server-side
+GET    /trees/{tree}/drift              latest report on nodes with WoRMS-related warnings
+
+# Aliases (direct, no changeset)
+PUT    /nodes/{id}/aliases {aliases[]}  replace a node's alias list (drafter)
+```
+
+Merge, split and "Add from WoRMS" are handled in-browser as atomic changeset element groups.
+
+Trees, roles and the bootstrap import are managed through Django admin and a
+management command, not the API.
 
 **Caching:** the versioned content of a response pinned with `?rev=` never
 changes. Aliases and flags are always current, so they can differ between two
@@ -642,16 +680,16 @@ Responses for "latest" include `X-Tree-Revision` and an `ETag`. Consumers poll
 Same Django project, using server-rendered templates.
 
 - Tree browser: search, warning badges, and a revision picker to view past
-  revision treess (including nodes deprecated since).
-- Node page: current state, version history, WoRMS card, successors if depricated.
-- Draft editing, with each check result shown inline. Merge and split are
-  wizards that expand into an ordered list of atomic changes, which can be
-  edited before submitting.
-- Review shows the ordered change list, grouped by macro, and the set of
-  affected nodes with their old → new versions.
+  revision trees (including nodes deprecated since).
+- Node page: current state, version history, WoRMS card, successors if deprecated.
+- Draft editing in the browser, with each check result shown inline. Merge and
+  split are wizards that expand into an ordered list of atomic changes, which
+  can be edited before saving.
+- Draft list and review: the ordered change list, grouped by macro, the set of
+  affected nodes with their old → new versions, and a diff view. Approvers
+  publish from here, with notes.
 - "Add from WoRMS": search by name, pick a record, and accept the suggested
   parent from the lineage.
-- Review: diff view, approve or reject, publish with notes.
 
 ## 9. Bootstrapping
 
@@ -708,7 +746,8 @@ What this service does as a result:
   node versions.
 - **Drift reports** call `AphiaRecordsByDate` since the last drift run, filtered
   to AphiaIDs used in the tree, and re-check lineage for those. They refresh
-  `NODE_FLAGS` directly, and structural fixes become a proposed draft.
+  `NODE_FLAGS` directly and report nodes with warnings. They don't propose
+  changes to the tree.
 - Citation and provenance: "WoRMS, accessed <fetched_at>", per AphiaID.
 
 ## 12. Further development

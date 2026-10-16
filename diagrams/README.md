@@ -68,11 +68,14 @@ which is a slice across every node's current version.
 ### 04 · Changeset lifecycle — `04-changeset-lifecycle.mmd`
 *State diagram. DESIGN §4, §6*
 
-The path from `draft` through `submitted` and `approved` to `published`, plus
-the `rejected`, `discarded` and `conflict` branches:
+A changeset is a `draft` until an approver publishes it or a drafter discards
+it. Changes are composed in the browser and saved to the draft as a whole list:
 
-- Checks re-run on submit and on rebase.
-- A user holding both drafter and approver may approve their own changeset.
+- Updating a draft replaces its changes. A conflict with a newer revision sends
+  it back to the drafter to update against the latest revision.
+- Checks re-run on publish. A user holding both drafter and approver may
+  publish their own draft.
+- A published changeset can no longer be edited.
 - Publishing is atomic and creates exactly one new tree revision.
 - **Only structural errors block publishing.** WoRMS problems are warnings.
 
@@ -147,10 +150,10 @@ WoRMS has no releases, so drift is found incrementally:
 2. Keep only the AphiaIDs our tree uses.
 3. Re-fetch those records, re-check them, and overwrite the affected nodes'
    current flags.
-4. Report what changed. The report can be turned into an ordinary draft
-   changeset.
+4. Report nodes with WoRMS-related warnings (`GET /trees/{tree}/drift`).
 
-Published node versions are never modified.
+Drift reports never propose or make changes to the tree, and never modify
+published node versions. Any fix is made by a drafter in an ordinary draft.
 
 ### 10 · Owned tree vs WoRMS portal — `10-owned-vs-portal.mmd`
 *Flowchart, side by side. DESIGN §1*
