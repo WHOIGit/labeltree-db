@@ -216,4 +216,3 @@ show the touched node's current warnings.
 - Reordering changes by drag and drop.
 - Import from file and **Add from WoRMS**.
 - The node page, draft list and review pages, and drift reports.
-- A PNG export of the mockup (`diagrams/07-webapp-mockup.png`).

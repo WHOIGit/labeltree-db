@@ -59,5 +59,12 @@ Diagram sources and rendering instructions are in
 
 ![Data Model](design/diagrams/02-data-model.png)
 
+#### Web App Mockup
+
+Check out the interactive [web app mockup](design/mockups/webapp-mockup.html)
+of the tree browser and draft editor (local only).
+
+![Web app mockup](design/mockups/webapp-mockup-snapshot.png)
+
 #### API Consumer Interaction Diagram
 ![API-Consumer Interaction](design/diagrams/05-consumer-lookups.png)

@@ -6,10 +6,9 @@ published. All edits go through the [write endpoints](api.md#write-endpoints).
 
 An interactive mockup of the tree browser and draft editor is in
 [`mockups/webapp-mockup.html`](mockups/webapp-mockup.html), specified in
-[`mockups/mockup-spec.md`](mockups/mockup-spec.md).
+[`mockups/webapp-mockup-spec.md`](mockups/webapp-mockup-spec.md).
 
-> **TODO:** a rendered image of the mockup, as
-> `diagrams/07-webapp-mockup.png`.
+![Web app mockup](mockups/webapp-mockup-snapshot.png)
 
 ## Pages
 
