@@ -45,6 +45,6 @@ overlaps):
 nix-shell -p d2 --run 'd2 --layout elk 02-data-model.d2 02-data-model.svg'
 # width/height come from the SVG header
 nix-shell -p chromium --run 'chromium --headless --no-sandbox --hide-scrollbars \
-  --force-device-scale-factor=2 --window-size=3376,1276 \
+  --force-device-scale-factor=2 --window-size=3376,1367 \
   --screenshot=$PWD/02-data-model.png file://$PWD/02-data-model.svg'
 ```

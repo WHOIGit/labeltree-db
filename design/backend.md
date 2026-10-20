@@ -17,7 +17,8 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
   [Change records](#change-records) and
   [webapp.md](webapp.md#changesets-and-concurrency).
 - **Auxilliary per-node data** (light blue). None of these ever bump a node version:
-  - `NODE_ALIAS`: current aliases only ([Labels and aliases](#labels-and-aliases))
+  - `NODE_ALIAS`: aliases over time; removed aliases are kept
+    ([Labels and aliases](#labels-and-aliases))
   - `NODE_WARNINGS`: WoRMS warnings over time; the newest row per node is
     its current set ([worms.md](worms.md#how-warnings-are-stored-and-shown))
   - `SUCCESSOR`: pointers from a deprecated node to its replacements
@@ -54,9 +55,10 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
 - **Aliases are a plain list of free-text strings**, and may include misspellings, common names 
   and legacy strings, display strings. As it stands, they have no type and don't need to be unique.
 - **Aliases are search aids and are not versioned.** Drafters add or
-  remove them directly, outside of changesets and revision review. 
-  That said, each alias records who added it and when. The API
-  always searches against and returns nodes with the current latest set of aliases.
+  remove them one at a time, outside of changesets and revision review.
+  Removing an alias marks it removed rather than deleting it, so each alias
+  records who added and removed it, and when. The API always searches and
+  returns current aliases (not removed), even for `?rev=` requests.
 - Nodes can be looked up by-label for a given revision, and search matches
   labels, current aliases and cached WoRMS names. Because labels are impermanent,
   consumers should store node ids, not labels or aliases.
@@ -75,7 +77,9 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
 | | `parent` | node id, or null for a top-level node |
 | | `aphia_id` | nullable WoRMS AphiaID |
 | | `description` | free text: definition and annotation guidance |
-| `NODE_ALIAS` | `alias` | free text, one row per alias, with `added_by` and `added_at`. Associated with a `node`, not a `node_version`. |
+| `NODE_ALIAS` | `alias` | free text, one row per alias. Associated with a `node`, not a `node_version`. Unique per node among current aliases. |
+| | `added_by`, `added_at` | who added it, when |
+| | `removed_by`, `removed_at` | who removed it, when; null = current |
 | `SUCCESSOR` | `deprecated_node`, `successor_node` | one row per successor of a deprecated node; may be none. Unversioned. |
 
 Only `NODE_VERSION` fields are versioned. The API returns aliases and

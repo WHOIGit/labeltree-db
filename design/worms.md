@@ -111,8 +111,13 @@ fetching every AphiaID from WoRMS takes minutes:
    hundred AphiaIDs, so a full run takes minutes.
 3. Re-run the placement checks for the whole tree, and add a `NODE_WARNINGS`
    row for each node whose warnings changed. A quiet run writes almost nothing.
-   Runs themselves aren't recorded.
 4. `GET /trees/{tree}/drift` reports the nodes that currently have warnings.
+
+Runs themselves aren't stored in the database. One run per tree can be active
+at a time. `GET /trees/{tree}/drift/status` reports the active run's progress
+and the last finished run (who started it, when, and whether it succeeded),
+held in Django's shared cache so that every server process sees it. The last
+run's status is lost on restart.
 
 Drift reports never propose or make changes to the tree, and never modify
 published node versions. Any fix is made by a drafter in an ordinary draft.

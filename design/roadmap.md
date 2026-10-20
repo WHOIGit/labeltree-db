@@ -12,6 +12,9 @@ Open questions and possible future work.
   re-check an old revision against WoRMS as it was then, dated snapshots exist
   outside the API: periodic WoRMS exports in Darwin Core Archive (DwC-A) format,
   and archived WoRMS versions in GBIF ChecklistBank.
+- **Aliases at a past revision.** `NODE_ALIAS` keeps added/removed times, so
+  `?rev=` responses could return the aliases current when that revision was
+  published, instead of today's.
 - **Performance fallbacks**, only if needed:
   - a `CHANGE_EFFECT` table filled at publish, to map node versions to the
     changes that produced them ([backend.md](backend.md#reading-a-revision))

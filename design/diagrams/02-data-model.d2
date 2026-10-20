@@ -66,10 +66,13 @@ node_version: NODE_VERSION {
 node_alias: NODE_ALIAS {
   shape: sql_table
   class: light-blue
+  id: int {constraint: primary_key}
   node: int {constraint: foreign_key}
   alias: "string · free text"
   added_by: string
   added_at: datetime
+  removed_by: "string · null = current"
+  removed_at: "datetime · null = current"
 }
 
 node_warnings: NODE_WARNINGS {
