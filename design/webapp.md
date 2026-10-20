@@ -197,4 +197,4 @@ only `label` required:
 3. An approver publishes it, creating revision 1.
 
 So every revision, including revision 1, comes from a published changeset. The
-[seed trees](backend.md#seed-trees) are created this way.
+[example trees](backend.md#example-trees) are loaded this way.

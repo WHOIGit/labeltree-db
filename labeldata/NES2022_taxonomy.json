@@ -287,7 +287,6 @@
         {"label": "Katodinium_or_Torodinium"},
         {"label": "mix_elongated"},
         {"label": "nanoplankton_mix"},
-        {"label": "other"},
         {"label": "unknown2"}
       ]},
       {"label": "artifact", "children": [

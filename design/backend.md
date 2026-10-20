@@ -30,9 +30,8 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
 ### Multiple trees
 
 - labeltree-db supports multiple different disjoint trees. 
-  Each has its own nodes and revisions. Some initial tree structures, 
-  `NES2022_taxonomy` and `NES2022_tags`, can be found under labeldata/ 
-  (see [Seed trees](#seed-trees)). 
+  Each has its own nodes and revisions. See [Example trees](#example-trees)
+  for `NES2022_taxonomy` and `NES2022_tags`.
   API examples use "taxonomy" as the name for its example taxonomy tree.
 - A ROI may be associated with a label from more than one labeltree, 
   e.g. a taxon plus an external parasite. 
@@ -98,14 +97,15 @@ The API also returns derived, read-only values:
 Legacy combined labels, such as `Chaetoceros_didymus_TAG_external_flagellate`,
 are ordinary nodes **placed under their base taxon**, with no `aphia_id`. The
 parent is the only link to the taxon. They are a stopgap until consumers label
-ROIs in several trees at once (taxon tree + parasite tree), and can be
+ROIs in several trees at once (taxon tree + parasite/tag tree). They and can be
 deprecated later like any other node.
 
 ## Versioning
 
-- **Node version** (`node_id@v`): an integer per node, starting at 1.
-- **Tree revision** (`tree@r`): an integer per tree. It increases once per
-  published changeset and identifies the state of every node at that point.
+- **Node version**: an integer per node, starting at 1.
+- **Tree revision**: an integer per tree, starting at 1. 
+  It increases once per published changeset and identifies 
+  the state of every node at that point.
 
 ### What changes a node's version
 
@@ -114,7 +114,7 @@ A node's version increases if any of these changed:
 - label, description or `aphia_id`
 - **parent** (the node was moved)
 - **set of immediate children**: a child was added, deprecated, or moved in or
-  out
+  out.
 
 These do **not** change it:
 
@@ -125,8 +125,8 @@ These do **not** change it:
   its version doesn't. A node version describes the node and its immediate
   structure; the full path is captured only by the tree revision.
 
-A node's version increases **at most once per tree revision**, however many
-changes in the changeset touch it.
+A node's version increases **at most once per tree revision**, even if it may
+have been subject to mutliple atomic changes (e.g. moved AND renamed).
 
 #### Example
 
@@ -134,7 +134,7 @@ Four nodes over five revisions. `Chaetoceros` and `Thalassiosira` are genera;
 `C_didymus` starts under `Chaetoceros`. Each cell is the node's version at that
 revision. **Bold** marks an increase.
 
-| node | rev 1<br>seed | rev 2<br>add `C_socialis` under `Chaetoceros` | rev 3<br>rename `C_didymus` → `C_didymus_sl` | rev 4<br>move `C_socialis` → `Thalassiosira` | rev 5<br>deprecate `C_didymus_sl`, edit `Chaetoceros` description |
+| node | rev 1<br>init | rev 2<br>add `C_socialis` under `Chaetoceros` | rev 3<br>rename `C_didymus` → `C_didymus_sl` | rev 4<br>move `C_socialis` → `Thalassiosira` | rev 5<br>deprecate `C_didymus_sl`, edit `Chaetoceros` description |
 |---|---|---|---|---|---|
 | `Chaetoceros` | v1 | **v2** child added | v2 child renamed: no bump | **v3** child moved out | **v4** child deprecated + edit: one bump |
 | `C_didymus` | v1 | v1 | **v2** renamed | v2 | deprecated: v2 closed, no v3 |
@@ -233,8 +233,10 @@ probably belong to one of these now"). They are the only record that a merge or
 split happened. Old ROIs keep pointing to the deprecated id; how to display or
 migrate them is up to downstream apps.
 
-- Successors are optional. Merges and split-with-replacement always set them.
-  A node that is simply removed has none.
+- Successors are optional. Merge-with-replacement and split-with-replacement always set them
+  ([diagrams](webapp.md#merge-and-split)). A node that is simply removed need not have successors. 
+- Requesting a node at revision `r` or later when it is depricated returns its
+  [deprecation record](api.md#deprecated-nodes), which lists its successors.
 - Successors may themselves be deprecated later, so a consumer may have to
   follow a chain (A → B → C).
 
@@ -267,18 +269,14 @@ publish the final results are written to `NODE_WARNINGS`. Conflicts and
 structural errors aren't stored: `validate` and publish report them each time
 they run.
 
-## Seed trees
+## Example trees
 
-Seed trees are created from the files in `labeldata/` like any new tree
-([webapp.md](webapp.md#new-trees)). A management command can create the tree
-and the import draft, and publish it when run by a user holding `approver` on
-that tree.
+`labeldata/` holds two example trees, for reference and as sample
+[import](webapp.md#import) files. A user can load one as a
+[new tree](webapp.md#new-trees): it creates the tree and the import draft, and
+publishes it when run by a user holding `approver` on that tree.
 
 | File | Tree | Contents |
 |---|---|---|
 | `labeldata/NES2022_taxonomy.json` | `NES2022_taxonomy` | 246 nodes. Top level: `Chromista`, `Protozoa`, `Plantae`, `Animalia`, `Bacteria`, `other` |
-| `labeldata/NES2022_tags.json` | `NES2022_tags` | 18 nodes. Tag categories: `interaction`, `morphology`, `organism_state`, `parasite`, plus `external_detritus` |
-
-`NES2022_taxonomy.json` has one duplicate label: the top-level `other` and
-`other/ambiguous/other`. The second must be renamed (e.g. `ambiguous_other`)
-before import, since labels are unique within a tree.
+| `labeldata/NES2022_tags.json` | `NES2022_tags` | 18 nodes. Tag categories: `interaction`, `morphology`, `organism_state`, `parasite`, and `external_detritus` |

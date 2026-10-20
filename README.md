@@ -53,7 +53,8 @@ relationships.
 Diagram sources and rendering instructions are in
 [`design/diagrams/`](design/diagrams/).
 
-### Diagram Highlights
+### Design Highlights
+
 #### Backend Data model 
 
 ![Data Model](design/diagrams/02-data-model.png)
