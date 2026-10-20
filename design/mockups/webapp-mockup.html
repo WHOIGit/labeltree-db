@@ -1,0 +1,1727 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>labeltree-db web app mockup</title>
+  <!-- Spec: mockup-spec.md. Self-contained apart from the two CDN links. -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    :root {
+      --lt-bg: #f3f6f9;
+      --lt-line: #e4e9ef;
+      --lt-muted: #687384;
+      --lt-blue: #1f6feb;
+      --lt-new: #e3f4e8;
+      --lt-new-line: #198754;
+      --lt-bump: #fff4cc;
+      --lt-bump-line: #d4a106;
+      --lt-hover: #e8f0fe;
+    }
+    html, body { height: 100%; background: var(--lt-bg); font-size: 14px; }
+    body { overflow: hidden; }
+    [x-cloak] { display: none !important; }
+
+    .shell { height: 100vh; display: grid; grid-template-rows: auto 1fr; }
+    .topbar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem;
+      padding: .5rem 1rem; background: #fff; border-bottom: 1px solid var(--lt-line);
+    }
+    .topbar .brand { font-weight: 600; margin-right: .5rem; }
+    .topbar .field { display: flex; align-items: center; gap: .4rem; }
+    .topbar .field > .k { color: var(--lt-muted); }
+    .topbar .form-select { width: auto; }
+    .main { display: grid; grid-template-columns: minmax(0, 1fr) 440px; min-height: 0; }
+    .panel { display: flex; flex-direction: column; min-height: 0; background: #fff; }
+    .panel + .panel { border-left: 1px solid var(--lt-line); }
+    .panel-head {
+      display: flex; align-items: center; gap: .5rem; padding: .5rem .75rem;
+      border-bottom: 1px solid var(--lt-line);
+    }
+    .panel-head h2 { font-size: 1rem; margin: 0; }
+    .scroll { overflow: auto; min-height: 0; flex: 1; }
+
+    /* tree rows */
+    .trow {
+      display: flex; align-items: center; gap: .35rem; height: 28px; padding-right: .5rem;
+      white-space: nowrap; cursor: default; border-left: 3px solid transparent;
+    }
+    .trow:hover { background: #f6f8fa; }
+    .trow .caret {
+      width: 18px; border: 0; background: none; padding: 0; color: var(--lt-muted); line-height: 1;
+    }
+    .trow .nk { color: var(--lt-muted); font-size: .8em; }
+    .trow .kebab {
+      border: 0; background: none; width: 18px; height: 22px; padding: 0; margin-left: -4px; border-radius: 4px;
+      color: var(--lt-muted); font-weight: 700; line-height: 1;
+    }
+    .trow .kebab:hover { background: #e6ebf1; color: #000; }
+    .trow.hit .lbl { background: #fff3a8; }
+    .trow.mark-new { background: var(--lt-new); border-left-color: var(--lt-new-line); }
+    .trow.mark-bump { background: var(--lt-bump); border-left-color: var(--lt-bump-line); }
+    .trow.mark-dep .lbl { text-decoration: line-through; color: #8a939f; }
+    .trow.mark-dep { border-left: 3px dashed #adb5bd; }
+    .trow.hl { outline: 2px solid var(--lt-blue); outline-offset: -2px; }
+    .picking .trow.pickable { cursor: crosshair; }
+    .picking .trow.pickable:hover { background: var(--lt-hover); }
+    .picking .trow.unpickable { opacity: .4; }
+    .badge.b-worms { background: #e0f2f1; color: #00695c; text-decoration: none; font-weight: 500; }
+    .badge.b-worms:hover { background: #b2dfdb; }
+    .badge.b-warn { background: #fff0c2; color: #8a5a00; font-weight: 600; cursor: help; }
+    .badge.b-new { background: var(--lt-new-line); }
+    .badge.b-bump { background: var(--lt-bump-line); }
+    .badge.b-dep { background: #adb5bd; }
+    .pick-banner {
+      display: flex; align-items: center; gap: .5rem; padding: .4rem .75rem;
+      background: var(--lt-hover); border-bottom: 1px solid #c6d7f5;
+    }
+
+    /* node menu */
+    .node-menu { position: fixed; z-index: 1060; min-width: 220px; }
+    .node-menu .dropdown-item.disabled { pointer-events: auto; cursor: not-allowed; }
+    .node-menu .hint { font-size: .75em; color: var(--lt-muted); }
+
+    /* changes */
+    .summary { padding: .5rem .75rem; border-bottom: 1px solid var(--lt-line); font-size: .85rem; }
+    .crow { padding: .3rem .75rem; border-bottom: 1px solid #f0f2f5; display: flex; gap: .4rem; align-items: baseline; }
+    .crow:hover { background: var(--lt-hover); cursor: pointer; }
+    .crow .seq { color: var(--lt-muted); width: 2.2em; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+    .crow .txt { flex: 1; word-break: break-word; }
+    .crow .x { border: 0; background: none; color: var(--lt-muted); padding: 0 .25rem; }
+    .crow .x:hover { color: #b42318; }
+    .group-head {
+      display: flex; align-items: center; gap: .4rem; padding: .35rem .75rem;
+      background: #f3f5f8; border-bottom: 1px solid var(--lt-line); font-weight: 600; cursor: pointer;
+    }
+    .group-body .crow { padding-left: 1.5rem; }
+    .op { font-size: .7rem; width: 4.8rem; text-align: center; flex: none; }
+    .op-add { background: #198754; }
+    .op-edit { background: #0d6efd; }
+    .op-move { background: #6f42c1; }
+    .op-deprecate { background: #6c757d; }
+    .chk { font-size: .8rem; margin-top: .1rem; }
+    .chk.err { color: #b42318; }
+    .chk.warn { color: #8a5a00; }
+    .notes { border-top: 1px solid var(--lt-line); padding: .5rem .75rem; }
+
+    /* modals (Alpine-driven, Bootstrap styles) */
+    .modal.d-block { background: rgba(20, 30, 40, .35); }
+    .picker { max-height: 220px; overflow: auto; border: 1px solid var(--lt-line); border-radius: .375rem; }
+    .picker label { display: flex; gap: .5rem; padding: .2rem .5rem; margin: 0; }
+    .picker label:hover { background: #f6f8fa; }
+    .picker .path { color: var(--lt-muted); font-size: .8em; margin-left: auto; }
+    .review { font-size: .85rem; border: 1px solid var(--lt-line); border-radius: .375rem; }
+    .toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 1100; display: grid; gap: .5rem; }
+    .mock-note { font-size: .75rem; color: var(--lt-muted); }
+  </style>
+</head>
+<body x-data="app" x-init="init()" @keydown.escape.window="onEscape()">
+<div class="shell" x-cloak>
+
+  <!-- ===================== Top bar ===================== -->
+  <header class="topbar">
+    <span class="brand">labeltree</span>
+
+    <div class="field">
+      <span class="k">Tree:</span>
+      <select class="form-select form-select-sm" :disabled="mode !== 'static'"
+              :title="mode !== 'static' ? 'Leave edit mode to switch trees' : ''"
+              @change="selectTree($event.target.value)">
+        <template x-for="t in treeList" :key="t.id">
+          <option :value="t.id" :selected="t.id === treeId"
+                  x-text="t.id + (t.revs.length ? '' : ' (no revisions)')"></option>
+        </template>
+      </select>
+    </div>
+
+    <div class="field">
+      <span class="k" x-text="mode === 'static' ? 'Revision:' : 'Base revision:'"></span>
+      <template x-if="mode === 'static' && latest > 0">
+        <select class="form-select form-select-sm" @change="selectRev($event.target.value)">
+          <template x-for="o in revList" :key="o.rev">
+            <option :value="o.rev" :selected="o.rev === viewRev" x-text="o.text"></option>
+          </template>
+        </select>
+      </template>
+      <template x-if="mode === 'static' && latest === 0"><span class="text-muted">none yet</span></template>
+      <template x-if="mode === 'edit'">
+        <strong x-text="cs.base_rev ?? 'none (first revision)'"></strong>
+      </template>
+    </div>
+
+    <div class="field" x-show="mode === 'edit'">
+      <span class="k">Draft:</span>
+      <strong x-text="cs?.id ? '#' + cs.id : 'new'"></strong>
+    </div>
+
+    <div class="field">
+      <span class="k">Status:</span>
+      <span class="badge" :class="status.cls" x-text="status.text"></span>
+    </div>
+
+    <span class="flex-grow-1"></span>
+
+    <!-- Static mode buttons -->
+    <template x-if="mode === 'static'">
+      <div class="d-flex gap-2">
+        <div class="dropdown" x-data="{ open: false }" @click.outside="open = false">
+          <button class="btn btn-sm btn-primary dropdown-toggle" @click="open = !open"
+                  :disabled="!has('drafter')" :title="has('drafter') ? '' : 'Needs drafter role'">Edit</button>
+          <div class="dropdown-menu dropdown-menu-end" :class="{ show: open }" style="right: 0; min-width: 300px">
+            <button class="dropdown-item" @click="open = false; startNewDraft()"
+                    x-text="latest ? 'New draft from revision ' + latest : 'New draft (first revision)'"></button>
+            <template x-if="openDrafts.length">
+              <div>
+                <hr class="dropdown-divider">
+                <h6 class="dropdown-header">Open drafts</h6>
+                <template x-for="d in openDrafts" :key="d.id">
+                  <button class="dropdown-item" @click="open = false; openDraft(d.id)">
+                    <span x-text="'#' + d.id"></span>
+                    <small class="text-muted" x-text="'base ' + (d.base_rev ?? 'none') + ' · ' + d.author + ' · ' + d.changes.length + ' changes'"></small>
+                  </button>
+                </template>
+              </div>
+            </template>
+            <template x-if="discardedDrafts.length">
+              <div>
+                <hr class="dropdown-divider">
+                <h6 class="dropdown-header">Discarded drafts (read-only)</h6>
+                <template x-for="d in discardedDrafts" :key="d.id">
+                  <button class="dropdown-item text-muted" @click="open = false; openDraft(d.id)">
+                    <span x-text="'#' + d.id"></span>
+                    <small x-text="'base ' + (d.base_rev ?? 'none') + ' · ' + d.author + ' · ' + d.changes.length + ' changes'"></small>
+                  </button>
+                </template>
+              </div>
+            </template>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" @click="openClone()"
+                :disabled="!has('admin') || latest === 0"
+                :title="!has('admin') ? 'Needs admin role' : (latest === 0 ? 'Tree has no revisions' : 'Start a new tree from revision ' + viewRev)">
+          Clone as new tree…</button>
+      </div>
+    </template>
+
+    <!-- Edit mode buttons -->
+    <template x-if="mode === 'edit'">
+      <div class="d-flex gap-2">
+        <template x-if="!frozen">
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-primary" @click="saveDraft()" :disabled="!!saveBlock" :title="saveBlock">Save Draft</button>
+            <button class="btn btn-sm btn-success" @click="openPublish()" :disabled="!!publishBlock" :title="publishBlock">Publish Revision</button>
+            <button class="btn btn-sm btn-outline-danger" @click="discardDraft()" :disabled="!cs.id"
+                    :title="cs.id ? '' : 'Nothing saved to discard'">Discard Draft</button>
+          </div>
+        </template>
+        <button class="btn btn-sm btn-outline-secondary" @click="exitEdit()">Exit</button>
+      </div>
+    </template>
+
+    <div class="field border-start ps-3">
+      <span class="k mock-note">Mock role:</span>
+      <select class="form-select form-select-sm" x-model="role" @change="refresh()">
+        <option value="reader">reader</option>
+        <option value="drafter">drafter</option>
+        <option value="drafter+approver">drafter + approver</option>
+        <option value="admin">admin</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- ===================== Tree panel ===================== -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Tree</h2>
+        <input class="form-control form-control-sm" style="max-width: 260px" placeholder="Filter labels and aliases…"
+               x-model="filter" @input.debounce.150ms="refresh()">
+        <button class="btn btn-sm btn-link" @click="expandAll()">Expand all</button>
+        <button class="btn btn-sm btn-link" @click="collapseAll()">Collapse all</button>
+        <span class="flex-grow-1"></span>
+        <span class="mock-note" x-show="mode === 'edit'">
+          <span class="badge b-new">new</span> <span class="badge b-bump">version +1</span> <span class="badge b-dep">deprecated</span>
+        </span>
+        <button class="btn btn-sm btn-outline-primary" @click="openAdd()" :disabled="!editable"
+                :title="editable ? 'Add a node' : editHint">+ New node</button>
+      </div>
+      <template x-if="pick">
+        <div class="pick-banner">
+          <span>Click the new parent for <strong x-text="pick.label"></strong></span>
+          <span class="flex-grow-1"></span>
+          <button class="btn btn-sm btn-outline-primary" @click="pickTarget(null)">Make top level</button>
+          <button class="btn btn-sm btn-outline-secondary" @click="pick = null; refresh()">Cancel</button>
+        </div>
+      </template>
+      <div class="scroll py-1" :class="{ picking: pick }">
+        <template x-if="!v.rows.length">
+          <p class="text-muted p-3 mb-0" x-text="filter ? 'No matches.' : 'This tree is empty.'"></p>
+        </template>
+        <template x-for="r in v.rows" :key="r.key">
+          <div class="trow" :id="'n-' + r.key" :class="r.cls" :style="'padding-left:' + (r.depth * 18 + 4) + 'px'"
+               @click="rowClick(r)" @dblclick="openDetails(r.id)">
+            <button class="caret" :class="{ invisible: !r.hasKids }" @click.stop="toggle(r.id)" x-text="r.open ? '▾' : '▸'"></button>
+            <button class="kebab" title="Node actions" @click.stop="openMenu(r, $event)">⋮</button>
+            <span class="lbl" x-text="r.label"></span>
+            <span class="nk" x-show="r.nk" x-text="'(' + r.nk + ')'"></span>
+            <template x-if="r.aphia">
+              <a class="badge b-worms" :href="wormsUrl(r.aphia)" target="_blank" rel="noopener"
+                 @click.stop title="Open in WoRMS" x-text="'WoRMS ' + r.aphia"></a>
+            </template>
+            <template x-if="r.warns.length">
+              <span class="badge b-warn" :title="r.warnTitle" x-text="'⚠ ' + r.warns.length"></span>
+            </template>
+            <template x-if="r.mark === 'new'"><span class="badge b-new">new</span></template>
+            <template x-if="r.mark === 'bump'"><span class="badge b-bump" x-text="'v' + r.version + ' → v' + (r.version + 1)"></span></template>
+            <template x-if="r.mark === 'dep'"><span class="badge b-dep">deprecated</span></template>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- ===================== Changes panel ===================== -->
+    <aside class="panel">
+      <div class="panel-head">
+        <h2>Changes</h2>
+        <span class="flex-grow-1"></span>
+        <small class="text-muted" x-text="v.head"></small>
+      </div>
+      <div class="summary" x-show="v.summary.n || v.summary.conflicts.length">
+        <div>
+          <span x-text="v.summary.n + ' changes'"></span>
+          · <span :class="v.summary.errors ? 'text-danger fw-semibold' : ''" x-text="v.summary.errors + ' errors'"></span>
+          · <span :class="v.summary.warnings ? 'text-warning-emphasis fw-semibold' : ''" x-text="v.summary.warnings + ' WoRMS warnings'"></span>
+        </div>
+        <div class="text-muted" x-text="v.summary.added + ' new nodes · ' + v.summary.bumped + ' version increases · ' + v.summary.deprecated + ' deprecated'"></div>
+        <template x-if="v.summary.conflicts.length">
+          <div class="alert alert-danger py-1 px-2 mt-2 mb-0">
+            <strong>Conflict:</strong>
+            <span x-text="v.summary.conflicts.join('; ')"></span>
+            <template x-if="!frozen">
+              <div class="mt-1">
+                <button class="btn btn-sm btn-outline-danger" @click="rebase()" x-text="'Rebase on revision ' + latest"></button>
+                <small class="text-muted">then adjust the changes</small>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="scroll">
+        <template x-if="!v.items.length">
+          <p class="text-muted p-3 mb-0" x-text="mode === 'edit' ? 'No changes yet. Use a node\'s ⋮ menu, or + New node.' : 'No changes to show.'"></p>
+        </template>
+        <template x-for="it in v.items" :key="it.key">
+          <div>
+            <template x-if="it.kind === 'group'">
+              <div>
+                <div class="group-head" @click="toggleGroup(it.group)">
+                  <span x-text="collapsed[it.group] ? '▸' : '▾'"></span>
+                  <span x-text="it.group"></span>
+                  <small class="text-muted fw-normal" x-text="it.rows.length + ' changes'"></small>
+                  <template x-if="it.errors"><span class="badge text-bg-danger" x-text="it.errors + ' errors'"></span></template>
+                  <template x-if="it.warnings"><span class="badge b-warn" x-text="'⚠ ' + it.warnings"></span></template>
+                  <span class="flex-grow-1"></span>
+                  <template x-if="!frozen">
+                    <button class="btn btn-sm btn-link text-danger p-0" title="Remove the whole group"
+                            @click.stop="removeGroup(it.group)">✕</button>
+                  </template>
+                </div>
+                <div class="group-body" x-show="!collapsed[it.group]">
+                  <template x-for="row in (collapsed[it.group] ? [] : it.rows)" :key="'g' + row.i">
+                    <div class="crow" @mouseenter="hover = row.touched" @mouseleave="hover = []" @click="reveal(row.touched[0])">
+                      <span class="seq" x-text="row.i + 1"></span>
+                      <span class="badge op" :class="'op-' + row.op" x-text="row.op"></span>
+                      <div class="txt">
+                        <div x-text="row.text"></div>
+                        <template x-for="e in row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                        <template x-for="w in row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template>
+                      </div>
+                      <template x-if="!frozen">
+                        <button class="x" title="Remove this change" @click.stop="removeChange(row.i)">✕</button>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <template x-if="it.kind === 'one'">
+              <div class="crow" @mouseenter="hover = it.row.touched" @mouseleave="hover = []" @click="reveal(it.row.touched[0])">
+                <span class="seq" x-text="it.row.i + 1"></span>
+                <span class="badge op" :class="'op-' + it.row.op" x-text="it.row.op"></span>
+                <div class="txt">
+                  <div x-text="it.row.text"></div>
+                  <template x-for="e in it.row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                  <template x-for="w in it.row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template>
+                </div>
+                <template x-if="!frozen">
+                  <button class="x" title="Remove this change" @click.stop="removeChange(it.row.i)">✕</button>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="notes" x-show="mode === 'edit' || v.notes">
+        <label class="form-label small text-muted mb-1">Notes</label>
+        <template x-if="mode === 'edit' && !frozen">
+          <textarea class="form-control form-control-sm" rows="2" x-model="cs.notes" @input="dirty = true"
+                    placeholder="What this changeset does and why"></textarea>
+        </template>
+        <template x-if="frozen">
+          <div class="small" x-text="v.notes || '—'"></div>
+        </template>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== Node menu ===================== -->
+<template x-if="menu">
+  <div class="dropdown-menu show node-menu shadow" :style="'left:' + menu.x + 'px; top:' + menu.y + 'px'"
+       @click.outside="menu = null">
+    <h6 class="dropdown-header" x-text="menu.label"></h6>
+    <template x-for="m in menu.items" :key="m.key">
+      <div>
+        <template x-if="m.divider"><hr class="dropdown-divider"></template>
+        <template x-if="!m.divider">
+          <button class="dropdown-item d-flex justify-content-between gap-3" :class="{ disabled: m.hint }"
+                  :title="m.hint || ''" @click="if (!m.hint) { const fn = m.fn; menu = null; fn(); }">
+            <span x-text="m.text"></span>
+            <span class="hint" x-text="m.hint"></span>
+          </button>
+        </template>
+      </div>
+    </template>
+  </div>
+</template>
+
+<!-- ===================== Modals ===================== -->
+
+<!-- Add / edit node -->
+<template x-if="modal === 'node'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" x-text="f.mode === 'edit' ? 'Edit ' + f.orig.label : (f.parentFixed ? 'New child of ' + lbl(f.parent) : 'New node')"></h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Label</label>
+            <input class="form-control" x-model="f.label" :class="{ 'is-invalid': f.label && labelError(f.label, f.id) }" autofocus>
+            <div class="invalid-feedback" x-text="labelError(f.label, f.id)"></div>
+            <div class="form-text">Machine-safe, unique in the tree: letters, digits, <code>_ . -</code></div>
+          </div>
+          <template x-if="f.mode === 'add' && !f.parentFixed">
+            <div class="mb-2">
+              <label class="form-label">Parent</label>
+              <select class="form-select" x-model="f.parentKey">
+                <option value="">(top level)</option>
+                <template x-for="o in v.options" :key="o.key">
+                  <option :value="o.key" x-text="o.text"></option>
+                </template>
+              </select>
+            </div>
+          </template>
+          <div class="mb-2">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" rows="2" x-model="f.description"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">AphiaID</label>
+            <div class="input-group">
+              <input class="form-control" x-model="f.aphia" :class="{ 'is-invalid': aphiaError(f.aphia) }" placeholder="none">
+              <template x-if="/^\d+$/.test(f.aphia)">
+                <a class="btn btn-outline-secondary" :href="wormsUrl(f.aphia)" target="_blank" rel="noopener">WoRMS ↗</a>
+              </template>
+            </div>
+            <div class="form-text" x-show="f.mode === 'edit'">Clear it to remove the AphiaID.</div>
+          </div>
+          <template x-if="f.mode === 'add'">
+            <div class="mb-2">
+              <label class="form-label">Initial aliases</label>
+              <input class="form-control" x-model="f.aliases" placeholder="comma-separated">
+              <div class="form-text">Written as the node's aliases when the draft is published.</div>
+            </div>
+          </template>
+          <template x-if="f.mode === 'edit'">
+            <p class="form-text mb-0">Aliases aren't part of drafts. Use <em>Edit aliases…</em> in the node menu.</p>
+          </template>
+        </div>
+        <div class="modal-footer">
+          <span class="me-auto small text-muted" x-text="f.mode === 'edit' ? 'Adds one edit change' : 'Adds one add change'"></span>
+          <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+          <button class="btn btn-primary" :disabled="!!nodeFormError" :title="nodeFormError" @click="submitNode()"
+                  x-text="f.mode === 'edit' ? 'Add edit to draft' : 'Add to draft'"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Aliases -->
+<template x-if="modal === 'aliases'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" x-text="'Aliases of ' + lbl(f.id)"></h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small">
+            Aliases aren't versioned and aren't part of any draft. Saving them takes effect at once,
+            for every revision.
+          </div>
+          <ul class="list-group mb-2">
+            <template x-for="(a, i) in f.list" :key="i + a">
+              <li class="list-group-item d-flex align-items-center py-1">
+                <span class="flex-grow-1" x-text="a"></span>
+                <button class="btn btn-sm btn-link text-danger" @click="f.list.splice(i, 1)">remove</button>
+              </li>
+            </template>
+            <template x-if="!f.list.length"><li class="list-group-item text-muted py-1">No aliases</li></template>
+          </ul>
+          <div class="input-group">
+            <input class="form-control" x-model="f.add" placeholder="New alias (free text)"
+                   @keydown.enter="if (f.add.trim()) { f.list.push(f.add.trim()); f.add = '' }">
+            <button class="btn btn-outline-secondary" :disabled="!f.add.trim()" @click="f.list.push(f.add.trim()); f.add = ''">Add</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+          <button class="btn btn-primary" @click="saveAliases()">Save aliases</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Details -->
+<template x-if="modal === 'details'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" x-text="f.label"></h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+          <dl class="row mb-0">
+            <template x-for="row in f.rows" :key="row[0]">
+              <div style="display: contents">
+                <dt class="col-sm-3 text-muted fw-normal" x-text="row[0]"></dt>
+                <dd class="col-sm-9" x-text="row[1]"></dd>
+              </div>
+            </template>
+            <dt class="col-sm-3 text-muted fw-normal">WoRMS</dt>
+            <dd class="col-sm-9">
+              <template x-if="f.aphia"><a :href="wormsUrl(f.aphia)" target="_blank" rel="noopener" x-text="'AphiaID ' + f.aphia + ' ↗'"></a></template>
+              <template x-if="!f.aphia"><span class="text-muted">not anchored</span></template>
+            </dd>
+            <dt class="col-sm-3 text-muted fw-normal">WoRMS warnings</dt>
+            <dd class="col-sm-9">
+              <template x-if="!f.warns.length"><span class="text-muted">none</span></template>
+              <template x-for="w in f.warns"><div><code x-text="w.warning"></code> <span x-text="w.detail"></span></div></template>
+            </dd>
+          </dl>
+          <p class="mock-note mb-0 mt-2">The full node page (version history, successors) is out of scope for this mockup.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Deprecate -->
+<template x-if="modal === 'deprecate'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" x-text="'Deprecate ' + lbl(f.id)"></h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+          <template x-if="f.kids">
+            <div class="alert alert-warning mb-0">
+              <strong x-text="lbl(f.id)"></strong> still has <span x-text="f.kids"></span> children.
+              Move them elsewhere first, or use <em>Merge…</em> or <em>Split…</em>, which handle the children for you.
+            </div>
+          </template>
+          <template x-if="!f.kids">
+            <div>
+              <p>The node leaves the tree from the next revision on. Its id still resolves, and its label becomes free.</p>
+              <label class="form-label">Successors <span class="text-muted">(optional)</span></label>
+              <div class="mb-1 d-flex flex-wrap gap-1">
+                <template x-for="s in f.sel" :key="s">
+                  <span class="badge text-bg-primary" x-text="lbl(s) + ' ✕'" style="cursor: pointer" @click="toggleSel(s)"></span>
+                </template>
+              </div>
+              <input class="form-control form-control-sm mb-1" x-model="f.q" placeholder="Find nodes…">
+              <div class="picker">
+                <template x-for="o in pickerOptions(f.q, [f.id])" :key="o.key">
+                  <label><input type="checkbox" :checked="f.sel.includes(o.id)" @change="toggleSel(o.id)">
+                    <span x-text="o.label"></span><span class="path" x-text="o.path"></span></label>
+                </template>
+              </div>
+              <div class="form-text">Successors tell consumers where ROIs labelled with this node probably belong now.</div>
+            </div>
+          </template>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+          <button class="btn btn-danger" :disabled="f.kids > 0" @click="submitDeprecate()">Add to draft</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Merge / split wizards -->
+<template x-if="modal === 'merge' || modal === 'split'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">
+            <span x-text="(modal === 'merge' ? 'Merge ' : 'Split ') + lbl(f.a)"></span>
+            <small class="text-muted" x-text="' · step ' + f.step + ' of 4: ' + wizSteps[f.step - 1]"></small>
+          </h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+
+          <!-- merge step 1: pick nodes -->
+          <template x-if="modal === 'merge' && f.step === 1">
+            <div>
+              <p>Choose the nodes to merge with <strong x-text="lbl(f.a)"></strong>. Siblings are listed first.</p>
+              <div class="mb-1 d-flex flex-wrap gap-1">
+                <span class="badge text-bg-secondary" x-text="lbl(f.a)"></span>
+                <template x-for="s in f.sel" :key="s">
+                  <span class="badge text-bg-primary" x-text="lbl(s) + ' ✕'" style="cursor: pointer" @click="toggleSel(s)"></span>
+                </template>
+              </div>
+              <input class="form-control form-control-sm mb-1" x-model="f.q" placeholder="Find nodes…">
+              <div class="picker">
+                <template x-for="o in mergeCandidates()" :key="o.key">
+                  <label><input type="checkbox" :checked="f.sel.includes(o.id)" @change="toggleSel(o.id)">
+                    <span x-text="o.label"></span><span class="path" x-text="o.path"></span></label>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- step: mode (merge 2, split 1) -->
+          <template x-if="(modal === 'merge' && f.step === 2) || (modal === 'split' && f.step === 1)">
+            <div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" id="m-repl" :checked="f.repl" @change="setRepl(true)">
+                <label class="form-check-label" for="m-repl">
+                  <strong>With replacement</strong> (default)
+                  <div class="small text-muted" x-show="modal === 'merge'">All merged nodes are deprecated, and a new node replaces them.</div>
+                  <div class="small text-muted" x-show="modal === 'split'"><span x-text="lbl(f.a)"></span> is deprecated, and new nodes replace it.</div>
+                </label>
+              </div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" id="m-norepl" :checked="!f.repl" @change="setRepl(false)">
+                <label class="form-check-label" for="m-norepl">
+                  <strong>Without replacement</strong>
+                  <div class="small text-muted" x-show="modal === 'merge'">One node keeps its id and broadens; the others merge into it.</div>
+                  <div class="small text-muted" x-show="modal === 'split'"><span x-text="lbl(f.a)"></span> keeps its id and narrows; new siblings take some of its children.</div>
+                </label>
+              </div>
+              <template x-if="!f.repl && modal === 'merge'">
+                <div class="ms-4 mb-2">
+                  <label class="form-label">Surviving node</label>
+                  <select class="form-select form-select-sm w-auto" x-model="f.survivorKey">
+                    <template x-for="id in [f.a, ...f.sel]" :key="String(id)">
+                      <option :value="String(id)" x-text="lbl(id)"></option>
+                    </template>
+                  </select>
+                </div>
+              </template>
+              <div class="alert py-2 small" :class="f.repl ? 'alert-secondary' : 'alert-warning'"
+                   x-text="f.repl ? 'Use this whenever existing ROIs labelled with the old node(s) might belong to a different new node.'
+                     : (modal === 'merge' ? 'The survivor\'s meaning changes under the same id. If the merged-in nodes have no children, nothing records that. Use only when that is acceptable, e.g. for a misspelt duplicate.'
+                        : 'Use only when old ROIs labelled ' + lbl(f.a) + ' are still correct as ' + lbl(f.a) + '.')"></div>
+            </div>
+          </template>
+
+          <!-- merge step 3: new node -->
+          <template x-if="modal === 'merge' && f.step === 3">
+            <div>
+              <template x-if="!f.repl">
+                <p class="text-muted">No new node: the merged nodes' children move to <strong x-text="lbl(survivor())"></strong>.</p>
+              </template>
+              <template x-if="f.repl">
+                <div>
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <label class="form-label">New node label</label>
+                      <input class="form-control" x-model="f.parts[0].label" :class="{ 'is-invalid': f.parts[0].label && partErrors()[0] }">
+                      <div class="invalid-feedback" x-text="partErrors()[0]"></div>
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">AphiaID</label>
+                      <input class="form-control" x-model="f.parts[0].aphia" placeholder="none">
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Description</label>
+                      <input class="form-control" x-model="f.parts[0].description">
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Parent</label>
+                      <select class="form-select" x-model="f.parentKey">
+                        <option value="">(top level)</option>
+                        <template x-for="o in mergeParentOptions()" :key="o.key">
+                          <option :value="o.key" x-text="o.text"></option>
+                        </template>
+                      </select>
+                      <div class="form-text">Defaults to the merged nodes' nearest common parent.</div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- split step 2: new nodes -->
+          <template x-if="modal === 'split' && f.step === 2">
+            <div>
+              <p x-text="f.repl ? 'Name the nodes that replace ' + lbl(f.a) + ' (at least two). They are added as its siblings.'
+                                  : 'Name the new sibling(s) of ' + lbl(f.a) + '.'"></p>
+              <template x-for="(p, i) in f.parts" :key="i">
+                <div class="row g-2 mb-2 align-items-start">
+                  <div class="col-md-5">
+                    <input class="form-control form-control-sm" x-model="p.label" placeholder="label"
+                           :class="{ 'is-invalid': p.label && partErrors()[i] }">
+                    <div class="invalid-feedback" x-text="partErrors()[i]"></div>
+                  </div>
+                  <div class="col-md-2"><input class="form-control form-control-sm" x-model="p.aphia" placeholder="AphiaID"></div>
+                  <div class="col-md-4"><input class="form-control form-control-sm" x-model="p.description" placeholder="description"></div>
+                  <div class="col-md-1">
+                    <button class="btn btn-sm btn-link text-danger" x-show="f.parts.length > (f.repl ? 2 : 1)" @click="f.parts.splice(i, 1)">✕</button>
+                  </div>
+                </div>
+              </template>
+              <button class="btn btn-sm btn-outline-secondary" @click="f.parts.push({ label: '', aphia: '', description: '' })">+ Another node</button>
+              <p class="form-text" x-show="f.repl">The new nodes can't reuse <code x-text="lbl(f.a)"></code>: it stays taken until the deprecation is published.</p>
+            </div>
+          </template>
+
+          <!-- split step 3: assign children -->
+          <template x-if="modal === 'split' && f.step === 3">
+            <div>
+              <template x-if="!f.kids.length"><p class="text-muted"><span x-text="lbl(f.a)"></span> has no children to assign.</p></template>
+              <template x-if="f.kids.length">
+                <div>
+                  <p x-text="f.repl ? 'Assign every child of ' + lbl(f.a) + ' to one of the new nodes.' : 'Choose which children move to a new node. The rest stay with ' + lbl(f.a) + '.'"></p>
+                  <table class="table table-sm align-middle">
+                    <template x-for="k in f.kids" :key="String(k)">
+                      <tr>
+                        <td x-text="lbl(k)"></td>
+                        <td>
+                          <select class="form-select form-select-sm" x-model="f.assign[String(k)]"
+                                  :class="{ 'is-invalid': f.repl && f.assign[String(k)] === '' }">
+                            <option value="" x-text="f.repl ? '— choose —' : 'stay with ' + lbl(f.a)"></option>
+                            <template x-for="(p, i) in f.parts" :key="i">
+                              <option :value="String(i)" x-text="p.label || '(new node ' + (i + 1) + ')'"></option>
+                            </template>
+                          </select>
+                        </td>
+                      </tr>
+                    </template>
+                  </table>
+                </div>
+              </template>
+            </div>
+          </template>
+
+          <!-- step 4: review -->
+          <template x-if="f.step === 4">
+            <div>
+              <p>These changes will be added to the draft as <code x-text="f.preview.group"></code>. You can remove them later as a group.</p>
+              <div class="review">
+                <template x-for="row in f.preview.rows" :key="row.i">
+                  <div class="crow">
+                    <span class="seq" x-text="row.i + 1"></span>
+                    <span class="badge op" :class="'op-' + row.op" x-text="row.op"></span>
+                    <div class="txt">
+                      <div x-text="row.text"></div>
+                      <template x-for="e in row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                      <template x-for="w in row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <p class="form-text" x-show="modal === 'merge'">
+                After publishing, the deprecated nodes' labels and aliases are copied into the aliases of
+                <span x-text="f.repl ? 'the new node' : lbl(survivor())"></span>.
+              </p>
+            </div>
+          </template>
+        </div>
+        <div class="modal-footer">
+          <span class="me-auto small text-danger" x-text="wizError"></span>
+          <button class="btn btn-outline-secondary" @click="f.step > 1 ? f.step-- : closeModal()" x-text="f.step > 1 ? 'Back' : 'Cancel'"></button>
+          <template x-if="f.step < 4">
+            <button class="btn btn-primary" :disabled="!!wizError" @click="wizNext()">Next</button>
+          </template>
+          <template x-if="f.step === 4">
+            <button class="btn btn-primary" @click="addChanges(f.preview.changes); closeModal()">Add to draft</button>
+          </template>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Publish -->
+<template x-if="modal === 'publish'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" x-text="'Publish draft #' + cs.id + ' as revision ' + (latest + 1)"></h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small" x-text="v.summary.n + ' changes · ' + v.summary.added + ' new nodes · ' + v.summary.bumped + ' version increases · ' + v.summary.deprecated + ' deprecated · ' + v.summary.warnings + ' WoRMS warnings'"></p>
+          <label class="form-label">Notes</label>
+          <textarea class="form-control" rows="3" x-model="f.notes"></textarea>
+          <p class="form-text mb-0">All checks run again against the latest revision. A published revision can't be edited.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+          <button class="btn btn-success" @click="doPublish()">Publish</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Clone -->
+<template x-if="modal === 'clone'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" x-text="'Clone ' + treeId + ' @ revision ' + viewRev"></h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">New tree id</label>
+            <input class="form-control" x-model="f.id" :class="{ 'is-invalid': f.id && cloneError }">
+            <div class="invalid-feedback" x-text="cloneError"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Title</label>
+            <input class="form-control" x-model="f.title">
+          </div>
+          <p class="form-text mb-0">
+            Creates an empty tree and a first draft (<code>import#1</code>, no base revision) holding this
+            revision's nodes, descriptions, AphiaIDs and current aliases. The nodes get new ids.
+            An approver then publishes it as revision 1. See webapp.md, "Cloning a tree".
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+          <button class="btn btn-primary" :disabled="!!cloneError" @click="doClone()">Create tree and draft</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Confirm -->
+<template x-if="conf">
+  <div class="modal d-block" tabindex="-1" style="z-index: 1080">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" x-text="conf.title"></h5></div>
+        <div class="modal-body" x-text="conf.body"></div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" @click="conf = null">Cancel</button>
+          <button class="btn" :class="conf.cls" @click="const fn = conf.fn; conf = null; fn()" x-text="conf.ok"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<div class="toasts">
+  <template x-for="t in toasts" :key="t.id">
+    <div class="toast show align-items-center border-0" :class="t.cls"><div class="toast-body" x-text="t.text"></div></div>
+  </template>
+</div>
+
+<script id="data-NES2022_taxonomy" type="application/json">{"tree":"NES2022_taxonomy","nodes":[{"label":"Chromista","aphia_id":7,"children":[{"label":"Acantharia","aphia_id":586732},{"label":"Bacillariophyceae","aphia_id":148899,"children":[{"label":"Asterionellopsis_glacialis","aphia_id":149139},{"label":"Bacillariaceae","aphia_id":149002,"children":[{"label":"Bacillaria","aphia_id":149148},{"label":"Cylindrotheca","aphia_id":149003,"children":[{"label":"Cylindrotheca_morphotype1"}]},{"label":"Pseudo-nitzschia","aphia_id":149151,"children":[{"label":"pennate_Pseudo-nitzschia"}]}]},{"label":"Bacillariophyceae_morphotype1"},{"label":"Biddulphia","aphia_id":148967},{"label":"Chaetocerotaceae","aphia_id":148984,"children":[{"label":"Bacteriastrum","aphia_id":149118},{"label":"Chaetoceros","aphia_id":148985,"children":[{"label":"Chaetoceros_concavicornis","aphia_id":156607},{"label":"Chaetoceros_curvusetus","aphia_id":149221},{"label":"Chaetoceros_danicus","aphia_id":149120},{"label":"Chaetoceros_debilis","aphia_id":149219},{"label":"Chaetoceros_didymus","aphia_id":149122,"children":[{"label":"Chaetoceros_didymus_TAG_external_flagellate"}]},{"label":"Chaetoceros_morphotype1"},{"label":"Chaetoceros_peruvianis","aphia_id":961865},{"label":"Chaetoceros_similis","aphia_id":149127},{"label":"Chaetoceros_socialis","aphia_id":149123},{"label":"Chaetoceros_subtilis","aphia_id":156621},{"label":"Chaetoceros_tenuissimus","aphia_id":156623},{"label":"Chaetoceros_throndsenii","aphia_id":163137},{"label":"Chaetoceros_TAG_external_pennate"}]}]},{"label":"Corethron_hystrix","aphia_id":179596},{"label":"Coscinodiscus","aphia_id":148917},{"label":"Delphineis","aphia_id":149179},{"label":"Ditylum_brightwellii","aphia_id":149023},{"label":"Hemiaulaceae","aphia_id":149235,"children":[{"label":"Cerataulina_pelagica","aphia_id":149619},{"label":"Eucampia","aphia_id":149130,"children":[{"label":"Eucampia_morphotype2"},{"label":"Eucampia_morphotype1","aliases":["Eucampia_morphytype1"]}]},{"label":"Hemiaulus","aphia_id":163248,"children":[{"label":"Hemiaulus_membranaceus","aphia_id":418540}]}]},{"label":"Leptocylindrus","aphia_id":149038,"children":[{"label":"Leptocylindrus_mediterraneus","aphia_id":149230}]},{"label":"Licmophora","aphia_id":149342},{"label":"Nanoneis","aphia_id":248179},{"label":"Odontella","aphia_id":148963},{"label":"Paralia_sulcata","aphia_id":149055},{"label":"Pleurosigma","aphia_id":149181},{"label":"Rhizosoleniaceae","aphia_id":149068,"children":[{"label":"Dactyliosolen","aphia_id":149309,"children":[{"label":"Dactyliosolen_blavyanus","aphia_id":179786},{"label":"Dactyliosolen_fragilissimus","aphia_id":149310}]},{"label":"Guinardia","aphia_id":149111,"children":[{"label":"Guinardia_delicatula","aphia_id":149112,"children":[{"label":"Guinardia_delicatula_TAG_Amphidinium_grazing"},{"label":"Guinardia_delicatula_TAG_external_parasite"},{"label":"Guinardia_delicatula_TAG_internal_parasite"}]},{"label":"Guinardia_flaccida","aphia_id":149132},{"label":"Guinardia_striata","aphia_id":149113}]},{"label":"Rhizosolenia","aphia_id":149069}]},{"label":"Stephanopyxis","aphia_id":149630},{"label":"Striatella","aphia_id":149176},{"label":"Thalassionema","aphia_id":149092,"children":[{"label":"pennate_Thalassionema"}]},{"label":"Thalassiosirales","aphia_id":148903,"children":[{"label":"Lauderia_annulata","aphia_id":149135},{"label":"Skeletonema","aphia_id":149073},{"label":"Thalassiosiraceae","aphia_id":148904,"children":[{"label":"Thalassiosira","aphia_id":148912,"children":[{"label":"Thalassiosira_rotula","aphia_id":148942},{"label":"Thalassiosira_sp_aff_mala"},{"label":"Thalassiosira_sp_aff_mala_Nov2018"},{"label":"Thalassiosira_sp_aff_mala_other"},{"label":"Thalassiosira_sp_aff_mala_single"},{"label":"Thalassiosira_TAG_external_detritus"}]}]}]}]},{"label":"Ciliophora","aphia_id":11,"children":[{"label":"Euplotes","aphia_id":179326,"children":[{"label":"Euplotes_morphotype1"}]},{"label":"Litostomatea","aphia_id":292892,"children":[{"label":"Didinium","aphia_id":341301},{"label":"Mesodinium","aphia_id":179320}]},{"label":"Oligotrichea","aphia_id":732974,"children":[{"label":"Choreotrichida","aphia_id":341353,"children":[{"label":"Dictyocysta","aphia_id":196834},{"label":"Eutintinnus","aphia_id":183543},{"label":"Favella","aphia_id":172431},{"label":"Helicostomella_subulata","aphia_id":240437},{"label":"Leegaardiella_ovalis","aphia_id":101206},{"label":"Pelagostrobilidium","aphia_id":101182,"children":[{"label":"Pelagostrobilidium_morphotype1"}]},{"label":"Stenosemella","aphia_id":178825,"children":[{"label":"Stenosemella_morphotype1"},{"label":"Stenosemella_pacifica","aphia_id":417165}]},{"label":"Strobilidium","aphia_id":101185},{"label":"Tintinnidium_mucicola","aphia_id":247944},{"label":"Tintinnina","aphia_id":732976},{"label":"Tintinnopsis","aphia_id":163780}]},{"label":"Oligotrichida","aphia_id":595083,"children":[{"label":"Strombidium","aphia_id":101195,"children":[{"label":"Strombidium_capitatum","aphia_id":101282},{"label":"Strombidium_conicum","aphia_id":101289},{"label":"Strombidium_inclinatum","aphia_id":428332},{"label":"Strombidium_morphotype1"},{"label":"Strombidium_morphotype2"},{"label":"Strombidium_tintinnodes","aphia_id":101337},{"label":"Strombidium_wulffi","aphia_id":101344}]},{"label":"Tontoniidae","aphia_id":425511,"children":[{"label":"Laboea_strobila","aphia_id":101264},{"label":"Paratontonia_gracillima","aphia_id":101268},{"label":"Tontonia_appendiculariformis","aphia_id":101345}]}]}]},{"label":"Pleuronema","aphia_id":163556},{"label":"Prorodontida","aphia_id":425488,"children":[{"label":"Balanion","aphia_id":292899},{"label":"Tiarina_fusus","aphia_id":247943}]}]},{"label":"Coccolithophyceae","aphia_id":592906,"children":[{"label":"Emiliania_huxleyi","aphia_id":115104},{"label":"Phaeocystis","aphia_id":115088,"children":[{"label":"Phaeocystis_single"}]},{"label":"Prymnesiales","aphia_id":115061,"children":[{"label":"Chrysochromulina","aphia_id":115090,"children":[{"label":"Chrysochromulina_lanceolata","aphia_id":388470}]},{"label":"Corymbellus","aphia_id":162518}]},{"label":"Syracosphaerales","aphia_id":493820,"children":[{"label":"Calciosolenia_brasiliensis","aphia_id":555889},{"label":"Rhabdosphaeraceae","aphia_id":115068,"children":[{"label":"Acanthoica_quattrospina","aphia_id":235802},{"label":"Rhabdolithes","aphia_id":603344}]},{"label":"Syracosphaeraceae","aphia_id":146199,"children":[{"label":"Calciopappus","aphia_id":235858},{"label":"Ophiaster","aphia_id":115081},{"label":"Syracosphaera_pulchra","aphia_id":235979}]}]}]},{"label":"Cryptophyta","aphia_id":17638},{"label":"Dinophyceae","aphia_id":19542,"children":[{"label":"Amphidinium","aphia_id":109473},{"label":"Dinophysis","aphia_id":109462,"children":[{"label":"Dinophysis_acuminata","aphia_id":109603,"children":[{"label":"Dinophysis_acuminata_TAG_bleb"},{"label":"Dinophysis_acuminata_TAG_dividing"},{"label":"Dinophysis_acuminata_TAG_mating"}]},{"label":"Dinophysis_norvegica","aphia_id":109637},{"label":"Dinophysis_tripos","aphia_id":109662}]},{"label":"Gonyaulacales","aphia_id":109391,"children":[{"label":"Alexandrium","aphia_id":109470,"children":[{"label":"Alexandrium_catenella","aphia_id":231873,"children":[{"label":"Alexandrium_catenella_TAG_chain"},{"label":"Alexandrium_catenella_TAG_dividing"},{"label":"Alexandrium_catenella_TAG_doublet"},{"label":"Alexandrium_catenella_TAG_fusing"},{"label":"Alexandrium_catenella_TAG_infected"}]}]},{"label":"Gonyaulacaceae","aphia_id":109428,"children":[{"label":"Amylax","aphia_id":109518},{"label":"Gonyaulax","aphia_id":109519}]},{"label":"Lingulodinium_polyedra","aphia_id":233592},{"label":"Tripos","aphia_id":494057,"children":[{"label":"Tripos_furca","aphia_id":840627},{"label":"Tripos_fusus","aphia_id":840626},{"label":"Tripos_lineatus","aphia_id":837459}]}]},{"label":"Gymnodiniales","aphia_id":109392,"children":[{"label":"Asterodinium","aphia_id":231769},{"label":"Gymnodiniaceae","aphia_id":109410,"children":[{"label":"Akashiwo","aphia_id":231787},{"label":"Margalefidinium","aphia_id":990875,"children":[{"label":"Margalefidinium_TAG_chain"},{"label":"Margalefidinium_TAG_doublet"}]}]},{"label":"Gyrodinium","aphia_id":109476},{"label":"Karenia","aphia_id":231788,"children":[{"label":"Karenia_brevis","aphia_id":233015,"children":[{"label":"Karenia_brevis_TAG_dividing"},{"label":"Karenia_brevis_TAG_stress"}]},{"label":"Karenia_mikimotoi","aphia_id":233024}]},{"label":"Polykrikos","aphia_id":109485},{"label":"Warnowiaceae","aphia_id":109415,"children":[{"label":"Proterythropsis","aphia_id":231794},{"label":"Warnowia","aphia_id":109491}]}]},{"label":"Oxyrrhis","aphia_id":109486},{"label":"Peridiniales","aphia_id":109394,"children":[{"label":"Heterocapsa_rotundata","aphia_id":110152},{"label":"Kryptoperidinium","aphia_id":109541,"children":[{"label":"Kryptoperidinium_triquetrum","aphia_id":1346683,"aliases":["Kryptoperidinium triquetrum"],"children":[{"label":"Kryptoperidinium_triquetrum_singlet_plan"},{"label":"Kryptoperidinium_triquetrum_singlet_section"},{"label":"Kryptoperidinium_triquetrum_TAG_doublet"}]}]},{"label":"Oxytoxum","aphia_id":109528},{"label":"Podolampas","aphia_id":109550},{"label":"Protoperidinium","aphia_id":109553}]},{"label":"Pronoctiluca","aphia_id":109487},{"label":"Prorocentrum","aphia_id":109566,"children":[{"label":"Prorocentrum_dentatum","aphia_id":110298},{"label":"Prorocentrum_micans","aphia_id":110303},{"label":"Prorocentrum_triestinum","aphia_id":110316}]},{"label":"Scrippsiella","aphia_id":109545}]},{"label":"Foraminifera","aphia_id":1410},{"label":"Heterocapsa_triquetra","aphia_id":110153},{"label":"Ochrophyta","aphia_id":345465,"children":[{"label":"Dictyochophyceae","aphia_id":146232,"children":[{"label":"Apedinella","aphia_id":248096},{"label":"Dictyochaceae","aphia_id":157257,"children":[{"label":"Dictyocha","aphia_id":157258},{"label":"Vicicitus_globosus","aphia_id":707927}]},{"label":"Pseudochattonella_farcimen","aphia_id":531467}]},{"label":"Dinobryon","aphia_id":157240}]}]},{"label":"Protozoa","aphia_id":5,"children":[{"label":"Amoeba","aphia_id":120533},{"label":"Choanozoa","aphia_id":562870,"children":[{"label":"Choanoflagellate","aphia_id":580116},{"label":"Parvicorbicula_socialis","aphia_id":105588}]},{"label":"Euglena","aphia_id":8012}]},{"label":"Plantae","aphia_id":3,"children":[{"label":"Pyramimonas","aphia_id":134529,"children":[{"label":"Pyramimonas_longicauda","aphia_id":160513},{"label":"Pyramimonas_morphotype1"}]}]},{"label":"Animalia","aphia_id":2,"children":[{"label":"rotifer","aphia_id":14260}]},{"label":"Bacteria","aphia_id":6,"children":[{"label":"Trichodesmium","aphia_id":177604}]},{"label":"other","children":[{"label":"ambiguous","children":[{"label":"bad"},{"label":"Ephemera"},{"label":"Katodinium_or_Torodinium"},{"label":"mix_elongated"},{"label":"nanoplankton_mix"},{"label":"unknown2"}]},{"label":"artifact","children":[{"label":"bead"},{"label":"bubble"},{"label":"camera_spot"},{"label":"detritus"},{"label":"detritus_transparent"},{"label":"fiber","children":[{"label":"fiber_TAG_external_detritus"}]}]},{"label":"informal_group","children":[{"label":"coccolithophorid"},{"label":"Copepod_nauplii"},{"label":"flagellate"},{"label":"flagellate_morphotype1"},{"label":"flagellate_morphotype3"},{"label":"pennate"},{"label":"pennate_morphotype1"},{"label":"shellfish_larvae"},{"label":"zooplankton"}]},{"label":"organic_debris","children":[{"label":"fecal_pellet"},{"label":"Phaeocystis_debris"},{"label":"pollen"},{"label":"pollen_spikey_dino"}]}]}]}</script>
+<script id="data-NES2022_tags" type="application/json">{"tree":"NES2022_tags","nodes":[{"label":"external_detritus"},{"label":"interaction","children":[{"label":"Amphidinium_grazing"},{"label":"external_flagellate"},{"label":"external_pennate"}]},{"label":"morphology","children":[{"label":"chain"},{"label":"doublet"}]},{"label":"organism_state","children":[{"label":"bleb"},{"label":"dividing"},{"label":"fusing"},{"label":"infected"},{"label":"mating"},{"label":"stress"}]},{"label":"parasite","children":[{"label":"external_parasite"},{"label":"internal_parasite"}]}]}</script>
+<script>
+// ---------------------------------------------------------------------------
+// Engine: atomic changes over an in-memory tree (see design/backend.md)
+// ---------------------------------------------------------------------------
+const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+const ROLES = {
+  reader: [],
+  drafter: ['drafter'],
+  'drafter+approver': ['drafter', 'approver'],
+  admin: ['drafter', 'approver', 'admin'],
+};
+const isPh = id => typeof id === 'string' && id.startsWith('new:');
+const keyOf = id => (id == null ? '' : String(id));
+const idOf = key => (key === '' || key == null ? null : (isPh(key) ? key : Number(key)));
+
+// Mock database. Nothing here leaves the page.
+const DB = { ver: 0, nextId: 1001, nextCs: 1, trees: {}, changesets: {}, aliases: {}, warnings: {} };
+
+// Apply an ordered list of changes to a state (Map id -> node) and check each
+// change against the state left by the ones before it. Nodes deprecated by
+// these changes stay in the returned state with dep = true.
+function applyChanges(base, changes) {
+  const s = new Map();
+  for (const [k, n] of base) s.set(k, { ...n });
+  const added = new Set(), deprecated = new Set(), bump = new Set(), touchedAll = new Set();
+  const live = id => s.has(id) && !s.get(id).dep;
+  const labelOwner = label => { for (const n of s.values()) if (!n.dep && n.label === label) return n; };
+  const liveKids = id => [...s.values()].filter(n => !n.dep && n.parent === id);
+  const ancOrSelf = (a, b) => { // is a an ancestor of b, or b itself?
+    const seen = new Set();
+    for (let cur = b; cur != null && !seen.has(cur); cur = s.get(cur)?.parent ?? null) {
+      if (cur === a) return true;
+      seen.add(cur);
+    }
+    return false;
+  };
+  const checkLabel = (label, self, e) => {
+    if (!LABEL_RE.test(label || '')) return e.push(`label "${label}" is not machine-safe`);
+    const o = labelOwner(label);
+    if (o && o.id !== self) e.push(`label "${label}" is already used by ${o.id}`);
+  };
+  const nm = id => (s.has(id) ? `${s.get(id).label} (${id})` : String(id));
+  const checkNode = (id, e) => { if (!live(id)) e.push(`${nm(id)} is not in the tree`); };
+  const checkParent = (p, e) => { if (p != null && !live(p)) e.push(`parent ${nm(p)} is not in the tree`); };
+  const dupAphia = (id, aphia, w) => {
+    if (aphia == null) return;
+    for (const n of s.values())
+      if (!n.dep && n.id !== id && n.aphia_id === aphia) w.push(`duplicate_aphia: ${n.label} has AphiaID ${aphia} too`);
+  };
+  const currentWarnings = (id, w) => {
+    for (const x of DB.warnings[id] || []) w.push(`${x.warning} (current): ${x.detail}`);
+  };
+
+  const results = changes.map(c => {
+    const e = [], w = [], t = [c.node];
+    const before = s.has(c.node) ? { ...s.get(c.node) } : null;
+    switch (c.op) {
+      case 'add':
+        if (s.has(c.node)) { e.push(`node ${c.node} already exists`); break; }
+        checkLabel(c.label, c.node, e);
+        checkParent(c.parent, e);
+        dupAphia(c.node, c.aphia_id ?? null, w);
+        s.set(c.node, { id: c.node, label: c.label, parent: c.parent ?? null, aphia_id: c.aphia_id ?? null,
+                        description: c.description || '', version: 1, created: null, dep: false });
+        added.add(c.node);
+        if (c.parent != null) { t.push(c.parent); bump.add(c.parent); }
+        break;
+      case 'edit':
+        checkNode(c.node, e);
+        if (!s.has(c.node)) break;
+        if ('label' in c) checkLabel(c.label, c.node, e);
+        if ('aphia_id' in c) dupAphia(c.node, c.aphia_id, w);
+        else currentWarnings(c.node, w);
+        Object.assign(s.get(c.node), Object.fromEntries(
+          ['label', 'description', 'aphia_id'].filter(k => k in c).map(k => [k, c[k]])));
+        bump.add(c.node);
+        break;
+      case 'move':
+        checkNode(c.node, e);
+        checkParent(c.to_parent, e);
+        if (!s.has(c.node)) break;
+        if (c.to_parent != null && ancOrSelf(c.node, c.to_parent)) { e.push('this move would create a cycle'); break; }
+        if (s.get(c.node).parent !== (c.from_parent ?? null))
+          e.push(`node is no longer under ${s.get(c.from_parent)?.label ?? 'top level'}`);
+        t.push(s.get(c.node).parent, c.to_parent);
+        bump.add(s.get(c.node).parent); bump.add(c.to_parent); bump.add(c.node);
+        s.get(c.node).parent = c.to_parent ?? null;
+        currentWarnings(c.node, w);
+        break;
+      case 'deprecate':
+        checkNode(c.node, e);
+        if (!s.has(c.node)) break;
+        if (liveKids(c.node).length) e.push(`node still has ${liveKids(c.node).length} children`);
+        for (const x of c.successors || []) if (!live(x)) e.push(`successor ${nm(x)} is not in the tree`);
+        s.get(c.node).dep = true;
+        deprecated.add(c.node);
+        t.push(s.get(c.node).parent);
+        bump.add(s.get(c.node).parent);
+        break;
+    }
+    const touched = t.filter(x => x != null);
+    touched.forEach(x => touchedAll.add(x));
+    return { errors: e, warnings: w, touched, before };
+  });
+  // a node's version increases at most once, and only if it existed before and survives
+  for (const id of [...bump]) if (id == null || !base.has(id) || deprecated.has(id) || added.has(id)) bump.delete(id);
+  return { state: s, results, added, deprecated, bump, touchedAll };
+}
+
+// Replay a tree's published changesets. Cached until DB.ver changes.
+const HCACHE = {};
+function history(treeId) {
+  const hit = HCACHE[treeId];
+  if (hit && hit.ver === DB.ver) return hit;
+  const tree = DB.trees[treeId];
+  const snaps = [new Map()], evs = [null];
+  tree.revs.forEach((csId, i) => {
+    const r = i + 1;
+    const ev = applyChanges(snaps[i], DB.changesets[csId].changes);
+    const snap = new Map();
+    for (const [id, n] of ev.state) {
+      if (n.dep) continue;
+      const m = { ...n };
+      if (ev.added.has(id)) m.created = r;
+      if (ev.bump.has(id)) m.version += 1;
+      snap.set(id, m);
+    }
+    snaps.push(snap);
+    evs.push(ev);
+  });
+  return (HCACHE[treeId] = { ver: DB.ver, snaps, evs });
+}
+
+function childIndex(state, includeDep) {
+  const kids = new Map();
+  for (const n of state.values()) {
+    if (n.dep && !includeDep) continue;
+    if (!kids.has(n.parent)) kids.set(n.parent, []);
+    kids.get(n.parent).push(n.id);
+  }
+  for (const list of kids.values())
+    list.sort((a, b) => state.get(a).label.localeCompare(state.get(b).label, undefined, { sensitivity: 'base' }));
+  return kids;
+}
+
+function nodePath(state, id) {
+  const parts = [];
+  for (let n = state.get(state.get(id)?.parent); n; n = state.get(n.parent)) parts.unshift(n.label);
+  return parts.join(' / ');
+}
+
+function describe(c, r, st) {
+  const name = id => {
+    if (id == null) return 'top level';
+    const l = st.get(id)?.label ?? r.before?.label ?? '?';
+    return isPh(id) ? `${id} (${l})` : l;
+  };
+  switch (c.op) {
+    case 'add':
+      return `${name(c.node)} under ${name(c.parent)}` + (c.aphia_id ? `, AphiaID ${c.aphia_id}` : '');
+    case 'edit': {
+      const b = r.before || {}, bits = [];
+      if ('label' in c) bits.push(`label → ${c.label}`);
+      if ('description' in c) bits.push('description changed');
+      if ('aphia_id' in c) bits.push(`AphiaID ${b.aphia_id ?? 'none'} → ${c.aphia_id ?? 'none'}`);
+      return `${isPh(c.node) ? c.node + ' (' + b.label + ')' : (b.label ?? c.node)}: ${bits.join(', ')}`;
+    }
+    case 'move':
+      return `${name(c.node)}: ${name(c.from_parent)} → ${name(c.to_parent)}`;
+    case 'deprecate':
+      return name(c.node) + (c.successors?.length ? ` → successors ${c.successors.map(name).join(', ')}` : '');
+  }
+}
+
+// Publish: assign real ids to placeholders, write initial aliases, copy aliases
+// after merges, and append the revision.
+function publish(cs, when) {
+  const tree = DB.trees[cs.tree];
+  const h = history(cs.tree);
+  const base = h.snaps[tree.revs.length];
+  const map = {};
+  for (const c of cs.changes) if (c.op === 'add' && isPh(c.node)) map[c.node] = DB.nextId++;
+  const re = v => (isPh(v) ? map[v] : v);
+  cs.changes = cs.changes.map(c => {
+    const d = { ...c };
+    for (const k of ['node', 'parent', 'from_parent', 'to_parent']) if (k in d) d[k] = re(d[k]);
+    if (d.successors) d.successors = d.successors.map(re);
+    return d;
+  });
+  const ev = applyChanges(base, cs.changes);
+  for (const c of cs.changes) {
+    if (c.op === 'add' && c.aliases?.length) DB.aliases[c.node] = [...c.aliases];
+    if (c.op === 'deprecate' && c.group?.startsWith('merge#') && c.successors?.length === 1) {
+      const to = c.successors[0];
+      DB.aliases[to] = [...new Set([...(DB.aliases[to] || []), ev.state.get(c.node).label, ...(DB.aliases[c.node] || [])])];
+    }
+  }
+  cs.state = 'published';
+  cs.rev = tree.revs.length + 1;
+  cs.published_at = when;
+  tree.revs.push(cs.id);
+  DB.ver++;
+}
+
+function importChanges(nodes, group) {
+  let k = 0;
+  const out = [];
+  const walk = (list, parent) => {
+    for (const n of list) {
+      const id = `new:${++k}`;
+      out.push({ op: 'add', node: id, label: n.label, parent, aphia_id: n.aphia_id ?? null,
+                 description: n.description || '', aliases: n.aliases || [], group });
+      walk(n.children || [], id);
+    }
+  };
+  walk(nodes, null);
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Mock data
+// ---------------------------------------------------------------------------
+(function seed() {
+  const newCs = (tree, base_rev, changes, extra) => {
+    const cs = { id: DB.nextCs++, tree, base_rev, changes, notes: '', state: 'draft', author: 'you',
+                 created_at: '2026-10-01', ...extra };
+    DB.changesets[cs.id] = cs;
+    return cs;
+  };
+  const byLabel = (tree, label) => {
+    const h = history(tree);
+    for (const n of h.snaps[h.snaps.length - 1].values()) if (n.label === label) return n.id;
+    throw new Error('mock data: no ' + label);
+  };
+
+  for (const id of ['NES2022_taxonomy', 'NES2022_tags']) {
+    const raw = JSON.parse(document.getElementById('data-' + id).textContent);
+    DB.trees[id] = { id, title: id.replace('_', ' '), revs: [] };
+    publish(newCs(id, null, importChanges(raw.nodes, 'import#1'),
+      { author: 'sbatchelder', notes: `Initial import from labeldata/${id}.json` }), '2026-08-04');
+  }
+
+  const T = 'NES2022_taxonomy', L = l => byLabel(T, l);
+
+  // Discarded draft #3, base 1: a split of Eucampia
+  const euc = L('Eucampia'), bac = L('Hemiaulaceae');
+  newCs(T, 1, [
+    { op: 'add', node: 'new:1', label: 'Eucampia_zodiacus', parent: bac, aphia_id: null, description: '', aliases: [], group: 'split#1' },
+    { op: 'add', node: 'new:2', label: 'Eucampia_cornuta', parent: bac, aphia_id: null, description: '', aliases: [], group: 'split#1' },
+    { op: 'move', node: L('Eucampia_morphotype1'), from_parent: euc, to_parent: 'new:1', group: 'split#1' },
+    { op: 'move', node: L('Eucampia_morphotype2'), from_parent: euc, to_parent: 'new:2', group: 'split#1' },
+    { op: 'deprecate', node: euc, successors: ['new:1', 'new:2'], group: 'split#1' },
+  ], { state: 'discarded', author: 'asmith', notes: 'Discarded: we keep the genus until the morphotypes are confirmed.' });
+
+  // Revision 2
+  publish(newCs(T, 1, [
+    { op: 'edit', node: L('Chaetoceros_peruvianis'), label: 'Chaetoceros_peruvianus' },
+    { op: 'edit', node: L('Mesodinium'), description: 'Includes M. rubrum. Red, with a cirri belt; often jumps between frames.' },
+    { op: 'add', node: 'new:1', label: 'Pseudo-nitzschia_morphotype1', parent: L('Pseudo-nitzschia'), aphia_id: null, description: '', aliases: [] },
+  ], { author: 'jdoe', notes: 'Fix a misspelt label; Mesodinium guidance; new Pseudo-nitzschia morphotype.' }), '2026-09-02');
+
+  // Revision 3: merge with replacement
+  const mala = L('Thalassiosira'), single = L('Thalassiosira_sp_aff_mala_single');
+  publish(newCs(T, 2, [
+    { op: 'add', node: 'new:1', label: 'Thalassiosira_sp_aff_mala_solitary', parent: mala, aphia_id: null, description: 'Single cells of T. sp. aff. mala, any season.', aliases: [], group: 'merge#1' },
+    { op: 'deprecate', node: single, successors: ['new:1'], group: 'merge#1' },
+    { op: 'deprecate', node: L('Thalassiosira_sp_aff_mala_Nov2018'), successors: ['new:1'], group: 'merge#1' },
+  ], { author: 'asmith', notes: 'Merge the two single-cell mala classes.' }), '2026-09-29');
+
+  // Open draft, base 2: conflicts with revision 3
+  newCs(T, 2, [
+    { op: 'move', node: L('Heterocapsa_triquetra'), from_parent: L('Chromista'), to_parent: L('Dinophyceae') },
+    { op: 'edit', node: single, description: 'Single cells only.' },
+  ], { author: 'jdoe', notes: 'Tidy dinoflagellates.' });
+
+  // Made-up current WoRMS warnings
+  DB.warnings[L('Phaeocystis')] = [
+    { warning: 'out_of_lineage', detail: 'Nearest anchored ancestor Coccolithophyceae (592906) is not in the WoRMS lineage of Phaeocystis (115088). [mock]' }];
+  DB.warnings[L('Kryptoperidinium_triquetrum')] = [
+    { warning: 'unaccepted_aphia', detail: 'WoRMS marks AphiaID 1346683 as unaccepted; accepted AphiaID 109484 is suggested. [mock]' }];
+  DB.warnings[L('Tintinnina')] = [
+    { warning: 'out_of_lineage', detail: 'Nearest anchored ancestor Choreotrichida (341353) is not in the WoRMS lineage of Tintinnina (732976). [mock]' },
+    { warning: 'unaccepted_aphia', detail: 'WoRMS marks AphiaID 732976 as unaccepted. [mock]' }];
+})();
+
+// ---------------------------------------------------------------------------
+// UI
+// ---------------------------------------------------------------------------
+let CUR = { state: new Map(), ev: null, kids: new Map() }; // not reactive on purpose
+
+document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
+  role: 'drafter+approver',
+  treeId: 'NES2022_taxonomy',
+  viewRev: 0,
+  mode: 'static',          // 'static' | 'edit'
+  cs: null,                // changeset being edited or viewed in edit mode
+  dirty: false,
+  exp: {},                 // tree id -> { node key: true }
+  filter: '',
+  pick: null,              // { id, label } while choosing a move target
+  hover: [],
+  collapsed: {},           // group -> bool
+  menu: null,
+  modal: null,
+  f: {},
+  conf: null,
+  toasts: [],
+  ver: 0,
+  v: { rows: [], items: [], summary: { conflicts: [] }, options: [], head: '', notes: '' },
+  wizSteps: [],
+
+  init() {
+    this.viewRev = this.latest;
+    this.expandTop();
+    this.refresh();
+    this.$watch('hover', () => this.refresh());
+  },
+
+  // ---- derived -----------------------------------------------------------
+  has(r) { return ROLES[this.role].includes(r); },
+  get tree() { this.ver; return DB.trees[this.treeId]; },
+  get latest() { this.ver; return DB.trees[this.treeId].revs.length; },
+  get treeList() { this.ver; return Object.values(DB.trees); },
+  get revList() {
+    this.ver;
+    return this.tree.revs.map((id, i) => {
+      const cs = DB.changesets[id];
+      return { rev: i + 1, text: `${i + 1} · ${cs.published_at} · ${cs.author}` + (i + 1 === this.latest ? ' (latest)' : '') };
+    }).reverse();
+  },
+  get openDrafts() { this.ver; return Object.values(DB.changesets).filter(c => c.tree === this.treeId && c.state === 'draft'); },
+  get discardedDrafts() { this.ver; return Object.values(DB.changesets).filter(c => c.tree === this.treeId && c.state === 'discarded'); },
+  get frozen() { return this.mode === 'static' || this.cs?.state === 'discarded'; },
+  get editable() { return !this.frozen && this.has('drafter'); },
+  get editHint() {
+    if (this.mode === 'static') return 'Edit mode only';
+    if (this.frozen) return 'Discarded drafts are read-only';
+    return 'Needs drafter role';
+  },
+  get status() {
+    if (this.mode === 'static')
+      return this.latest ? { text: 'Published (frozen)', cls: 'text-bg-success' } : { text: 'None', cls: 'text-bg-secondary' };
+    if (this.cs.state === 'discarded') return { text: 'Discarded (frozen)', cls: 'text-bg-dark' };
+    if (this.dirty) return { text: 'Draft (unsaved)', cls: 'text-bg-warning' };
+    if (this.cs.id) return { text: 'Draft (saved)', cls: 'text-bg-info' };
+    return { text: 'None', cls: 'text-bg-secondary' };
+  },
+  get saveBlock() {
+    if (!this.has('drafter')) return 'Needs drafter role';
+    if (!this.dirty) return 'No unsaved changes';
+    return '';
+  },
+  get publishBlock() {
+    if (!this.has('approver')) return 'Needs approver role';
+    if (!this.cs.id || this.dirty) return 'Save the draft first';
+    if (!this.cs.changes.length) return 'No changes';
+    if (this.v.summary.errors) return `Fix ${this.v.summary.errors} errors first`;
+    if (this.v.summary.conflicts.length) return 'Resolve the conflict first';
+    return '';
+  },
+
+  // ---- view computation --------------------------------------------------
+  refresh() {
+    const h = history(this.treeId);
+    let state, ev = null, changes = [], head = '', notes = '';
+    if (this.mode === 'static') {
+      state = h.snaps[this.viewRev] || new Map();
+      if (this.viewRev > 0) {
+        const cs = DB.changesets[this.tree.revs[this.viewRev - 1]];
+        ev = h.evs[this.viewRev];
+        changes = cs.changes;
+        head = `revision ${this.viewRev} · changeset #${cs.id} · ${cs.author} · ${cs.published_at}`;
+        notes = cs.notes;
+      }
+    } else {
+      const base = this.cs.base_rev == null ? new Map() : h.snaps[this.cs.base_rev];
+      ev = applyChanges(base, this.cs.changes);
+      state = ev.state;
+      changes = this.cs.changes;
+      head = (this.cs.id ? `draft #${this.cs.id} · ${this.cs.author}` : 'new draft') + ` · base ${this.cs.base_rev ?? 'none'}`;
+      notes = this.cs.notes;
+    }
+    const showMarks = this.mode === 'edit';
+    const kids = childIndex(state, true);
+    CUR = { state, ev, kids };
+
+    // tree rows
+    const q = this.filter.trim().toLowerCase();
+    let match = null;
+    if (q) {
+      match = new Set();
+      for (const n of state.values()) {
+        const hit = n.label.toLowerCase().includes(q) || (DB.aliases[n.id] || []).some(a => a.toLowerCase().includes(q));
+        if (hit) for (let m = n; m && !match.has(m.id); m = state.get(m.parent)) match.add(m.id);
+      }
+    }
+    const exp = (this.exp[this.treeId] ||= {});
+    const hov = new Set(this.hover);
+    const pickBad = this.pick ? this.descendantsOf(this.pick.id) : null;
+    const rows = [];
+    const walk = (pid, depth) => {
+      for (const id of kids.get(pid) || []) {
+        if (match && !match.has(id)) continue;
+        const n = state.get(id);
+        const nk = (kids.get(id) || []).filter(k => !state.get(k).dep).length;
+        const hasKids = (kids.get(id) || []).length > 0;
+        const open = match ? true : !!exp[keyOf(id)];
+        const mark = !showMarks ? '' : ev.added.has(id) ? 'new' : (n.dep && ev.deprecated.has(id)) ? 'dep' : ev.bump.has(id) ? 'bump' : '';
+        const warns = DB.warnings[id] || [];
+        const cls = [mark && 'mark-' + mark, hov.has(id) && 'hl',
+                     q && n.label.toLowerCase().includes(q) && 'hit',
+                     pickBad && (pickBad.has(id) || n.dep ? 'unpickable' : 'pickable')].filter(Boolean).join(' ');
+        rows.push({ id, key: keyOf(id), depth, label: n.label, aphia: n.aphia_id, nk, hasKids, open, mark,
+                    version: n.version, warns, warnTitle: warns.map(w => `${w.warning}: ${w.detail}`).join('\n'), cls });
+        if (open) walk(id, depth + 1);
+      }
+    };
+    walk(null, 0);
+
+    // change list
+    const items = [];
+    const summary = { n: changes.length, errors: 0, warnings: 0, added: 0, bumped: 0, deprecated: 0, conflicts: [] };
+    if (ev) {
+      let cur = null;
+      changes.forEach((c, i) => {
+        const r = ev.results[i];
+        const row = { i, op: c.op, text: describe(c, r, ev.state), errors: r.errors, warnings: r.warnings, touched: r.touched };
+        summary.errors += r.errors.length;
+        summary.warnings += r.warnings.length;
+        if (c.group) {
+          if (!cur || cur.group !== c.group) {
+            cur = { kind: 'group', group: c.group, key: 'g' + i, rows: [], errors: 0, warnings: 0 };
+            items.push(cur);
+            if (!(c.group in this.collapsed)) this.collapsed[c.group] = changes.filter(x => x.group === c.group).length > 12;
+          }
+          cur.rows.push(row);
+          cur.errors += r.errors.length;
+          cur.warnings += r.warnings.length;
+        } else {
+          cur = null;
+          items.push({ kind: 'one', key: 'c' + i, row });
+        }
+      });
+      summary.added = ev.added.size;
+      summary.bumped = ev.bump.size;
+      summary.deprecated = ev.deprecated.size;
+    }
+    if (this.mode === 'edit') summary.conflicts = this.conflicts(ev);
+
+    // node options for selects (live nodes only)
+    const options = [...state.values()].filter(n => !n.dep)
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }))
+      .map(n => ({ id: n.id, key: keyOf(n.id), label: n.label, path: nodePath(state, n.id),
+                   text: n.label + (n.parent != null ? `  (in ${state.get(n.parent)?.label})` : '') }));
+
+    this.v = { rows, items, summary, options, head, notes };
+  },
+
+  conflicts(ev) {
+    const b = this.cs.base_rev, L = this.latest, out = [];
+    if (b == null) return L ? [`the tree already has revision ${L}; a first-revision draft can't be published`] : [];
+    const h = history(this.treeId);
+    for (let r = b + 1; r <= L; r++) {
+      const theirs = h.evs[r].touchedAll;
+      const both = [...ev.touchedAll].filter(id => !isPh(id) && theirs.has(id));
+      if (both.length) out.push(`revision ${r} also changed ${both.map(id => this.lbl(id)).join(', ')}`);
+    }
+    return out;
+  },
+
+  lbl(id) {
+    if (id == null) return 'top level';
+    return CUR.state.get(id)?.label ?? String(id);
+  },
+  wormsUrl(id) { return `https://www.marinespecies.org/aphia.php?p=taxdetails&id=${id}`; },
+  live(id) { const n = CUR.state.get(id); return !!n && !n.dep; },
+  liveKids(id) { return (CUR.kids.get(id) || []).filter(k => !CUR.state.get(k).dep); },
+  descendantsOf(id) {
+    const out = new Set([id]);
+    const walk = p => (CUR.kids.get(p) || []).forEach(k => { out.add(k); walk(k); });
+    walk(id);
+    return out;
+  },
+
+  // ---- tree navigation ---------------------------------------------------
+  expandTop() {
+    const h = history(this.treeId);
+    const snap = h.snaps[h.snaps.length - 1];
+    const exp = (this.exp[this.treeId] ||= {});
+    for (const n of snap.values()) if (n.parent == null) exp[keyOf(n.id)] = true;
+  },
+  toggle(id) { const e = this.exp[this.treeId]; e[keyOf(id)] = !e[keyOf(id)]; this.refresh(); },
+  expandAll() { const e = this.exp[this.treeId]; for (const id of CUR.kids.keys()) if (id != null) e[keyOf(id)] = true; this.refresh(); },
+  collapseAll() { this.exp[this.treeId] = {}; this.refresh(); },
+  rowClick(r) {
+    if (this.pick) return this.pickTarget(r.id);
+    if (r.hasKids) this.toggle(r.id);
+  },
+  reveal(id) {
+    if (id == null || !CUR.state.has(id)) return;
+    const e = this.exp[this.treeId];
+    for (let n = CUR.state.get(CUR.state.get(id).parent); n; n = CUR.state.get(n.parent)) e[keyOf(n.id)] = true;
+    this.refresh();
+    this.$nextTick(() => document.getElementById('n-' + keyOf(id))?.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+  },
+  toggleGroup(g) { this.collapsed[g] = !this.collapsed[g]; },
+  selectTree(id) {
+    this.treeId = id;
+    this.viewRev = this.latest;
+    this.collapsed = {};
+    if (!this.exp[id]) this.expandTop();
+    this.refresh();
+  },
+  selectRev(r) { this.viewRev = Number(r); this.collapsed = {}; this.refresh(); },
+  onEscape() {
+    if (this.conf) this.conf = null;
+    else if (this.modal) this.closeModal();
+    else if (this.menu) this.menu = null;
+    else if (this.pick) { this.pick = null; this.refresh(); }
+  },
+
+  // ---- node menu ---------------------------------------------------------
+  openMenu(r, ev) {
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const n = CUR.state.get(r.id);
+    const hint = this.editable ? (n.dep ? 'Deprecated in this draft' : '') : this.editHint;
+    const aliasHint = !this.has('drafter') ? 'Needs drafter role' : isPh(r.id) ? 'Not published yet' : '';
+    const items = [
+      { key: 'details', text: 'Details…', fn: () => this.openDetails(r.id) },
+      { key: 'aliases', text: 'Edit aliases…', hint: aliasHint, fn: () => this.openAliases(r.id) },
+      { key: 'd1', divider: true },
+      { key: 'edit', text: 'Edit…', hint, fn: () => this.openEdit(r.id) },
+      { key: 'child', text: 'New child…', hint, fn: () => this.openAdd(r.id) },
+      { key: 'move', text: 'Move to…', hint, fn: () => this.startMove(r.id) },
+      { key: 'split', text: 'Split…', hint, fn: () => this.openSplit(r.id) },
+      { key: 'merge', text: 'Merge…', hint, fn: () => this.openMerge(r.id) },
+      { key: 'd2', divider: true },
+      { key: 'dep', text: 'Deprecate…', hint, fn: () => this.openDeprecate(r.id) },
+    ];
+    const h = 330, w = 250;
+    const y = rect.bottom + h > window.innerHeight ? Math.max(8, rect.top - h) : rect.bottom;
+    this.menu = { id: r.id, label: r.label, items, x: Math.min(rect.left, window.innerWidth - w - 8), y };
+  },
+
+  // ---- changes -----------------------------------------------------------
+  addChanges(list) {
+    this.cs.changes.push(...list);
+    this.dirty = true;
+    this.refresh();
+  },
+  removeChange(i) { this.cs.changes.splice(i, 1); this.dirty = true; this.refresh(); },
+  removeGroup(g) { this.cs.changes = this.cs.changes.filter(c => c.group !== g); this.dirty = true; this.refresh(); },
+  phAlloc() {
+    let k = 0;
+    for (const c of this.cs.changes) if (c.op === 'add' && isPh(c.node)) k = Math.max(k, Number(c.node.slice(4)));
+    return () => `new:${++k}`;
+  },
+  nextGroup(prefix) {
+    let n = 0;
+    const all = [...Object.values(DB.changesets).filter(c => c.tree === this.treeId).flatMap(c => c.changes), ...this.cs.changes];
+    for (const c of all) if (c.group?.startsWith(prefix + '#')) n = Math.max(n, Number(c.group.split('#')[1]));
+    return `${prefix}#${n + 1}`;
+  },
+  labelError(label, self, extra = []) {
+    if (!label) return 'Label is required';
+    if (!LABEL_RE.test(label)) return 'Not machine-safe: no spaces or slashes, must start with a letter or digit';
+    for (const n of CUR.state.values()) if (!n.dep && n.label === label && n.id !== self) return `Already used by ${n.id}`;
+    if (extra.includes(label)) return 'Used twice here';
+    return '';
+  },
+  aphiaError(a) { return a === '' || /^\d+$/.test(String(a)) ? '' : 'AphiaID must be a number'; },
+  aphiaVal(a) { return a === '' || a == null ? null : Number(a); },
+
+  // ---- draft lifecycle ---------------------------------------------------
+  startNewDraft() {
+    this.cs = { id: null, tree: this.treeId, base_rev: this.latest || null, changes: [], notes: '', state: 'draft', author: 'you' };
+    this.mode = 'edit';
+    this.dirty = false;
+    this.viewRev = this.latest;
+    this.refresh();
+  },
+  openDraft(id) {
+    this.cs = JSON.parse(JSON.stringify(DB.changesets[id]));
+    this.mode = 'edit';
+    this.dirty = false;
+    this.collapsed = {};
+    this.refresh();
+  },
+  exitEdit() {
+    const go = () => { this.mode = 'static'; this.cs = null; this.dirty = false; this.pick = null; this.viewRev = this.latest; this.refresh(); };
+    if (this.dirty) this.confirm('Leave without saving?', 'The unsaved changes in this draft will be lost.', 'Leave', 'btn-danger', go);
+    else go();
+  },
+  saveDraft() {
+    if (!this.cs.id) {
+      this.cs.id = DB.nextCs++;
+      this.cs.created_at = new Date().toISOString().slice(0, 10);
+    }
+    DB.changesets[this.cs.id] = JSON.parse(JSON.stringify(this.cs));
+    this.dirty = false;
+    this.ver++;
+    this.toast(`Draft #${this.cs.id} saved`);
+  },
+  discardDraft() {
+    this.confirm(`Discard draft #${this.cs.id}?`, 'It is kept for the record, read-only, and can no longer be published.', 'Discard', 'btn-danger', () => {
+      DB.changesets[this.cs.id].state = 'discarded';
+      this.ver++;
+      this.dirty = false;
+      this.toast(`Draft #${this.cs.id} discarded`);
+      this.exitEdit();
+    });
+  },
+  rebase() { this.cs.base_rev = this.latest; this.dirty = true; this.refresh(); },
+  openPublish() { this.f = { notes: this.cs.notes }; this.modal = 'publish'; },
+  doPublish() {
+    const cs = DB.changesets[this.cs.id];
+    cs.notes = this.f.notes;
+    cs.approver = 'you';
+    publish(cs, new Date().toISOString().slice(0, 10));
+    this.ver++;
+    this.modal = null;
+    this.mode = 'static';
+    this.cs = null;
+    this.viewRev = this.latest;
+    this.collapsed = {};
+    this.expandTop();
+    this.refresh();
+    this.toast(`Published revision ${this.latest}`);
+  },
+  openClone() { this.f = { id: '', title: '' }; this.modal = 'clone'; },
+  get cloneError() {
+    if (!LABEL_RE.test(this.f.id || '')) return 'Use letters, digits, _ . -';
+    if (DB.trees[this.f.id]) return 'A tree with this id exists';
+    return '';
+  },
+  doClone() {
+    const id = this.f.id, src = CUR.state, kids = CUR.kids;
+    const toNested = pid => (kids.get(pid) || []).filter(k => !src.get(k).dep).map(k => {
+      const n = src.get(k);
+      return { label: n.label, aphia_id: n.aphia_id, description: n.description, aliases: DB.aliases[k] || [], children: toNested(k) };
+    });
+    DB.trees[id] = { id, title: this.f.title || id, revs: [] };
+    const cs = { id: DB.nextCs++, tree: id, base_rev: null, changes: importChanges(toNested(null), 'import#1'),
+                 notes: `Clone of ${this.treeId} @ revision ${this.viewRev}`, state: 'draft', author: 'you',
+                 created_at: new Date().toISOString().slice(0, 10) };
+    DB.changesets[cs.id] = cs;
+    this.ver++;
+    this.modal = null;
+    this.treeId = id;
+    this.viewRev = 0;
+    this.exp[id] = {};
+    this.openDraft(cs.id);
+    for (const c of cs.changes) if (c.parent == null) this.exp[id][keyOf(c.node)] = true;
+    this.refresh();
+    this.toast(`Created ${id} and draft #${cs.id}`);
+  },
+
+  // ---- dialogs -----------------------------------------------------------
+  closeModal() { this.modal = null; this.f = {}; },
+  confirm(title, body, ok, cls, fn) { this.conf = { title, body, ok, cls, fn }; },
+  toast(text, cls = 'text-bg-dark') {
+    const t = { id: Math.random(), text, cls };
+    this.toasts.push(t);
+    setTimeout(() => (this.toasts = this.toasts.filter(x => x !== t)), 2500);
+  },
+  toggleSel(id) {
+    const i = this.f.sel.indexOf(id);
+    i < 0 ? this.f.sel.push(id) : this.f.sel.splice(i, 1);
+  },
+  pickerOptions(q, exclude = []) {
+    const s = (q || '').toLowerCase();
+    return this.v.options.filter(o => !exclude.includes(o.id) && (!s || o.label.toLowerCase().includes(s))).slice(0, 60);
+  },
+
+  openDetails(id) {
+    const n = CUR.state.get(id), ev = CUR.ev;
+    let version = `v${n.version}`;
+    if (this.mode === 'edit' && ev.added.has(id)) version = 'v1 on publish';
+    else if (this.mode === 'edit' && ev.bump.has(id)) version += ` → v${n.version + 1} on publish`;
+    this.f = {
+      label: n.label, aphia: n.aphia_id, warns: DB.warnings[id] || [],
+      rows: [
+        ['Id', String(id)],
+        ['Tree', this.treeId],
+        ['Path', nodePath(CUR.state, id) || '(top level)'],
+        ['Version', version],
+        ['Created in revision', n.created ?? 'this draft'],
+        ['Description', n.description || '—'],
+        ['Aliases', (DB.aliases[id] || []).join(', ') || '—'],
+        ['Children', String(this.liveKids(id).length)],
+      ].concat(n.dep ? [['State', 'deprecated in this draft']] : []),
+    };
+    this.modal = 'details';
+  },
+  openAliases(id) { this.f = { id, list: [...(DB.aliases[id] || [])], add: '' }; this.modal = 'aliases'; },
+  saveAliases() {
+    DB.aliases[this.f.id] = [...this.f.list];
+    this.toast(`Aliases of ${this.lbl(this.f.id)} saved`);
+    this.closeModal();
+    this.refresh();
+  },
+
+  openAdd(parent) {
+    const fixed = parent !== undefined;
+    this.f = { mode: 'add', id: null, parent: fixed ? parent : null, parentFixed: fixed, parentKey: '',
+               label: '', description: '', aphia: '', aliases: '' };
+    this.modal = 'node';
+  },
+  openEdit(id) {
+    const n = CUR.state.get(id);
+    this.f = { mode: 'edit', id, orig: { ...n }, label: n.label, description: n.description || '', aphia: n.aphia_id ?? '' };
+    this.modal = 'node';
+  },
+  get nodeFormError() {
+    if (this.modal !== 'node') return '';
+    return this.labelError(this.f.label, this.f.id) || this.aphiaError(this.f.aphia);
+  },
+  submitNode() {
+    const f = this.f;
+    if (f.mode === 'add') {
+      const node = this.phAlloc()();
+      const parent = f.parentFixed ? f.parent : idOf(f.parentKey);
+      this.addChanges([{ op: 'add', node, label: f.label, parent, aphia_id: this.aphiaVal(f.aphia), description: f.description,
+                         aliases: f.aliases.split(',').map(a => a.trim()).filter(Boolean) }]);
+      if (parent != null) this.exp[this.treeId][keyOf(parent)] = true;
+      this.closeModal();
+      this.reveal(node);
+      return;
+    }
+    const c = { op: 'edit', node: f.id };
+    if (f.label !== f.orig.label) c.label = f.label;
+    if (f.description !== (f.orig.description || '')) c.description = f.description;
+    if (this.aphiaVal(f.aphia) !== (f.orig.aphia_id ?? null)) c.aphia_id = this.aphiaVal(f.aphia);
+    if (Object.keys(c).length > 2) this.addChanges([c]);
+    else this.toast('Nothing changed');
+    this.closeModal();
+  },
+
+  startMove(id) { this.pick = { id, label: this.lbl(id) }; this.refresh(); },
+  pickTarget(target) {
+    const id = this.pick.id, n = CUR.state.get(id);
+    if (target != null && (this.descendantsOf(id).has(target) || !this.live(target))) return;
+    this.pick = null;
+    if ((n.parent ?? null) === target) { this.toast('Already there'); this.refresh(); return; }
+    this.addChanges([{ op: 'move', node: id, from_parent: n.parent, to_parent: target }]);
+    if (target != null) this.reveal(id);
+  },
+
+  openDeprecate(id) { this.f = { id, kids: this.liveKids(id).length, sel: [], q: '' }; this.modal = 'deprecate'; },
+  submitDeprecate() {
+    this.addChanges([{ op: 'deprecate', node: this.f.id, successors: [...this.f.sel] }]);
+    this.closeModal();
+  },
+
+  // ---- merge & split wizards ----------------------------------------------
+  openMerge(id) {
+    this.wizSteps = ['nodes', 'mode', 'new node', 'review'];
+    this.f = { a: id, step: 1, sel: [], q: '', repl: true, survivorKey: keyOf(id),
+               parts: [{ label: '', aphia: '', description: '' }], parentKey: '', preview: null };
+    this.modal = 'merge';
+  },
+  openSplit(id) {
+    this.wizSteps = ['mode', 'new nodes', 'children', 'review'];
+    const kids = this.liveKids(id);
+    this.f = { a: id, step: 1, repl: true, kids, assign: Object.fromEntries(kids.map(k => [keyOf(k), ''])),
+               parts: [{ label: '', aphia: '', description: '' }, { label: '', aphia: '', description: '' }], preview: null };
+    this.modal = 'split';
+  },
+  setRepl(on) {
+    this.f.repl = on;
+    if (this.modal === 'split') {
+      const min = on ? 2 : 1;
+      while (this.f.parts.length < min) this.f.parts.push({ label: '', aphia: '', description: '' });
+      if (!on && this.f.parts.length === 2 && !this.f.parts[1].label) this.f.parts.pop();
+    }
+  },
+  survivor() { return idOf(this.f.survivorKey); },
+  mergeCandidates() {
+    const a = this.f.a, s = (this.f.q || '').toLowerCase();
+    const bad = this.descendantsOf(a);
+    for (let n = CUR.state.get(CUR.state.get(a).parent); n; n = CUR.state.get(n.parent)) bad.add(n.id);
+    const parent = CUR.state.get(a).parent;
+    return this.v.options
+      .filter(o => !bad.has(o.id) && (!s || o.label.toLowerCase().includes(s)))
+      .sort((x, y) => (CUR.state.get(y.id).parent === parent) - (CUR.state.get(x.id).parent === parent))
+      .slice(0, 80);
+  },
+  mergeParentOptions() {
+    const bad = new Set();
+    for (const id of [this.f.a, ...this.f.sel]) this.descendantsOf(id).forEach(x => bad.add(x));
+    return this.v.options.filter(o => !bad.has(o.id));
+  },
+  commonParent(ids) {
+    const chain = id => { const out = []; for (let p = CUR.state.get(id).parent; p != null; p = CUR.state.get(p).parent) out.push(p); return out; };
+    const [first, ...rest] = ids.map(chain);
+    return first.find(p => rest.every(c => c.includes(p))) ?? null;
+  },
+  partErrors() {
+    const labels = this.f.parts.map(p => p.label);
+    return this.f.parts.map((p, i) => this.labelError(p.label, null, labels.filter((_, j) => j !== i)) || this.aphiaError(p.aphia));
+  },
+  get wizError() {
+    const f = this.f;
+    if (this.modal === 'merge') {
+      if (f.step === 1 && !f.sel.length) return 'Choose at least one node to merge with';
+      if (f.step === 3 && f.repl) return this.partErrors()[0];
+    }
+    if (this.modal === 'split') {
+      if (f.step === 2) return this.partErrors().find(Boolean) || '';
+      if (f.step === 3 && f.repl && Object.values(f.assign).some(v => v === '')) return 'Assign every child';
+    }
+    return '';
+  },
+  wizNext() {
+    const f = this.f;
+    if (this.modal === 'merge' && f.step === 1 && f.parentKey === '') {
+      const cp = this.commonParent([f.a, ...f.sel]);
+      f.parentKey = keyOf(cp);
+    }
+    f.step++;
+    if (f.step === 4) {
+      const changes = this.modal === 'merge' ? this.mergeChanges() : this.splitChanges();
+      const ev = applyChanges(CUR.state, changes);
+      const offset = this.cs.changes.length;
+      f.preview = {
+        group: changes[0]?.group, changes,
+        rows: changes.map((c, i) => ({ i: offset + i, op: c.op, text: describe(c, ev.results[i], ev.state),
+                                      errors: ev.results[i].errors, warnings: ev.results[i].warnings })),
+      };
+    }
+  },
+  mergeChanges() {
+    const f = this.f, g = this.nextGroup('merge'), ph = this.phAlloc(), out = [];
+    const ids = [f.a, ...f.sel];
+    let target;
+    if (f.repl) {
+      target = ph();
+      const p = f.parts[0];
+      out.push({ op: 'add', node: target, label: p.label, parent: idOf(f.parentKey), aphia_id: this.aphiaVal(p.aphia),
+                 description: p.description, aliases: [], group: g });
+    } else target = this.survivor();
+    for (const x of ids) if (x !== target) for (const k of this.liveKids(x))
+      out.push({ op: 'move', node: k, from_parent: x, to_parent: target, group: g });
+    for (const x of ids) if (x !== target) out.push({ op: 'deprecate', node: x, successors: [target], group: g });
+    return out;
+  },
+  splitChanges() {
+    const f = this.f, g = this.nextGroup('split'), ph = this.phAlloc(), out = [];
+    const parent = CUR.state.get(f.a).parent;
+    const newIds = f.parts.map(p => {
+      const id = ph();
+      out.push({ op: 'add', node: id, label: p.label, parent, aphia_id: this.aphiaVal(p.aphia), description: p.description, aliases: [], group: g });
+      return id;
+    });
+    for (const k of f.kids) {
+      const a = f.assign[keyOf(k)];
+      if (a !== '') out.push({ op: 'move', node: k, from_parent: f.a, to_parent: newIds[Number(a)], group: g });
+    }
+    if (f.repl) out.push({ op: 'deprecate', node: f.a, successors: newIds, group: g });
+    return out;
+  },
+})));
+</script>
+</body>
+</html>

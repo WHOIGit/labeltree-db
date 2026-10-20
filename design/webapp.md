@@ -4,7 +4,11 @@ The tree-management web app lives in the same Django project as the API, using
 server-rendered templates. It is where trees are browsed, edited, reviewed and
 published. All edits go through the [write endpoints](api.md#write-endpoints).
 
-> **TODO:** mockup of the tree browser and draft editor, as
+An interactive mockup of the tree browser and draft editor is in
+[`mockups/webapp-mockup.html`](mockups/webapp-mockup.html), specified in
+[`mockups/mockup-spec.md`](mockups/mockup-spec.md).
+
+> **TODO:** a rendered image of the mockup, as
 > `diagrams/07-webapp-mockup.png`.
 
 ## Pages
@@ -198,3 +202,21 @@ only `label` required:
 
 So every revision, including revision 1, comes from a published changeset. The
 [example trees](backend.md#example-trees) are loaded this way.
+
+### Cloning a tree
+
+> **Note:** not yet settled. The mockup has a **Clone as new tree** button.
+
+Cloning starts a new tree from a published revision of an existing one. It is
+the [new tree](#new-trees) flow with the import taken from that revision:
+
+1. An admin enters the new tree's id and title. This creates the empty tree,
+   with the cloning admin as its first drafter.
+2. The source revision's nodes become an `import#1` draft with
+   `base_rev: null`, as if its `/export` output had been imported. Labels,
+   descriptions, AphiaIDs and current aliases are copied.
+3. An approver publishes it as revision 1 of the new tree.
+
+The new tree's nodes get new ids, and nothing links them to the source nodes.
+Open questions: whether the clone should record its source tree and revision,
+and whether a drafter (not only an admin) may clone.
