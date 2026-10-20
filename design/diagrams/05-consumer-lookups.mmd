@@ -60,14 +60,14 @@ sequenceDiagram
     ROI-->>AN: 232 rois<br>Label L2: 2 rois (roi-X and roi-Y)<br>Labels A, B: 100 each<br>Labels C, D, E: 10 each
     Note over ROI: ...
 
-    Note over AN,LT: Scenario 4 · all rois that were descendants of label K, at time T (after R2, before R3)
-    AN->>ROI: REQUEST: rois whose labels were descendants of label K,<br>at timestamp T
+    Note over AN,LT: Scenario 4 · all rois that were descendants of label K, at time t (after R2, before R3)
+    AN->>ROI: REQUEST: rois whose labels were descendants of label K,<br>at timestamp t
     ROI->>LT: GET /trees/T/revisions
     LT-->>ROI: all revisions with published_at, newest first
-    ROI->>ROI: revision in effect at t = newest published_at ≤ t → R2
-    ROI->>LT: GET /trees/T/nodes/K?rev=R2
+    ROI->>ROI: which revision was current at time t?<br>the latest one published at or before t: R2
+    ROI->>LT: GET /trees/T/nodes/K?rev=R2<br>(look up label K as it was at R2)
     LT-->>ROI: id(K) · rev R2
     ROI->>LT: GET /nodes/id(K)/descendants?rev=R2
     LT-->>ROI: K's subtree at rev R2:<br>[id(L), id(A), id(B)]
-    ROI->>ROI: select rois where node_id in that set<br>and annotation saved at or before T
+    ROI->>ROI: select rois where node_id in that set<br>and annotation saved at or before time t
     ROI-->>AN: 201 rois<br>Label L2: 1 roi (roi-X)<br>Labels A and B: 100 each

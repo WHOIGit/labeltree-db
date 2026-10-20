@@ -1,0 +1,62 @@
+# labeltree-db
+
+Source-of-truth service for AMPLIfy label hierarchies. Consumers such as
+roi-db, amplify-datasetman and annotation tools reference labels by node id and
+pull trees, labels, aliases and WoRMS AphiaIDs from its REST API.
+
+Proposed stack: Django + django-ninja, PostgreSQL, Docker Compose. A
+management web app for editing trees lives in the same Django project.
+
+## Goals
+
+1. **Stable references.** A label can always be resolved by its node id, even
+   after the node is renamed, moved within its tree, or deprecated (removed,
+   with optional successors). Non-taxon labels such as `detritus` or
+   `bubble` are ordinary nodes.
+2. **History.** Past states of a tree remain queryable as the tree
+   changes over time.
+3. **WoRMS anchoring.** A node may carry a WoRMS AphiaID. Its placement is
+   checked against WoRMS; WoRMS disagreements show up as warnings.
+
+## How it works
+
+Four core tables:
+
+- `tree`: title
+- `tree_revision`: one per published edit to a tree
+- `node`: a permanent, globally unique id, its tree, and the revisions in
+  which it was created and deprecated
+- `node_version`: the node's data (label, parent, description, AphiaID) and
+  the range of tree revisions the node version data is valid for
+
+Edits are drafted as a **changeset**: an ordered list of atomic changes
+(`add`, `edit`, `move`, `deprecate`). When an approver publishes a changeset,
+it becomes the next tree revision, and each node it touches gets a new node
+version. Because every tree revision is the results of list of atomic changes, 
+a tree's history is easy to audit.
+
+A node id plus a tree revision gives exactly one node version, with that
+revision's parent and children. Consumers store `(node_id, tree_rev)` and 
+can therefor always get the current or historic label and label parent/children 
+relationships.
+
+![System overview](design/diagrams/01-system-overview.png)
+
+## Design documents
+
+- [Backend](design/backend.md): data model, versioning rules, atomic changes
+- [API](design/api.md): read and write endpoints, auth and roles, consumer guide
+- [Web app](design/webapp.md): changeset workflow, merge and split, import
+- [WoRMS](design/worms.md): placement checks, drift reports, WoRMS caching
+- [Roadmap](design/roadmap.md): open questions and future work
+
+Diagram sources and rendering instructions are in
+[`design/diagrams/`](design/diagrams/).
+
+### Diagram Highlights
+#### Backend Data model 
+
+![Data Model](design/diagrams/02-data-model.png)
+
+#### API Consumer Interaction Diagram
+![API-Consumer Interaction](design/diagrams/05-consumer-lookups.png)
