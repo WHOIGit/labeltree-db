@@ -1,4 +1,7 @@
-%% NARROWING SPLIT: A keeps its (narrower) meaning; a new sibling takes some children
+---
+title: "Split without replacement"
+---
+%% SPLIT WITHOUT REPLACEMENT: A keeps its id and narrows; a new sibling takes some children
 %% Only safe when ROIs already labelled A remain correct as A.
 flowchart LR
     subgraph before["before"]
@@ -17,4 +20,6 @@ flowchart LR
     before --> ops --> after
 
     classDef new fill:#bbf7d0,stroke:#15803d
+    classDef bumped fill:#fde68a,stroke:#b45309
     class N2 new
+    class A2_ bumped

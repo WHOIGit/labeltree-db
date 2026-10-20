@@ -1,4 +1,7 @@
-%% MERGE preset: A into B = move children + deprecate
+---
+title: "Merge without replacement"
+---
+%% MERGE WITHOUT REPLACEMENT: A into B. B keeps its id and broadens; A is deprecated
 flowchart LR
     subgraph before["before"]
         direction TB
@@ -12,9 +15,11 @@ flowchart LR
     subgraph after["after"]
         direction TB
         P2[P] --> B2[B] --> b1_2[b1] & a1_2[a1] & a2_2[a2]
-        Ad["A (deprecated)"] -. successor .-> B2
+        Ad["A (deprecated)<br/>old ROIs still point here"] -. successor .-> B2
     end
     before --> ops --> after
 
     classDef dep fill:#e5e7eb,stroke:#6b7280,stroke-dasharray:4 3,color:#6b7280
+    classDef bumped fill:#fde68a,stroke:#b45309
     class Ad dep
+    class B2 bumped

@@ -1,0 +1,147 @@
+# Data model
+# Render: nix-shell -p d2 --run 'd2 --layout elk 02-data-model.d2 02-data-model.png'
+# Edges run from the referencing column to the referenced column.
+# Crow's-foot ends: cf-many = many, cf-one-required = exactly one, cf-one = zero or one.
+
+title: "Data model" {
+  shape: text
+  near: top-center
+  style.font-size: 28
+}
+
+direction: right
+
+# All connection lines (and their labels) in black
+(** -> **)[*]: {style.stroke: "#000000"; style.font-color: "#000000"}
+
+# Header colours by role (for sql_table, style.fill is the header background; style.stroke would recolour the body)
+classes: {
+  blue:        {style.fill: "#1d4ed8"; style.font-color: "#ffffff"}
+  light-blue:  {style.fill: "#bfdbfe"; style.font-color: "#0f172a"}
+  green:       {style.fill: "#15803d"; style.font-color: "#ffffff"}
+  light-green: {style.fill: "#86efac"; style.font-color: "#0f172a"}
+}
+
+tree: TREE {
+  shape: sql_table
+  class: green
+  id: slug {constraint: primary_key}
+  title: string
+  description: string
+}
+
+tree_revision: TREE_REVISION {
+  shape: sql_table
+  class: green
+  tree: slug {constraint: [primary_key; foreign_key]}
+  number: "int" {constraint: primary_key}
+  changeset: int {constraint: foreign_key}
+  published_at: datetime
+  published_by: string
+  notes: string
+}
+
+node: NODE {
+  shape: sql_table
+  class: blue
+  id: "int · global, never reused" {constraint: primary_key}
+  tree: slug {constraint: foreign_key}
+  created_in_rev: int {constraint: foreign_key}
+  deprecated_in_rev: "int · null = still in tree" {constraint: foreign_key}
+}
+
+node_version: NODE_VERSION {
+  shape: sql_table
+  class: blue
+  node: int {constraint: [primary_key; foreign_key]}
+  version: int {constraint: primary_key}
+  valid_from_rev: int {constraint: foreign_key}
+  valid_to_rev: "int · null = current" {constraint: foreign_key}
+  "label": "str · unique per tree revision"
+  parent: "int · null = top-level" {constraint: foreign_key}
+  aphia_id: "int · nullable" {constraint: foreign_key}
+  description: string
+}
+
+node_alias: NODE_ALIAS {
+  shape: sql_table
+  class: light-blue
+  node: int {constraint: foreign_key}
+  alias: "string · free text"
+  added_by: string
+  added_at: datetime
+}
+
+node_warnings: NODE_WARNINGS {
+  shape: sql_table
+  class: light-blue
+  node: int {constraint: [primary_key; foreign_key]}
+  computed_at: datetime {constraint: primary_key}
+  warnings: "jsonb · WoRMS warnings"
+}
+
+successor: SUCCESSOR {
+  shape: sql_table
+  class: light-blue
+  deprecated_node: int {constraint: [primary_key; foreign_key]}
+  successor_node: int {constraint: [primary_key; foreign_key]}
+}
+
+worms_record: WORMS_RECORD {
+  shape: sql_table
+  class: light-blue
+  id: int {constraint: primary_key}
+  aphia_id: int
+  record: "jsonb · name, rank, status, lineage"
+  fetched_at: datetime
+  worms_modified: datetime
+}
+
+changeset: CHANGESET {
+  shape: sql_table
+  class: light-green
+  id: int {constraint: primary_key}
+  tree: slug {constraint: foreign_key}
+  state: "draft | published | discarded"
+  base_rev: "int or null" {constraint: foreign_key}
+  author: string
+  notes: string
+  created_at: datetime
+  updated_at: datetime
+}
+
+change: CHANGE {
+  shape: sql_table
+  class: light-green
+  changeset: int {constraint: [primary_key; foreign_key]}
+  seq: int {constraint: primary_key}
+  op: "add | edit | move | deprecate"
+  group: "string · e.g. merge#1"
+  payload: "jsonb · op arguments"
+  checks: "jsonb · WoRMS warnings"
+}
+
+# tree ownership
+tree_revision.tree -> tree.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+node.tree -> tree.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+changeset.tree -> tree.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+
+# nodes and versions
+node_version.node -> node.id: has versions {source-arrowhead.shape: cf-many-required; target-arrowhead.shape: cf-one-required}
+node_version.parent -> node.id: parent {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one}
+node_version.valid_from_rev -> tree_revision.number: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+node_version.valid_to_rev -> tree_revision.number: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one}
+node_version.aphia_id -> worms_record.aphia_id: cache {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one}
+node.created_in_rev -> tree_revision.number: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+node.deprecated_in_rev -> tree_revision.number: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one}
+
+# unversioned per-node data
+node_alias.node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+node_warnings.node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+successor.deprecated_node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+successor.successor_node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+
+# changesets
+change.changeset -> changeset.id: ordered by seq {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+changeset.base_rev -> tree_revision.number: based on {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one}
+tree_revision.changeset -> changeset.id: publishes {source-arrowhead.shape: cf-one; target-arrowhead.shape: cf-one-required}

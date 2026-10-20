@@ -1,0 +1,34 @@
+---
+title: "Tree-draft Changeset process"
+---
+%% States are rounded boxes; the diamond is the publish check, not a state.
+flowchart LR
+    start(( )) -- "new<br>changeset" --> draft
+    draft(["draft"]) -- "submission" --> check{"publish<br/>checks"}
+    check -- "pass" --> published(["published"])
+    draft -- "discard" --> discarded(["discarded"])
+
+    np["Creates a new tree revision.
+        Creates new node-versions, updates <em>valid_to_rev</em> of updated nodes' now-previous node-version.
+        Tree revisions are frozen and can't be edited."]
+    nc["Conflicts are checked:
+        <b>base_rev</b> must equal current latest revision.
+        <b>Structural:</b> avoid circular lineage, parent nodes must be valid, WoRMS warnings are displayed.
+        <b>approver</b> role publishes changes."]
+    nx["Kept for the record, with its changes frozen.
+        Can't be edited or published."]
+    nd["Composed in browser webapp.
+        A tree revision draft is a <em>changeset</em>: a sequence of atomic node operations."]
+
+
+    draft -.- nd
+    check -.- nc
+    published -.- np
+    discarded -.- nx
+
+    classDef state fill:#ede9fe,stroke:#7c3aed
+    classDef note fill:#fef9c3,stroke:#a16207,text-align:left
+    classDef dot fill:#111,stroke:#111
+    class draft,published,discarded state
+    class nd,nc,np,nx note
+    class start dot

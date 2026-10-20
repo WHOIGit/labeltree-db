@@ -1,0 +1,73 @@
+---
+title: "Consumer lookups"
+---
+sequenceDiagram
+    autonumber
+    participant AN as Annotation tool
+    participant ROI as roi-db
+    participant LT as labeltree-db API
+
+    Note over LT: tree T at rev R1<br>has node L with label L1:<br>(parent is K, children are A, B)
+    Note over ROI: ROI counts:<br>K: 0, L: 0, A: 100, B: 100
+
+    AN->>ROI: assign label L1 to roi-X
+    ROI->>LT: GET /trees/T/nodes/L1
+    LT-->>ROI: id(L) · rev R1
+    ROI->>ROI: store roi-X = (T, id(L), R1)
+    Note over ROI: ROI counts:<br>K: 0, L: 1, A: 100, B: 100
+
+    Note over AN,LT: Oh no, "L1" is a typo!
+    LT ->> LT: Update node L's label from L1 to L2.<br>L1 saved as an alias
+    Note over LT: tree T at rev R2
+    Note over ROI,LT: GET /trees/T/nodes/L1 FAILS<br><br>GET /trees/T/nodes/L2 returns id(L)<br>(same node-id as L1 previously)<br><br>GET /trees/T/nodes/L1?rev=R1 returns id(L)<br><br>GET /trees/T/search?q=L1 works due to alias<br><br>GET /nodes/id(L) also always valid
+
+    Note over AN,LT: Months later
+    Note over LT: tree T at rev R3:<br> node L's parent changed to node J <br>node L gained 3 children: C, D, E
+    Note over ROI: ROI counts:<br>J: 0, K: 0, L: 1,<br>A: 100, B: 100, C:10, D: 10, E:10
+
+    AN->>ROI: assign label L2 to roi-Y
+    ROI->>LT: GET /trees/T/nodes/L2
+    LT-->>ROI: id(L) · rev R3
+    ROI->>ROI: store roi-Y = (T, id(L), R3)
+    Note over ROI: ROI counts per label:<br>J: 0, K: 0, L: 2,<br>A: 100, B: 100, C:10, D: 10, E:10
+    Note over ROI: ...
+
+    Note over AN,LT: Scenario 1 · all rois with label L2
+    AN->>ROI: REQUEST: all rois with label L2
+    ROI->>LT: GET /trees/T/nodes/L2
+    LT-->>ROI: id(L) · rev R3
+    ROI->>ROI: select rois where node_id = id(L)
+    ROI-->>AN: return rois X and Y (2 rois)
+    Note over ROI: ...
+
+    Note over AN,LT: Scenario 2 · all rois that are descendants of label K
+    AN->>ROI: REQUEST: rois who's labels are descendants of label K
+    ROI->>LT: GET /trees/T/nodes/K
+    LT-->>ROI: id(K) · rev R3
+    ROI->>LT: GET /nodes/id(K)/descendants?rev=R3
+    LT-->>ROI: K's subtree at rev R3: empty-list []
+    ROI->>ROI: select rois where node_id in []
+    ROI-->>AN: no rois
+    Note over ROI: ...
+
+    Note over AN,LT: Scenario 3 · all rois that are descendants of label J
+    AN->>ROI: REQUEST: rois who's labels are descendants of label J
+    ROI->>LT: GET /trees/T/nodes/J
+    LT-->>ROI: id(J) · rev R3
+    ROI->>LT: GET /nodes/id(J)/descendants?rev=R3
+    LT-->>ROI: J's subtree at rev R3:<br>[id(L), id(A), id(B), id(C), id(D), id(E)]
+    ROI->>ROI: select rois where node_id in that set
+    ROI-->>AN: 232 rois<br>Label L2: 2 rois (roi-X and roi-Y)<br>Labels A, B: 100 each<br>Labels C, D, E: 10 each
+    Note over ROI: ...
+
+    Note over AN,LT: Scenario 4 · all rois that were descendants of label K, at time T (after R2, before R3)
+    AN->>ROI: REQUEST: rois whose labels were descendants of label K,<br>at timestamp T
+    ROI->>LT: GET /trees/T/revisions
+    LT-->>ROI: all revisions with published_at, newest first
+    ROI->>ROI: revision in effect at t = newest published_at ≤ t → R2
+    ROI->>LT: GET /trees/T/nodes/K?rev=R2
+    LT-->>ROI: id(K) · rev R2
+    ROI->>LT: GET /nodes/id(K)/descendants?rev=R2
+    LT-->>ROI: K's subtree at rev R2:<br>[id(L), id(A), id(B)]
+    ROI->>ROI: select rois where node_id in that set<br>and annotation saved at or before T
+    ROI-->>AN: 201 rois<br>Label L2: 1 roi (roi-X)<br>Labels A and B: 100 each
