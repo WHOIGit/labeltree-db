@@ -108,7 +108,7 @@ changeset are shown disabled in static mode, with the hint "Edit mode only".
 | Item | Mode | Result |
 |---|---|---|
 | Details… | both | modal: id, label, version, parent, description, AphiaID, aliases, warnings |
-| Edit aliases… | both (`drafter`) | saved at once via `PUT /nodes/{id}/aliases`, not part of any changeset. Disabled for nodes added in the draft, which have no id yet. |
+| Edit aliases… | both (`drafter`) | saved at once via `POST /nodes/{id}/aliases` and `DELETE /nodes/{id}/aliases/{alias_id}`, one alias at a time, not part of any changeset. Disabled for nodes added in the draft, which have no id yet. |
 | Edit… | edit | one `edit` change |
 | New child… | edit | one `add` change under this node |
 | Move to… | edit | one `move` change |
@@ -174,10 +174,12 @@ so.
   their change count. Large groups such as `import#1` start collapsed.
 - **Inline checks** under the change that caused them: structural errors in
   red (they block publishing), WoRMS warnings in yellow (they don't).
-- **Conflicts** appear under the summary line, naming the later revision and
-  the nodes both touched, with a **Rebase on revision r** button. Rebasing
-  sets `base_rev` to the latest revision; changes that no longer apply then
-  show as errors to fix.
+- **Conflicts** appear under the summary line whenever the draft's `base_rev`
+  is not the latest revision, naming the later revisions and the nodes the
+  draft touches that they changed, with a **Rebase on revision r** button.
+  Publishing stays disabled until the draft is rebased. Rebasing sets
+  `base_rev` to the latest revision; changes that no longer apply then show as
+  errors to fix.
 - **Hovering** a change highlights the nodes it touches in the tree.
   **Clicking** it expands the tree to its node and scrolls there.
 - **Removing** (edit mode): each change and each group has a ✕. Removing a
@@ -205,8 +207,9 @@ The mockup replays the published changesets to build each revision, including
 node versions, and checks drafts with the same code. It checks the structural
 rules it can check locally: machine-safe and unique labels, a target, parent or
 successor that isn't in the tree, cycles, and deprecating a node with
-children. Conflicts are computed for real: nodes the draft touches that a
-revision after its `base_rev` also touched. It does not call WoRMS:
+children. Conflicts are computed for real: a draft whose `base_rev` is behind
+the latest revision is in conflict, and the nodes it touches that a later
+revision also touched are listed. It does not call WoRMS:
 `duplicate_aphia` is computed locally for `add` and `edit`, and other changes
 show the touched node's current warnings.
 

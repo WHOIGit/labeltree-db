@@ -211,11 +211,32 @@ state left by the changes before it.
 |---|---|---|
 | `add` | Create a node with a new id, under a parent or at top level. | parent in the tree, same tree, label not used in the tree |
 | `edit` | Change label, description or `aphia_id` (set or clear). | node in the tree; a new label not used in the tree |
-| `move` | Change parent (or make the node top-level). | new parent in the tree, same tree, no cycle |
-| `deprecate` | Remove the node from the tree from this revision on, with optional `successors[]`. | node has **no children** |
+| `move` | Change parent (or make the node top-level). | new parent in the tree, same tree, no cycle, `from_parent` is the node's current parent |
+| `deprecate` | Remove the node from the tree from this revision on, with optional `successors[]`. | node has **no children**; each successor is in the same tree and not deprecated |
+
+No node left in the tree may reference a deprecated node; such a change is a
+structural error.
 
 Merge and split are not operations of their own. They are UI presets that
 expand into these four ([webapp.md](webapp.md#merge-and-split)).
+
+### Reduction on save
+
+When a changeset is saved, its changes are reduced per node, within each
+`group`:
+
+- repeated `edit`s of a node merge into one `edit` with the net field changes
+- repeated `move`s of a node merge into one `move` from the original to the
+  final parent
+- `edit`s and `move`s of a node added in the changeset fold into its `add`
+- net no-ops are dropped: a rename and rename back, a move back to the original
+  parent, or an `add` followed by a `deprecate` of the same new node
+
+A merged change takes the position of the last change it replaces. A merge is
+skipped if it would make a valid change list invalid (e.g. a label swap through
+a temporary label), and changes in different groups are never merged. Because
+version increases compare a node's state before and after the revision, a
+reduced no-op causes no version increase.
 
 ### Deprecation and successors
 
@@ -276,11 +297,12 @@ they run.
 ## Example trees
 
 `labeldata/` holds two example trees, for reference and as sample
-[import](webapp.md#import) files. A user can load one as a
-[new tree](webapp.md#new-trees): it creates the tree and the import draft, and
-publishes it when run by a user holding `approver` on that tree.
+[import](webapp.md#import) files. Each is loaded as a
+[new tree](webapp.md#new-trees) with the `import_tree` management command,
+which checks the import changeset, then saves and publishes it as revision 1
+only if it has no errors.
 
 | File | Tree | Contents |
 |---|---|---|
-| `labeldata/NES2022_taxonomy.json` | `NES2022_taxonomy` | 246 nodes. Top level: `Chromista`, `Protozoa`, `Plantae`, `Animalia`, `Bacteria`, `other` |
+| `labeldata/NES2022_taxonomy.json` | `NES2022_taxonomy` | 245 nodes. Top level: `Chromista`, `Protozoa`, `Plantae`, `Animalia`, `Bacteria`, `other` |
 | `labeldata/NES2022_tags.json` | `NES2022_tags` | 18 nodes. Tag categories: `interaction`, `morphology`, `organism_state`, `parasite`, and `external_detritus` |

@@ -27,10 +27,15 @@ Roles are assigned per tree and can be combined:
 | `reader` | Read published revisions. Most downstream apps have this role. |
 | `drafter` | Create, update and discard any draft, and run checks and drift reports. Add and remove aliases. |
 | `approver` | Publish drafts and run drift reports. Holding both `drafter` and `approver` lets a user publish their own drafts. |
-| `admin` | Create empty trees, manage tree settings and assign roles. Run drift reports. |
+| `admin` | Manage tree settings and assign roles. Run drift reports. |
 
-Service accounts for roi-db and datasetman get `reader`. Trees and roles are
-managed through Django admin, not the API.
+New trees need the global **tree-creation permission** (Django's
+`trees.add_tree`), not a per-tree role: it allows creating, seeing and
+publishing changesets with `base_rev: null`. Publishing one gives the publisher
+`admin` on the new tree.
+
+Service accounts for roi-db and datasetman get `reader`. Roles, tokens and the
+tree-creation permission are managed through Django admin, not the API.
 
 ## Read endpoints
 
@@ -371,11 +376,14 @@ outside changesets.
 ```
 # Checking (no side effects)
 POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, WoRMS warnings,
-                                        version bumps, warning changes, conflicts
+                                        version bumps, warning changes, conflicts,
+                                        reduced changes
 
 # Changesets
 GET    /trees/{tree}/changesets?state=  list changesets, e.g. drafts awaiting approval
 POST   /trees/{tree}/changesets         {base_rev, changes[], notes} → new draft
+POST   /changesets                      {new_tree: {id, title, description}, changes[], notes}
+                                        → new-tree draft (tree-creation permission)
 PUT    /changesets/{cs}                 replace a draft's changes, notes and base_rev (If-Match)
 GET    /changesets/{cs}                 a changeset's atomic changes, plus validation results if a draft
 POST   /changesets/{cs}/publish {notes} approver; draft → new tree revision (If-Match)
@@ -421,7 +429,11 @@ reviewed.
 `POST /changesets/{cs}/publish` takes an optional `{notes}` from the approver.
 These become the revision's `notes`; if omitted, the changeset's own notes
 (written by the drafter) are used. On success it returns `201` with the new
-revision, in the same shape as `GET /trees/{tree}?rev={r}`.
+revision, in the same shape as `GET /trees/{tree}?rev={r}`. The draft's
+`base_rev` must be the latest revision; a draft that has fallen behind is
+rebased with a `PUT` that sets `base_rev` to the latest revision. While one
+publish on a tree is running, other publishes on that tree get `409`
+`publish_in_progress` at once.
 
 ### Example: validate
 
@@ -447,7 +459,8 @@ POST /trees/taxonomy/validate
     detail: "Label Chaetoceros is already used by node 402."}
  ],
  conflicts: [
-   {node: 402, base_version: 6, latest_version: 7, detail: "Changed in revision 38."}
+   {error: "stale_base", detail: "Base revision 37 is behind latest revision 42.",
+    nodes: [{node: 402, base_version: 6, latest_version: 7, detail: "Changed in revision 38."}]}
  ],
  warnings: [
    {seq: 1, warning: "duplicate_aphia", node: "new:1",
@@ -461,16 +474,21 @@ POST /trees/taxonomy/validate
    {node: 431, from: 3, to: 4}, {node: 433, from: 1, to: 2},
    {node: 30, from: 9, to: 10}
  ],
+ reduced_changes: [...],
  worms: "ok"}
 ```
 
-- `ok` is true when there are no `errors` and no `conflicts`. Warnings never
-  block.
+- `ok` is true when there are no `errors` and `base_rev` is the latest
+  revision. Warnings never block.
 - `errors` are [structural errors](webapp.md#changesets-and-concurrency), each
   tied to the change (`seq`) that fails. Later changes are still checked
   against the state the earlier valid ones leave.
-- `conflicts` lists touched nodes whose version at `base_rev` is no longer the
-  latest. Here 402 gains a child (change 1) but changed after revision 37.
+- `conflicts` reports `stale_base` when `base_rev` is behind the latest
+  revision; the draft must be rebased before publishing. Its `nodes` list the
+  touched nodes that later revisions changed, to help with the rebase. Here 402
+  gains a child (change 1) but changed after revision 37.
+- `reduced_changes` is the change list as saving would store it, after
+  [reduction](backend.md#reduction-on-save).
 - `warnings` are the [WoRMS warnings](worms.md#the-warnings) the changes would
   cause. `warning_changes` covers existing nodes whose current warnings would
   change, here 431, which now shares its AphiaID.
@@ -516,11 +534,11 @@ Errors have one body shape:
 | `401` | Not authenticated. |
 | `403` | Authenticated, but missing the role for this tree. |
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
-| `409` | Publish blocked by conflicts. Also: updating or publishing a changeset that isn't a draft, adding an alias the node already has, or starting a drift run while one is active. |
+| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, or starting a drift run while one is active. |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
 | `422` | Request body invalid, or publish blocked by structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |
-| `503` | WoRMS unreachable and the record isn't cached (WoRMS lookup endpoints only). |
+| `503` | WoRMS failed and the record isn't cached (WoRMS lookup endpoints only); `error` is `worms_unreachable`, `worms_rate_limited` or `worms_error`. |
 
 A blocked publish (`409` or `422`) adds `validation`, holding the full
 [validate response](#example-validate), to the error body.

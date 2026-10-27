@@ -34,19 +34,23 @@ Roles are described in [api.md](api.md#authentication-and-roles).
 A changeset is a proposed tree revision: an ordered list of
 [atomic changes](backend.md#atomic-changes) against `base_rev`. It has three
 states: `draft`, `published` and `discarded`. Publishing creates the next
-revision (latest + 1, which may be later than `base_rev + 1`). A changeset with
-`base_rev: null` proposes the first revision of an empty tree
-([New trees](#new-trees)).
+revision (latest + 1); since `base_rev` must be the latest revision at publish
+time, this is always `base_rev + 1`. A changeset with `base_rev: null` proposes
+a new tree: it carries the tree's id, title and description, and publishing it
+creates the tree together with its revision 1 ([New trees](#new-trees)).
 
 - **Composing happens in the browser.** The user builds the change list
   locally, including merge and split presets. The browser calls `validate` as
   the list changes, so check results appear as the user works.
 - **Saving a draft** sends the whole list to the server. Creating a draft
   records its `base_rev`; updating it replaces its changes, notes and
-  `base_rev`. Drafts are visible to the tree's drafters, approvers and admins.
+  `base_rev`. Saving [reduces](backend.md#reduction-on-save) the change list.
+  Drafts are visible to the tree's drafters, approvers and admins.
   Any drafter may update or discard any draft, not only their own.
-- **Publishing** is done by an approver. All checks run again against the
-  latest revision `r`. If they pass, publishing atomically creates revision
+- **Publishing** is done by an approver. `base_rev` must equal the latest
+  revision `r`, and all checks run again. While one publish on a tree is in
+  progress, any other publish on that tree is refused at once
+  (`publish_in_progress`). If the checks pass, publishing atomically creates revision
   `r+1`, closes the old node versions (`valid_to_rev = r+1`), opens the new
   ones, and records new `NODE_WARNINGS` for touched nodes whose warnings
   changed. A published changeset can no longer be edited.
@@ -56,18 +60,21 @@ revision (latest + 1, which may be later than `base_rev + 1`). A changeset with
 Publishing is blocked by a **conflict** or a **structural error**.
 [WoRMS problems](worms.md#the-warnings) are warnings, never errors.
 
-**Conflict:** a node touched by the changeset has a newer version than at
-`base_rev`, or has been deprecated since. The drafter fetches the latest
-revision, adjusts the changes and updates the draft with the new `base_rev`.
-Touched nodes include parents whose children change, so two drafts adding
-different children under the same parent will conflict; that's accepted. A
-draft with `base_rev: null` conflicts as soon as the tree has any revision.
+**Conflict:** `base_rev` is not the tree's latest revision (`stale_base`).
+A draft that has fallen behind must be **rebased** before it can be published:
+its `base_rev` is set to the latest revision and its changes are rechecked;
+changes that no longer apply show as errors to fix. To help, `validate` lists
+the nodes the draft touches that later revisions changed. A new-tree changeset
+is refused if a tree with its id already exists.
 
 **Structural errors:**
 
 - a cycle
 - a target node that is not in the tree (deprecated)
-- a parent that is not in the tree, or is in a different tree
+- a parent that is not in the tree, or is in a different tree; no node left in
+  the tree may reference a deprecated node
+- a `move` whose `from_parent` isn't the node's current parent
+- a successor that is deprecated, in another tree, or the node itself
 - deprecating a node that still has children (decide what happens to them
   first)
 - a label that isn't machine-safe
@@ -193,29 +200,30 @@ only `label` required:
 
 ### New trees
 
-1. An admin creates an empty tree (id, title, description) and assigns its
-   roles. It has no revisions and is hidden from `GET /trees` until it has one.
-2. A drafter creates a changeset with `base_rev: null`, by importing, building
-   it by hand, or both.
-3. An approver publishes it, creating revision 1.
+There are no empty trees: a tree exists only once it has a revision.
+
+1. A user holding the global tree-creation permission creates a changeset with
+   `base_rev: null` carrying the new tree's id, title and description, by
+   importing, building it by hand, or both.
+2. A user holding the tree-creation permission publishes it. This creates the
+   tree and its revision 1 together, and gives the publisher `admin` on the
+   new tree, from where they assign its roles.
 
 So every revision, including revision 1, comes from a published changeset. The
-[example trees](backend.md#example-trees) are loaded this way.
+[example trees](backend.md#example-trees) are loaded this way, through the
+`import_tree` management command.
 
 ### Cloning a tree
 
-> **Note:** not yet settled. The mockup has a **Clone as new tree** button.
+Cloning converts a published revision of an existing tree into a stand-alone
+new-tree changeset. It is the [new tree](#new-trees) flow with the import taken
+from that revision:
 
-Cloning starts a new tree from a published revision of an existing one. It is
-the [new tree](#new-trees) flow with the import taken from that revision:
-
-1. An admin enters the new tree's id and title. This creates the empty tree,
-   with the cloning admin as its first drafter.
+1. A user with the tree-creation permission enters the new tree's id, title and
+   description.
 2. The source revision's nodes become an `import#1` draft with
    `base_rev: null`, as if its `/export` output had been imported. Labels,
    descriptions, AphiaIDs and current aliases are copied.
-3. An approver publishes it as revision 1 of the new tree.
+3. Publishing it creates the new tree with revision 1.
 
 The new tree's nodes get new ids, and nothing links them to the source nodes.
-Open questions: whether the clone should record its source tree and revision,
-and whether a drafter (not only an admin) may clone.

@@ -119,6 +119,11 @@ and the last finished run (who started it, when, and whether it succeeded),
 held in Django's shared cache so that every server process sees it. The last
 run's status is lost on restart.
 
+If WoRMS keeps failing after retries, the run stops, keeps the warning rows it
+already wrote, and its status records the reason: `worms_unreachable` (timeout
+or connection error), `worms_rate_limited` (HTTP 429, after waiting out
+`Retry-After`) or `worms_error` (any other error response).
+
 Drift reports never propose or make changes to the tree, and never modify
 published node versions. Any fix is made by a drafter in an ordinary draft.
 
