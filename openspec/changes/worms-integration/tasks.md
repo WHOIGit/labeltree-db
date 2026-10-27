@@ -2,9 +2,9 @@
 
 ## 1. WoRMS client and cache
 
-- [ ] 1.1 Add the `worms` app, the `WORMS_RECORD` model and migration, and Redis to Compose as Django's cache; verify migrations apply and `cache.add` works across two processes
+- [ ] 1.1 Add the `worms` app, the `WORMS_RECORD` model and migration, and Django's database cache (`CACHES`, cache table created by migration); verify migrations apply and cache values written in one process are read in another
 - [ ] 1.2 Implement the WoRMS client (record, classification, search by name) with timeouts, retries and lineage normalisation; verify against recorded HTTP fixtures, with no live calls in tests
-- [ ] 1.3 Implement `get_record(aphia_id, max_age)` with insert-on-`modified`-change and `fetched_at` refresh; verify the `worms-records` cache scenarios
+- [ ] 1.3 Implement `get_record(aphia_id, max_age)` with insert-on-`modified`-change and `fetched_at` refresh, and a unique `(aphia_id, worms_modified)` so concurrent fetches of one AphiaID insert one row; verify the `worms-records` cache scenarios
 - [ ] 1.4 Implement `/worms/search`, `/worms/{aphia_id}`, `/lineage`, `/between` and `/common_ancestor`, with `400`, `404` and `503` handling and `fetched_at` in responses; verify each lookup scenario
 
 ## 2. Placement checks
@@ -26,7 +26,7 @@
 
 ## 5. Drift
 
-- [ ] 5.1 Implement the drift runner (collect AphiaIDs, re-fetch with `max_age=0`, re-check the whole tree, write changed rows), the cache lock and status with progress; verify the quiet-run, reclassified-family and outage scenarios with stubbed WoRMS
+- [ ] 5.1 Implement the drift runner (collect AphiaIDs, re-fetch with `max_age=0`, then re-check and write changed rows in one transaction under the tree's publish lock against the latest revision), the `drift:<tree>` advisory lock, status with progress in the cache, and clearing drift status in `start-django`; verify the quiet-run, reclassified-family, outage, publish-during-run and interrupted-run scenarios with stubbed WoRMS
 - [ ] 5.2 Implement `POST /trees/{tree}/drift` (`202`, `409`), `GET .../drift/status` and `GET .../drift` (paginated), plus the `run_drift` management command; verify the endpoint scenarios and that a run creates no revision
 - [ ] 5.3 Document `run_drift` and a cron example in README.md; verify the documented command runs as written
 

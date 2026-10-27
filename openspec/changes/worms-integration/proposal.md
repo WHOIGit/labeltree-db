@@ -53,4 +53,5 @@ Depends on `core-tree-model`.
   `CHANGE`.
 - Publishing now calls WoRMS for new or changed AphiaIDs, so it gets slower and
   degrades to "checks unavailable" if WoRMS is down.
-- Uses Django's shared cache (Redis in Compose) for drift-run status.
+- Uses Django's database cache (a table in PostgreSQL, no extra service) for
+  drift-run status, and a PostgreSQL advisory lock for one run per tree.

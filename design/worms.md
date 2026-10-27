@@ -113,11 +113,18 @@ fetching every AphiaID from WoRMS takes minutes:
    row for each node whose warnings changed. A quiet run writes almost nothing.
 4. `GET /trees/{tree}/drift` reports the nodes that currently have warnings.
 
-Runs themselves aren't stored in the database. One run per tree can be active
-at a time. `GET /trees/{tree}/drift/status` reports the active run's progress
-and the last finished run (who started it, when, and whether it succeeded),
-held in Django's shared cache so that every server process sees it. The last
-run's status is lost on restart.
+Runs themselves aren't stored in the tree's tables. One run per tree can be
+active at a time, enforced by a PostgreSQL advisory lock that is released when
+the run ends or its process dies. `GET /trees/{tree}/drift/status` reports the
+active run's progress and the last finished run (who started it, when, and
+whether it succeeded), held in Django's database cache so that every server
+process sees it without an extra service such as Redis. The last run's status
+is lost on restart, and startup clears status left by an interrupted run.
+
+WoRMS is fetched without locking the tree. The run then re-checks and writes its
+warnings in one short transaction under the tree's publish lock, against the
+latest revision at that moment, so a revision published mid-run is never
+overwritten with warnings from an older one.
 
 If WoRMS keeps failing after retries, the run stops, keeps the warning rows it
 already wrote, and its status records the reason: `worms_unreachable` (timeout

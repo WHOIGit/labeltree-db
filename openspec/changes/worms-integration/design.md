@@ -79,11 +79,32 @@ after states, and passed in as `node_ids`. Drift passes every anchored node.
 
 A management command `run_drift <tree>` and the `POST` endpoint both enqueue a
 run on a background thread pool inside the web process (a `ThreadPoolExecutor`
-with one worker per tree). Status and the "one active run" lock live in
-Django's cache backend, Redis in Compose, under `drift:<tree>` with an atomic
-`add` as the lock. Alternative: Celery. Rejected for now, since a run takes
-minutes, happens rarely, and losing the status on restart is acceptable per the
-spec. The command form runs synchronously so cron can schedule it.
+with one worker per tree). The command form runs synchronously so cron can
+schedule it.
+
+- **One run per tree:** the worker takes an advisory lock,
+  `pg_try_advisory_lock(hashtext('drift:' || tree))`, on its own connection.
+  Like every advisory lock it is database-wide, so every web process, container
+  and management command sees it. It is the session-level kind (unlike publish's
+  transaction-level lock) only so that it outlives the run's many transactions:
+  the worker holds it for the whole run and releases it at the end. If it is
+  taken, starting a run returns `409`. PostgreSQL also releases it when the
+  worker's connection closes, so a crashed run never blocks the next one and
+  needs no TTL.
+- **Status and progress** live in Django's cache under `drift:<tree>`, using the
+  database cache backend (`DatabaseCache`), so every server process sees them
+  without an extra service. `start-django` clears these keys on startup, so a
+  run interrupted by a restart doesn't show as active.
+- **Writing warnings:** WoRMS fetches happen with no tree lock held. The run
+  then opens one short transaction, waits for the tree's `publish:<tree>`
+  advisory lock, re-checks against the latest revision at that moment, and
+  writes the changed `NODE_WARNINGS` rows. A publish during the run therefore
+  can't be overwritten with warnings computed from an older revision.
+
+Alternatives: Celery, rejected for now, since a run takes minutes, happens
+rarely, and losing the status on restart is acceptable per the spec. Redis as
+the cache, rejected: drift status is its only use, PostgreSQL covers it, and it
+would add a service (and Redis's licensing questions) to dev and deployment.
 
 ### Read-side changes
 
@@ -97,9 +118,12 @@ Search adds a normalised `worms_name` source to the existing ranked query.
 - [WoRMS rate limits or slowness during a 200-AphiaID import] → Fetch
   concurrently with a small pool (4) before the transaction, and treat failures
   as `unavailable` instead of failing the publish.
-- [In-process drift thread dies with the worker] → The lock key has a TTL and
-  the status shows the run as failed; rerun it. Move to a task queue if this
-  bites.
+- [In-process drift thread dies with the worker] → The advisory lock is released
+  with the connection, and startup clears the stale status; rerun it. Move to a
+  task queue if this bites.
+- [A publish arrives while drift is writing warnings] → Drift holds the publish
+  lock only for one short transaction, so the publish is refused with
+  `publish_in_progress` for at most that moment and can be retried.
 - [Lineage format changes in WoRMS responses] → The client normalises to a
   stored list of `{AphiaID, rank, scientificname}` and tests run against
   recorded fixtures.
@@ -107,7 +131,7 @@ Search adds a normalised `worms_name` source to the existing ranked query.
 ## Migration Plan
 
 1. Deploy: migrations add `WORMS_RECORD`, `NODE_WARNINGS` and `CHANGE.checks`,
-   and Redis is added to Compose.
+   and the database cache table (`createcachetable`).
 2. Run `run_drift NES2022_tags` (no AphiaIDs, so a no-op sanity check).
 3. Import the taxonomy:
    `manage.py import_tree labeldata/NES2022_taxonomy.json --tree NES2022_taxonomy --title "NES2022 taxonomy"`.

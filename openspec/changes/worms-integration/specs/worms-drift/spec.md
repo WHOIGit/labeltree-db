@@ -38,15 +38,30 @@ scheduled.
 - **WHEN** a run is active on a tree and another is requested
 - **THEN** the API returns `409`
 
+#### Scenario: Interrupted run
+- **WHEN** the process running a drift run dies and the service restarts
+- **THEN** no run is shown as active and a new run can start at once
+
 ### Requirement: Run status
 `GET /trees/{tree}/drift/status` SHALL return the active run's progress, if any,
 and the last finished run (who started it, when, and whether it succeeded),
-visible to every server process. Runs SHALL NOT be stored in the database, and
-the last run's status MAY be lost on restart.
+visible to every server process. Run status SHALL be kept in a cache shared by
+the server processes, not in the tree's tables, and MAY be lost on restart. On
+startup, status left by a run that was interrupted SHALL be cleared.
 
 #### Scenario: Progress
 - **WHEN** a run has re-fetched 120 of 175 AphiaIDs
 - **THEN** status reports the run as active with progress 120 of 175
+
+### Requirement: Drift against the latest revision
+A drift run SHALL compute and write its warnings against the tree's latest
+revision at the moment it writes them, while holding the tree's publish lock, so
+that a revision published during the run is never overwritten with warnings
+computed from an older revision.
+
+#### Scenario: Publish during a run
+- **WHEN** revision 43 moves an anchored node while a drift run that started at revision 42 is still fetching from WoRMS
+- **THEN** the run's warnings for that node are computed against revision 43
 
 ### Requirement: Drift report
 `GET /trees/{tree}/drift` SHALL list the nodes in the latest revision that

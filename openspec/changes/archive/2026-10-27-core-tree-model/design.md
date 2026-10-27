@@ -117,16 +117,16 @@ or on the proposed id for a new tree: `pg_try_advisory_xact_lock(hashtext('publi
 as the first statement of the publish transaction. If it returns false, the
 publish is refused at once with `publish_in_progress`.
 
-- Like the in-memory or Redis flag it replaces, it is a named "publishing now"
+- Like the in-memory or cache flag it replaces, it is a named "publishing now"
   marker that other publishers check without waiting.
 - Every web process and management command shares the database, so they all
   see it. An in-process variable would only be seen by one process.
 - It is released automatically when the transaction commits, rolls back or the
-  connection dies, so a crashed publish cannot leave the tree locked. A Redis
+  connection dies, so a crashed publish cannot leave the tree locked. A cache
   key would need a TTL and could expire during a slow publish or outlive a
   crash.
-- It needs no extra service in this change. Redis only arrives with
-  `worms-integration`.
+- It needs no extra service. `worms-integration` adds Django's database cache
+  (a table in PostgreSQL) for drift-run status, not a separate cache server.
 
 ### Version changes are derived
 
