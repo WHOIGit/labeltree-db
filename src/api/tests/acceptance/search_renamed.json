@@ -1,0 +1,16 @@
+{
+  "tree": "NES2022_tags",
+  "rev": 2,
+  "q": "pennate",
+  "results": [
+    {
+      "id": 5,
+      "label": "external_pennate_diatom",
+      "version": 2,
+      "num_children": 0,
+      "children": null,
+      "path": "interaction/external_pennate_diatom",
+      "matched_on": "label"
+    }
+  ]
+}

@@ -120,3 +120,11 @@ so the app works on isolated lab networks.
 
 Rollback: revert to the previous release. Tokens and roles stay in place,
 unused.
+
+## Open Questions
+
+- **Derived grouping for review.** Since `core-tree-model`, groups are only
+  labels: reduction merges across them and keeps the last change's group. The
+  draft review screen could instead build its own display groups from the
+  reduced changes, e.g. listing the children moved under a node together with
+  that node, rather than relying on the stored `group` values.

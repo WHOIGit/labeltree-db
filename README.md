@@ -42,6 +42,23 @@ relationships.
 
 ![System overview](design/diagrams/01-system-overview.png)
 
+## Loading a tree
+
+A label file (see [import format](design/webapp.md#import-format)) is loaded as
+a new tree with the `import_tree` management command. It checks the whole
+import first and stores nothing if any label is a duplicate or not
+machine-safe; otherwise it publishes the file as the tree's revision 1.
+
+In `nix develop`, with the database running (`db-start`) and migrated:
+
+```sh
+cd src
+python manage.py import_tree ../labeldata/NES2022_tags.json --tree NES2022_tags --title "NES2022 tags"
+```
+
+Options: `--description`, `--notes` (revision notes, default `Import of <file>`)
+and `--user` (author and publisher, default the current OS user).
+
 ## Design documents
 
 - [Backend](design/backend.md): data model, versioning rules, atomic changes

@@ -1,0 +1,20 @@
+{
+  "tree": "NES2022_tags",
+  "rev": 2,
+  "node": {
+    "id": 13,
+    "label": "infected",
+    "version": 2,
+    "num_children": 0,
+    "children": null
+  },
+  "ancestors": [
+    {
+      "id": 16,
+      "label": "parasite",
+      "version": 2,
+      "num_children": 3,
+      "children": null
+    }
+  ]
+}

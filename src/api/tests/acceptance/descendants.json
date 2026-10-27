@@ -1,0 +1,40 @@
+{
+  "tree": "NES2022_tags",
+  "rev": 2,
+  "node": {
+    "id": 9,
+    "label": "organism_state",
+    "version": 2,
+    "num_children": 4,
+    "children": [
+      {
+        "id": 10,
+        "label": "bleb",
+        "version": 1,
+        "num_children": 0,
+        "children": []
+      },
+      {
+        "id": 11,
+        "label": "dividing",
+        "version": 1,
+        "num_children": 0,
+        "children": []
+      },
+      {
+        "id": 14,
+        "label": "mating",
+        "version": 1,
+        "num_children": 0,
+        "children": []
+      },
+      {
+        "id": 15,
+        "label": "stress",
+        "version": 1,
+        "num_children": 0,
+        "children": []
+      }
+    ]
+  }
+}

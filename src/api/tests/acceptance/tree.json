@@ -1,0 +1,15 @@
+{
+  "id": "NES2022_tags",
+  "title": "NES2022 tags",
+  "description": "",
+  "rev": 2,
+  "latest_rev": 2,
+  "published_at": "<masked>",
+  "published_by": "op",
+  "author": "dana",
+  "notes": "Rename, move infected under parasite, fold fusing into mating",
+  "changeset": "<masked>",
+  "num_nodes": 17,
+  "num_top_level": 5,
+  "max_depth": 1
+}

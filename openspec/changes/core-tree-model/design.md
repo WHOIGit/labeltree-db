@@ -86,11 +86,14 @@ exact.
 1. **Apply** steps through the changes, checking each against the current
    `TreeState` and recording a structural error if it fails. A failing change
    is skipped and later changes continue against the state the valid ones left.
-2. **Reduce** rewrites the list per node and group (spec: changesets, "Op
-   reduction on save"). Each candidate merge is applied tentatively and kept
-   only if re-applying the list yields no new errors and the same final state.
-   It repeats until nothing changes. The final-state comparison makes "reduction
-   never changes the result" a checked property, not just an intention.
+2. **Reduce** rewrites the list per node, ignoring groups (spec: changesets,
+   "Op reduction on save" and "Successor chains collapse"). Each candidate
+   rewrite (a merge at the later or earlier position, a drop, or a successor
+   collapse) is applied tentatively and kept only if re-applying the list
+   yields no new errors and the same final state. It repeats until nothing
+   changes. The final-state comparison makes "reduction never changes the
+   result" a checked property, not just an intention. Groups are labels for
+   reviewers only.
 3. **Diff** compares the final `TreeState` with the initial one per node
    (fields, parent, child set) to get version changes. This net comparison is
    also why a rename and rename back produce no bump.

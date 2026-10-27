@@ -1,0 +1,18 @@
+{
+  "id": 9,
+  "tree": "NES2022_tags",
+  "created_in_rev": 1,
+  "deprecated_in_rev": null,
+  "versions": [
+    {
+      "version": 1,
+      "valid_from_rev": 1,
+      "valid_to_rev": 2
+    },
+    {
+      "version": 2,
+      "valid_from_rev": 2,
+      "valid_to_rev": null
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "tree": "NES2022_tags",
+  "rev": 2,
+  "notes": "Rename, move infected under parasite, fold fusing into mating",
+  "changes": [
+    {
+      "seq": 1,
+      "op": "edit",
+      "group": null,
+      "node": 5,
+      "label": "external_pennate_diatom"
+    },
+    {
+      "seq": 2,
+      "op": "move",
+      "group": null,
+      "node": 13,
+      "from_parent": 9,
+      "to_parent": 16
+    },
+    {
+      "seq": 3,
+      "op": "deprecate",
+      "group": null,
+      "node": 12,
+      "successors": [
+        14
+      ]
+    }
+  ],
+  "version_changes": [
+    {
+      "node": 5,
+      "from": 1,
+      "to": 2
+    },
+    {
+      "node": 9,
+      "from": 1,
+      "to": 2
+    },
+    {
+      "node": 12,
+      "from": 1,
+      "to": null
+    },
+    {
+      "node": 13,
+      "from": 1,
+      "to": 2
+    },
+    {
+      "node": 16,
+      "from": 1,
+      "to": 2
+    }
+  ]
+}

@@ -12,6 +12,7 @@ services:
     command: ./start-django dev
     volumes:
       - ./src:/app
+      - ./labeldata:/labeldata:ro
     ports:
       - "8000:8000"
     env_file:
@@ -19,6 +20,7 @@ services:
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
+      LABELDATA_DIR: /labeldata
     depends_on:
       db:
         condition: service_healthy

@@ -3,7 +3,7 @@
 Django settings for labeltree-db.
 
 Deployment-specific values come from environment variables; see `dotenv` at the
-repo root for the full list. 
+repo root for the full list.
 
 https://docs.djangoproject.com/en/6.1/topics/settings/
 https://docs.djangoproject.com/en/6.1/ref/settings/

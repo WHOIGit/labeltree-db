@@ -99,26 +99,37 @@ parent (`from_parent_mismatch`).
 After a changeset is applied, no node remaining in the tree SHALL reference a
 deprecated node, and every successor named by a `deprecate` in the changeset
 SHALL be in the tree, in the same tree, and not the deprecated node itself.
-Violations SHALL be structural errors.
+Successors SHALL be checked against the tree as it is after the whole changeset
+(after reduction, see "Successor chains collapse"). Violations SHALL be
+structural errors on the `deprecate` that names the successor.
 
 #### Scenario: Move under a deprecated node
 - **WHEN** a changeset moves node X under node D that was deprecated in an earlier revision
 - **THEN** that change fails with `parent_not_in_tree`
 
-#### Scenario: Successor deprecated in the same changeset
+#### Scenario: Successor deprecated earlier in the same changeset
 - **WHEN** a changeset deprecates B and then deprecates A with successor B
 - **THEN** the second `deprecate` fails with `invalid_successor`
+
+#### Scenario: Successor deprecated later without successors
+- **WHEN** a changeset deprecates A with successor B and later deprecates B with no successors
+- **THEN** the first `deprecate` fails with `invalid_successor`
+
+#### Scenario: Successor added later in the same changeset
+- **WHEN** a changeset deprecates A with successor `new:1` and later adds `new:1`
+- **THEN** both changes are valid
 
 #### Scenario: Self as successor
 - **WHEN** a `deprecate` of A lists A as a successor
 - **THEN** it fails with `invalid_successor`
 
 ### Requirement: Op reduction on save
-When a changeset is saved, the system SHALL reduce its changes per node and
-group: repeated `edit`s merge into one `edit` holding the net field changes;
-repeated `move`s merge into one `move` from the original to the final parent;
-`edit`s and `move`s of a node added in the changeset fold into its `add`. A
-merged change SHALL take the position of the last change it replaces.
+When a changeset is saved, the system SHALL reduce its changes per node,
+whatever their groups: repeated `edit`s merge into one `edit` holding the net
+field changes; repeated `move`s merge into one `move` from the original to the
+final parent; `edit`s and `move`s of a node added in the changeset fold into its
+`add`. Groups SHALL NOT affect checking or reduction; they only label changes
+for reviewers.
 
 #### Scenario: Two renames
 - **WHEN** a changeset renames node A from `x` to `y` and later from `y` to `z`, both ungrouped
@@ -132,10 +143,26 @@ merged change SHALL take the position of the last change it replaces.
 - **WHEN** a changeset adds `new:1` with label `a` and later renames `new:1` to `b`
 - **THEN** the saved changeset holds one `add` of `new:1` with label `b`
 
+### Requirement: Placement of merged changes
+A merged change SHALL take the position of the last change it replaces, or of
+the first if only that position is valid. A merged `move` placed first MAY bring
+the `add` of its new parent forward with it. A merged change SHALL keep the group
+of the last change it replaces.
+
+#### Scenario: Edit of a new node with new children
+- **WHEN** a changeset adds `new:1`, adds `new:2` under `new:1`, then renames `new:1`
+- **THEN** the saved changeset holds the `add` of `new:1` with the new label, at its original position, followed by the `add` of `new:2`
+
+#### Scenario: Different groups
+- **WHEN** node A is moved in group `merge#1` and moved again in group `split#2`
+- **THEN** the saved changeset holds one `move` of A, in group `split#2`
+
 ### Requirement: Reduction drops no-ops
 Reduction SHALL drop an `edit` whose net field values equal the node's state
 before the changeset, a `move` whose final parent equals its original parent,
-and an `add` together with a later `deprecate` of the same new node.
+the `edit`s and `move`s of a node that is deprecated later in the changeset
+(bringing its `deprecate` forward to their position when that is the only valid
+placement), and an `add` together with a later `deprecate` of the same new node.
 
 #### Scenario: Rename and rename back
 - **WHEN** a changeset renames A from `x` to `y` and later back to `x`, with no other change touching A
@@ -145,18 +172,34 @@ and an `add` together with a later `deprecate` of the same new node.
 - **WHEN** a changeset adds `new:1` and later deprecates `new:1`
 - **THEN** the saved changeset holds neither change
 
-### Requirement: Reduction preserves validity and groups
-Reduction SHALL NOT merge changes from different groups, and SHALL skip any
-merge that would make a valid change list invalid. Reduction SHALL leave the
-state produced by the changeset unchanged.
+#### Scenario: Moved by a split, then deprecated
+- **WHEN** a split in group `split#1` moves node C under `new:1`, and a later ungrouped change deprecates C
+- **THEN** the saved changeset deprecates C before the split's remaining changes and holds no `move` of C
+
+### Requirement: Successor chains collapse
+When a `deprecate` of X names a successor S that a later `deprecate` in the same
+changeset removes with a non-empty successor list, reduction SHALL replace S in
+X's successors with S's successors, keeping order and dropping duplicates. If S
+was added in the same changeset, its `add` and `deprecate` SHALL then be dropped,
+with moves into and out of S merged. A successor removed earlier in the
+changeset, or later with no successors, SHALL NOT be collapsed and remains an
+`invalid_successor` error.
+
+#### Scenario: Split of a split
+- **WHEN** a changeset splits P into `new:1` and `new:2` (group `split#1`), then splits `new:1` into `new:3` and `new:4` (group `split#2`)
+- **THEN** the saved changeset adds `new:2`, `new:3` and `new:4`, moves P's children directly to their final parents, deprecates P with successors `new:3`, `new:4` and `new:2`, and holds no change of `new:1`
+
+#### Scenario: Chain through an existing node
+- **WHEN** a changeset deprecates A with successor B, then deprecates B with successor C
+- **THEN** the saved changeset deprecates A with successor C and B with successor C
+
+### Requirement: Reduction preserves validity
+Reduction SHALL skip any merge that would make a valid change list invalid, and
+SHALL leave the tree state produced by the changeset unchanged.
 
 #### Scenario: Label swap is kept
 - **WHEN** a changeset renames A from `x` to `tmp`, B from `y` to `x`, then A from `tmp` to `y`
 - **THEN** the saved changeset keeps all three changes
-
-#### Scenario: Different groups
-- **WHEN** node A is moved in group `merge#1` and moved again in group `split#2`
-- **THEN** the saved changeset keeps both moves
 
 ### Requirement: Changeset states
 A changeset SHALL be in one of the states `draft`, `published` or `discarded`.

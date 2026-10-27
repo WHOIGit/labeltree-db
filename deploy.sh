@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Build and push the image,
 # then (re)start the stack on the remote host
-# with compose-prod.yaml and .envprod.
 
 set -euxo pipefail
 

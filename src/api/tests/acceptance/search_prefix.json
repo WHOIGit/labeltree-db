@@ -1,0 +1,16 @@
+{
+  "tree": "NES2022_tags",
+  "rev": 2,
+  "q": "infect",
+  "results": [
+    {
+      "id": 13,
+      "label": "infected",
+      "version": 2,
+      "num_children": 0,
+      "children": null,
+      "path": "parasite/infected",
+      "matched_on": "label"
+    }
+  ]
+}

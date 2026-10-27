@@ -1,0 +1,25 @@
+{
+  "id": 13,
+  "version": 2,
+  "tree": "NES2022_tags",
+  "rev": 2,
+  "label": "infected",
+  "description": "",
+  "aliases": [],
+  "aphia_id": null,
+  "worms_data": null,
+  "worms_warnings": [],
+  "tree_depth": 1,
+  "num_children": 0,
+  "parent": {
+    "id": 16,
+    "label": "parasite",
+    "version": 2,
+    "num_children": 3,
+    "children": null
+  },
+  "children": [],
+  "created_in_rev": 1,
+  "deprecated_in_rev": null,
+  "successors": []
+}
