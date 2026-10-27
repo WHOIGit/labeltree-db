@@ -172,8 +172,9 @@ sharing one group (e.g. `import#4`), using
 [placeholder ids](backend.md#change-records) for the new nodes. The imported
 nodes go at top level or under a chosen node, and the changes can be edited
 before saving. From there it is an ordinary draft. Its labels must not clash
-with labels already in the tree. A node's `aliases` from the file are carried
-on its `add` change and written as its initial aliases on publish.
+with labels already in the tree. A node's `description` and `aliases` from the
+file are carried on its `add` change and written as its initial description and
+aliases on publish.
 
 ### Import format
 
@@ -192,7 +193,8 @@ only `label` required:
 
 - The structure comes from the nesting.
 - Per node, only `label`, `aphia_id`, `description`, `aliases` and `children`
-  are read, and any of them except `label` may be left out.
+  are read, and any of them except `label` may be left out. `description` and
+  `aliases` become the new node's initial description and aliases.
 - Everything else is **ignored**, including `id` and `tree`. New ids are
   assigned on publish. Any response in the content or detailed shape can
   therefore be imported again as is, e.g. the output of
@@ -222,8 +224,9 @@ from that revision:
 1. A user with the tree-creation permission enters the new tree's id, title and
    description.
 2. The source revision's nodes become an `import#1` draft with
-   `base_rev: null`, as if its `/export` output had been imported. Labels,
-   descriptions, AphiaIDs and current aliases are copied.
+   `base_rev: null`, as if its `/export` output had been imported. Labels and
+   AphiaIDs at that revision, and the current descriptions and aliases, are
+   copied.
 3. Publishing it creates the new tree with revision 1.
 
 The new tree's nodes get new ids, and nothing links them to the source nodes.

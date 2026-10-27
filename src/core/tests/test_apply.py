@@ -25,13 +25,13 @@ def test_add_top_level_and_child_of_new_node():
     assert r.state.child_ids(None) == [1, 2, "new:1"]
     assert r.state.child_ids("new:1") == ["new:2"]
     y = r.state.nodes["new:2"]
-    assert (y.label, y.description, y.aphia_id, y.version) == ("Y", "d", 7, None)
+    assert (y.label, y.aphia_id, y.version) == ("Y", 7, None)
 
 
 def test_edit_changes_only_given_fields():
-    r = run(edit(4, label="A2"), edit(4, aphia_id=12), edit(4, description="x"))
+    r = run(edit(4, label="A2"), edit(4, aphia_id=12))
     a = r.state.nodes[4]
-    assert (a.label, a.aphia_id, a.description, a.parent) == ("A2", 12, "x", 3)
+    assert (a.label, a.aphia_id, a.parent) == ("A2", 12, 3)
     assert "A" not in r.state.by_label and r.state.by_label["A2"] == 4
 
 
@@ -154,6 +154,12 @@ def test_failures_do_not_stop_later_changes():
     assert codes(r) == [(1, "label_in_use"), (3, "label_in_use")]
     assert r.state.nodes[4].parent == 2
     assert r.state.by_label["K2"] == 1
+
+
+def test_edit_cannot_change_description():
+    # Descriptions are unversioned and set outside changesets.
+    r = run(edit(4, description="x"))
+    assert [e["error"] for e in r.errors] == ["invalid_change"]
 
 
 def test_malformed_changes():

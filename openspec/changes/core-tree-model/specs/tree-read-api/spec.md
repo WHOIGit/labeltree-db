@@ -54,7 +54,9 @@ changes, version_changes}` where `changes` are the published atomic changes in
 `GET /trees/{tree}/diff?from=&to=` SHALL return `added` (lite nodes),
 `deprecated` (`{id, label, deprecated_in_rev, successors}`), `moved` (`{id,
 label, from_parent, to_parent}`) and `edited` (`{id, label, fields}` with only
-differing fields as `[old, new]`), comparing each node at `from` with `to`.
+the differing versioned fields, `label` and `aphia_id`, as `[old, new]`),
+comparing each node at `from` with `to`. Descriptions and aliases are not
+versioned and SHALL NOT appear in a diff.
 
 #### Scenario: Rename appears as an edit
 - **WHEN** a node was renamed between `from` and `to`

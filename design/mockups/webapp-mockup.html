@@ -425,10 +425,12 @@
               </select>
             </div>
           </template>
-          <div class="mb-2">
-            <label class="form-label">Description</label>
-            <textarea class="form-control" rows="2" x-model="f.description"></textarea>
-          </div>
+          <template x-if="f.mode === 'add'">
+            <div class="mb-2">
+              <label class="form-label">Initial description</label>
+              <textarea class="form-control" rows="2" x-model="f.description"></textarea>
+            </div>
+          </template>
           <div class="mb-2">
             <label class="form-label">AphiaID</label>
             <div class="input-group">
@@ -447,7 +449,8 @@
             </div>
           </template>
           <template x-if="f.mode === 'edit'">
-            <p class="form-text mb-0">Aliases aren't part of drafts. Use <em>Edit aliases…</em> in the node menu.</p>
+            <p class="form-text mb-0">Descriptions and aliases aren't part of drafts. Use <em>Edit description…</em>
+              and <em>Edit aliases…</em> in the node menu.</p>
           </template>
         </div>
         <div class="modal-footer">
@@ -493,6 +496,33 @@
         <div class="modal-footer">
           <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
           <button class="btn btn-primary" @click="saveAliases()">Save aliases</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Description -->
+<template x-if="modal === 'description'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" x-text="'Description of ' + lbl(f.id)"></h5>
+          <button class="btn-close" @click="closeModal()"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small">
+            Descriptions aren't versioned and aren't part of any draft. Saving takes effect at once,
+            for every revision. Earlier descriptions are kept in the node's history; save an empty
+            description to clear it.
+          </div>
+          <textarea class="form-control" rows="4" x-model="f.text"
+                    placeholder="Definition and annotation guidance"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+          <button class="btn btn-primary" @click="saveDescription()">Save description</button>
         </div>
       </div>
     </div>
@@ -823,7 +853,7 @@
           </div>
           <p class="form-text mb-0">
             Creates an empty tree and a first draft (<code>import#1</code>, no base revision) holding this
-            revision's nodes, descriptions, AphiaIDs and current aliases. The nodes get new ids.
+            revision's nodes and AphiaIDs, with their current descriptions and aliases. The nodes get new ids.
             An approver then publishes it as revision 1. See webapp.md, "Cloning a tree".
           </p>
         </div>
@@ -876,7 +906,9 @@ const keyOf = id => (id == null ? '' : String(id));
 const idOf = key => (key === '' || key == null ? null : (isPh(key) ? key : Number(key)));
 
 // Mock database. Nothing here leaves the page.
-const DB = { ver: 0, nextId: 1001, nextCs: 1, trees: {}, changesets: {}, aliases: {}, warnings: {} };
+const DB = { ver: 0, nextId: 1001, nextCs: 1, trees: {}, changesets: {}, aliases: {}, descriptions: {}, warnings: {} };
+// Current description: set directly (unversioned), or the initial one carried by a draft's add.
+const descOf = (id, n) => DB.descriptions[id] ?? n?.description ?? '';
 
 // Apply an ordered list of changes to a state (Map id -> node) and check each
 // change against the state left by the ones before it. Nodes deprecated by
@@ -934,7 +966,7 @@ function applyChanges(base, changes) {
         if ('aphia_id' in c) dupAphia(c.node, c.aphia_id, w);
         else currentWarnings(c.node, w);
         Object.assign(s.get(c.node), Object.fromEntries(
-          ['label', 'description', 'aphia_id'].filter(k => k in c).map(k => [k, c[k]])));
+          ['label', 'aphia_id'].filter(k => k in c).map(k => [k, c[k]])));
         bump.add(c.node);
         break;
       case 'move':
@@ -1023,7 +1055,6 @@ function describe(c, r, st) {
     case 'edit': {
       const b = r.before || {}, bits = [];
       if ('label' in c) bits.push(`label → ${c.label}`);
-      if ('description' in c) bits.push('description changed');
       if ('aphia_id' in c) bits.push(`AphiaID ${b.aphia_id ?? 'none'} → ${c.aphia_id ?? 'none'}`);
       return `${isPh(c.node) ? c.node + ' (' + b.label + ')' : (b.label ?? c.node)}: ${bits.join(', ')}`;
     }
@@ -1034,7 +1065,7 @@ function describe(c, r, st) {
   }
 }
 
-// Publish: assign real ids to placeholders, write initial aliases, copy aliases
+// Publish: assign real ids to placeholders, write initial descriptions and aliases, copy aliases
 // after merges, and append the revision.
 function publish(cs, when) {
   const tree = DB.trees[cs.tree];
@@ -1052,6 +1083,7 @@ function publish(cs, when) {
   const ev = applyChanges(base, cs.changes);
   for (const c of cs.changes) {
     if (c.op === 'add' && c.aliases?.length) DB.aliases[c.node] = [...c.aliases];
+    if (c.op === 'add' && c.description) DB.descriptions[c.node] = c.description;
     if (c.op === 'deprecate' && c.group?.startsWith('merge#') && c.successors?.length === 1) {
       const to = c.successors[0];
       DB.aliases[to] = [...new Set([...(DB.aliases[to] || []), ev.state.get(c.node).label, ...(DB.aliases[c.node] || [])])];
@@ -1117,9 +1149,10 @@ function importChanges(nodes, group) {
   // Revision 2
   publish(newCs(T, 1, [
     { op: 'edit', node: L('Chaetoceros_peruvianis'), label: 'Chaetoceros_peruvianus' },
-    { op: 'edit', node: L('Mesodinium'), description: 'Includes M. rubrum. Red, with a cirri belt; often jumps between frames.' },
     { op: 'add', node: 'new:1', label: 'Pseudo-nitzschia_morphotype1', parent: L('Pseudo-nitzschia'), aphia_id: null, description: '', aliases: [] },
-  ], { author: 'jdoe', notes: 'Fix a misspelt label; Mesodinium guidance; new Pseudo-nitzschia morphotype.' }), '2026-09-02');
+  ], { author: 'jdoe', notes: 'Fix a misspelt label; new Pseudo-nitzschia morphotype.' }), '2026-09-02');
+  // Set directly, outside any changeset: no revision, shown at every revision.
+  DB.descriptions[L('Mesodinium')] = 'Includes M. rubrum. Red, with a cirri belt; often jumps between frames.';
 
   // Revision 3: merge with replacement
   const mala = L('Thalassiosira'), single = L('Thalassiosira_sp_aff_mala_single');
@@ -1132,7 +1165,7 @@ function importChanges(nodes, group) {
   // Open draft, base 2: conflicts with revision 3
   newCs(T, 2, [
     { op: 'move', node: L('Heterocapsa_triquetra'), from_parent: L('Chromista'), to_parent: L('Dinophyceae') },
-    { op: 'edit', node: single, description: 'Single cells only.' },
+    { op: 'edit', node: single, label: 'Thalassiosira_sp_aff_mala_single_cells' },
   ], { author: 'jdoe', notes: 'Tidy dinoflagellates.' });
 
   // Made-up current WoRMS warnings
@@ -1389,6 +1422,7 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     const aliasHint = !this.has('drafter') ? 'Needs drafter role' : isPh(r.id) ? 'Not published yet' : '';
     const items = [
       { key: 'details', text: 'Details…', fn: () => this.openDetails(r.id) },
+      { key: 'description', text: 'Edit description…', hint: aliasHint, fn: () => this.openDescription(r.id) },
       { key: 'aliases', text: 'Edit aliases…', hint: aliasHint, fn: () => this.openAliases(r.id) },
       { key: 'd1', divider: true },
       { key: 'edit', text: 'Edit…', hint, fn: () => this.openEdit(r.id) },
@@ -1499,7 +1533,7 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     const id = this.f.id, src = CUR.state, kids = CUR.kids;
     const toNested = pid => (kids.get(pid) || []).filter(k => !src.get(k).dep).map(k => {
       const n = src.get(k);
-      return { label: n.label, aphia_id: n.aphia_id, description: n.description, aliases: DB.aliases[k] || [], children: toNested(k) };
+      return { label: n.label, aphia_id: n.aphia_id, description: descOf(k, n), aliases: DB.aliases[k] || [], children: toNested(k) };
     });
     DB.trees[id] = { id, title: this.f.title || id, revs: [] };
     const cs = { id: DB.nextCs++, tree: id, base_rev: null, changes: importChanges(toNested(null), 'import#1'),
@@ -1547,12 +1581,19 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
         ['Path', nodePath(CUR.state, id) || '(top level)'],
         ['Version', version],
         ['Created in revision', n.created ?? 'this draft'],
-        ['Description', n.description || '—'],
+        ['Description', descOf(id, n) || '—'],
         ['Aliases', (DB.aliases[id] || []).join(', ') || '—'],
         ['Children', String(this.liveKids(id).length)],
       ].concat(n.dep ? [['State', 'deprecated in this draft']] : []),
     };
     this.modal = 'details';
+  },
+  openDescription(id) { this.f = { id, text: descOf(id, CUR.state.get(id)) }; this.modal = 'description'; },
+  saveDescription() {
+    DB.descriptions[this.f.id] = this.f.text;
+    this.toast(`Description of ${this.lbl(this.f.id)} saved`);
+    this.closeModal();
+    this.refresh();
   },
   openAliases(id) { this.f = { id, list: [...(DB.aliases[id] || [])], add: '' }; this.modal = 'aliases'; },
   saveAliases() {
@@ -1570,7 +1611,7 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
   },
   openEdit(id) {
     const n = CUR.state.get(id);
-    this.f = { mode: 'edit', id, orig: { ...n }, label: n.label, description: n.description || '', aphia: n.aphia_id ?? '' };
+    this.f = { mode: 'edit', id, orig: { ...n }, label: n.label, aphia: n.aphia_id ?? '' };
     this.modal = 'node';
   },
   get nodeFormError() {
@@ -1591,7 +1632,6 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     }
     const c = { op: 'edit', node: f.id };
     if (f.label !== f.orig.label) c.label = f.label;
-    if (f.description !== (f.orig.description || '')) c.description = f.description;
     if (this.aphiaVal(f.aphia) !== (f.orig.aphia_id ?? null)) c.aphia_id = this.aphiaVal(f.aphia);
     if (Object.keys(c).length > 2) this.addChanges([c]);
     else this.toast('Nothing changed');

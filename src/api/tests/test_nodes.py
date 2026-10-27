@@ -70,7 +70,7 @@ def test_lifetime_fields_describe_the_whole_node(get, taxonomy):
 def test_deprecation_record(get, taxonomy):
     publish(taxonomy, add("new:1", "Ch_a", parent=4), add("new:2", "Ch_b", parent=4))
     publish(taxonomy, deprecate(5, successors=[7, 8]))
-    publish(taxonomy, edit(6, description="d"))
+    publish(taxonomy, edit(6, aphia_id=1))
     status, body, _ = get("/nodes/5?rev=4")
     assert status == 200
     assert body == {
@@ -130,9 +130,9 @@ def test_descendants_follow_revision(get, taxonomy):
 
 
 def test_version_history_of_deprecated_node(get, taxonomy):
-    publish(taxonomy, edit(5, description="x"))  # rev 2: v2
-    publish(taxonomy, edit(6, description="y"))  # rev 3
-    publish(taxonomy, edit(5, description="z"))  # rev 4: v3
+    publish(taxonomy, edit(5, aphia_id=1))  # rev 2: v2
+    publish(taxonomy, edit(6, aphia_id=2))  # rev 3
+    publish(taxonomy, edit(5, aphia_id=3))  # rev 4: v3
     publish(taxonomy, deprecate(5))  # rev 5
     _, body, response = get("/nodes/5/versions")
     assert body == {
@@ -156,9 +156,9 @@ def test_rev_outside_version_range(get, taxonomy):
 
 
 def test_children_change_within_one_version(get, taxonomy):
-    publish(taxonomy, edit(4, description="genus"))  # rev 2: Chaetoceros v2
+    publish(taxonomy, edit(4, aphia_id=1))  # rev 2: Chaetoceros v2
     publish(taxonomy, edit(5, label="C_didymus"))  # rev 3: child renamed, no bump
-    publish(taxonomy, edit(4, description="Genus"))  # rev 4: v3
+    publish(taxonomy, edit(4, aphia_id=148985))  # rev 4: v3
     _, at2, _ = get("/nodes/4/versions/2?rev=2")
     _, at3, _ = get("/nodes/4/versions/2?rev=3")
     assert at2["version"] == at3["version"] == 2
@@ -166,3 +166,27 @@ def test_children_change_within_one_version(get, taxonomy):
     assert at3["children"][0]["label"] == "C_didymus"
     _, default, response = get("/nodes/4/versions/2")
     assert default["rev"] == 3 and response["X-Tree-Revision"] == "3"
+
+
+# --- descriptions ---------------------------------------------------------------------------
+
+
+def test_description_is_current_even_at_past_revision(get, taxonomy):
+    from core.models import NodeDescription
+
+    publish(taxonomy, edit(6, label="misc"))  # rev 2
+    NodeDescription.objects.create(node_id=5, description="Chain-forming diatom", added_by="x")
+    for path in ("/nodes/5", "/nodes/5?rev=1", "/trees/taxonomy/nodes/Chaetoceros_didymus?rev=1"):
+        assert get(path)[1]["description"] == "Chain-forming diatom", path
+    NodeDescription.objects.create(node_id=5, description="", added_by="x")
+    assert get("/nodes/5")[1]["description"] == ""
+
+
+def test_description_change_changes_etag_not_version(get, taxonomy):
+    from core.models import NodeDescription
+
+    _, before, first = get("/nodes/4")
+    NodeDescription.objects.create(node_id=4, description="Genus", added_by="x")
+    status, after, second = get("/nodes/4", **{"If-None-Match": first["ETag"]})
+    assert status == 200 and second["ETag"] != first["ETag"]
+    assert (after["version"], after["rev"]) == (before["version"], before["rev"])

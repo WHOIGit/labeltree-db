@@ -27,6 +27,8 @@ through the read API.
   changes; a management command imports a file as a new tree and publishes it.
 - Node aliases: stored, unversioned, returned on nodes and searched. Writing
   them through the API comes in a later change.
+- Node descriptions: stored per node, unversioned, latest one returned on
+  nodes. Writing them through the API comes in a later change.
 - Read API under `/api/v1`: node and tree endpoints, the lite, content and
   detailed shapes, deprecation records, diff, export, label lookup and search.
 - Read endpoints are open (no authentication) until access control arrives in
@@ -46,6 +48,8 @@ through the read API.
   group of `add` changes, and importing a file as a new tree.
 - `node-aliases`: alias storage and history, uniqueness, and how aliases appear
   on nodes and in search.
+- `node-descriptions`: description storage and history, and how the current
+  description appears on nodes.
 - `node-read-api`: `/nodes/{id}` endpoints, node shapes, deprecation records,
   ancestors, descendants and version history.
 - `tree-read-api`: `/trees` endpoints: tree info, revision history, revision

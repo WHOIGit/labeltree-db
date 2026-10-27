@@ -22,7 +22,17 @@ from .engine import (
     specs_from_dicts,
 )
 from .labels import allocate_node_ids
-from .models import Change, Changeset, Node, NodeAlias, NodeVersion, Successor, Tree, TreeRevision
+from .models import (
+    Change,
+    Changeset,
+    Node,
+    NodeAlias,
+    NodeDescription,
+    NodeVersion,
+    Successor,
+    Tree,
+    TreeRevision,
+)
 
 
 class ChangesetError(Exception):
@@ -258,7 +268,6 @@ def _write_revision(changeset, base, result: CheckResult, number, published_by, 
             valid_from_rev=number,
             label=final.nodes[vc.node].label,
             parent_id=real(final.nodes[vc.node].parent),
-            description=final.nodes[vc.node].description,
             aphia_id=final.nodes[vc.node].aphia_id,
         )
         for vc in result.version_changes
@@ -276,6 +285,14 @@ def _write_revision(changeset, base, result: CheckResult, number, published_by, 
         for c in deprecates
         for i, s in enumerate(c.payload.get("successors", []))
     )
+    NodeDescription.objects.bulk_create(
+        NodeDescription(
+            node_id=c.node, description=c.payload["description"], added_by=changeset.author,
+            added_at=now,
+        )
+        for c in published
+        if c.op == "add" and c.payload.get("description")
+    )  # fmt: skip
     NodeAlias.objects.bulk_create(
         NodeAlias(node_id=c.node, alias=alias, added_by=changeset.author, added_at=now)
         for c in published

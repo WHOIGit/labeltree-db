@@ -50,7 +50,7 @@ global tree-creation permission is the Django model permission
 The rules come from the `access-control` spec in one place:
 
 - reads: any role
-- draft, validate, aliases: `drafter`
+- draft, validate, aliases, descriptions: `drafter`
 - publish: `approver`
 - drift: `drafter`, `approver` or `admin`
 

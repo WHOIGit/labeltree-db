@@ -6,13 +6,13 @@
 - deprecation record for nodes no longer in the requested revision
 
 `depth` controls expansion: None expands everything, 0 leaves `children: null`.
-Aliases and successors are always current, whatever revision is requested.
+Descriptions, aliases and successors are always current, whatever revision is requested.
 """
 
 from collections import defaultdict
 
 from core.engine import TreeState, load_state
-from core.models import Node, NodeAlias, Successor, Tree
+from core.models import Node, NodeAlias, Successor, Tree, current_descriptions
 
 from .conventions import drop_empty
 
@@ -29,10 +29,12 @@ class RevisionView:
         self.dropempty = dropempty
         self._meta: dict[int, tuple] = {}
         self._aliases: dict[int, list] = {}
+        self._descriptions: dict[int, str] = {}
         self._successors: dict[int, list] = {}
 
     def preload(self, ids=None):
-        """Load lifetime fields, current aliases and successors for `ids` (default: all)."""
+        """Load lifetime fields and current descriptions, aliases and successors for
+        `ids` (default: all)."""
         ids = list(self.state.nodes) if ids is None else [i for i in ids if i not in self._meta]
         if not ids:
             return
@@ -54,12 +56,18 @@ class RevisionView:
             .values_list("deprecated_node_id", "successor_node_id")
         ):
             successors[nid].append(sid)
+        descriptions = current_descriptions(ids)
         for nid in ids:
+            self._descriptions[nid] = descriptions.get(nid, "")
             self._aliases[nid] = aliases[nid]
             self._successors[nid] = successors[nid]
 
     def _out(self, node: dict) -> dict:
         return drop_empty(node) if self.dropempty else node
+
+    def description(self, ref) -> str:
+        self.preload([ref])
+        return self._descriptions[ref]
 
     def aliases(self, ref) -> list[dict]:
         self.preload([ref])
@@ -91,7 +99,7 @@ class RevisionView:
                 "label": n.label,
                 "version": n.version,
                 "aphia_id": n.aphia_id,
-                "description": n.description,
+                "description": self.description(ref),
                 "aliases": [a["alias"] for a in self.aliases(ref)],
                 "num_children": self.state.num_children(ref),
                 "children": children,
@@ -115,7 +123,7 @@ class RevisionView:
             "tree": self.tree.id,
             "rev": self.rev,
             "label": n.label,
-            "description": n.description,
+            "description": self.description(ref),
             "aliases": self.aliases(ref),
             "aphia_id": n.aphia_id,
             "worms_data": None,

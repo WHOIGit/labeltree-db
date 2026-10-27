@@ -53,8 +53,6 @@ def random_changes(rng: random.Random, base: TreeState) -> list[dict]:
             change = {"op": "edit", "node": node}
             if rng.random() < 0.8:
                 change["label"] = rng.choice(labels + [current.nodes[node].label])
-            if rng.random() < 0.3:
-                change["description"] = rng.choice(["", "d1", "d2"])
             if rng.random() < 0.3 or len(change) == 2:
                 change["aphia_id"] = rng.choice([None, 1, 2])
         elif op == "move":

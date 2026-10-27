@@ -49,11 +49,15 @@ HTTP concerns, since the web app and API both drive it later.
 ### Schema
 
 Tables follow `design/diagrams/02-data-model.d2` for the core and changeset
-tables, plus `NODE_ALIAS` and `SUCCESSOR`. Deviations:
+tables, plus `NODE_ALIAS`, `NODE_DESCRIPTION` and `SUCCESSOR`. Deviations:
 
 - `CHANGESET.tree` is nullable, and a new-tree changeset stores
   `new_tree_id`, `new_tree_title` and `new_tree_description` instead.
   Publishing creates the `TREE` row in the same transaction.
+- `description` is not on `NODE_VERSION`. It lives in `NODE_DESCRIPTION`
+  (`node`, `description`, `added_by`, `added_at`), one row per change, newest
+  row wins and `""` clears it. Like aliases, it is unversioned: changing it
+  creates no version or revision, and reads always show the current one.
 - `NODE_VERSION` carries a denormalised `tree` column so that "the tree at
   revision r" and label lookups don't need a join to `NODE`.
 - `TREE_REVISION` has a surrogate integer primary key plus a unique
@@ -78,8 +82,7 @@ the constraint is cheap and catches engine bugs that would corrupt history.
 ### Engine: apply, reduce, validate, publish
 
 The engine works on an in-memory `TreeState` built from the latest revision:
-for each node in the tree, its label, parent, description, `aphia_id` and
-version, plus label and children indexes. At this scale (thousands of nodes)
+for each node in the tree, its label, parent, `aphia_id` and version, plus label and children indexes. At this scale (thousands of nodes)
 loading a full revision is a few milliseconds and keeps every check simple and
 exact.
 
@@ -153,11 +156,11 @@ the web app's import wizard reuses it.
   current aliases of the revision's nodes.
 - Not-found entries in batch lookups are `{id or label, error: "not_found"}`.
 
-### Aliases without a write API
+### Aliases and descriptions without a write API
 
-This change creates aliases only from `add` changes. Django admin is enabled
-for `NODE_ALIAS` so an operator can correct one; the API endpoints come in
-`webapp-and-write-api`.
+This change creates aliases and descriptions only from `add` changes. Django
+admin is enabled for `NODE_ALIAS` and `NODE_DESCRIPTION` so an operator can
+correct one; the API endpoints come in `webapp-and-write-api`.
 
 ## Risks / Trade-offs
 
@@ -170,7 +173,8 @@ for `NODE_ALIAS` so an operator can correct one; the API endpoints come in
 - [Read API is unauthenticated until access control lands] → Deploy only on an
   internal network until `webapp-and-write-api`.
 - [`design/` and specs drift apart] → Specs are the source of truth for
-  behaviour; `design/` is kept as-is by decision.
+  behaviour; `design/` (docs, diagrams and mockup) is updated alongside spec
+  changes that alter the model or behaviour it describes.
 
 ## Migration Plan
 

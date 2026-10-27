@@ -201,6 +201,16 @@ so. It SHALL be unavailable for nodes added in the draft.
 - **WHEN** a drafter adds an alias while browsing a published revision
 - **THEN** the alias is saved immediately and no draft is created
 
+### Requirement: Description editing
+Drafters SHALL be able to edit a node's description from its menu in any mode.
+The change SHALL apply immediately, outside any changeset, and the dialog SHALL
+say so. For a node added in the draft, the description SHALL instead be part of
+its `add` and be written on publish.
+
+#### Scenario: Edit a description in static mode
+- **WHEN** a drafter changes a node's description while browsing a published revision
+- **THEN** the description is saved immediately and no draft is created
+
 ### Requirement: Clone as new tree
 Users with the tree-creation permission SHALL be able to clone the displayed
 revision as a new tree by entering its id, title and description. This SHALL

@@ -68,7 +68,7 @@ it.
 
 ### Requirement: Conditional GET with ETag
 Every successful read response SHALL include an `ETag` that fingerprints the
-whole response body, including aliases and warnings. A request whose
+whole response body, including descriptions, aliases and warnings. A request whose
 `If-None-Match` matches the current `ETag` SHALL receive `304 Not Modified`.
 
 #### Scenario: Nothing changed

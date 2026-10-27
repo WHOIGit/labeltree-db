@@ -1,6 +1,16 @@
 from django.contrib import admin
 
-from .models import Change, Changeset, Node, NodeAlias, NodeVersion, Successor, Tree, TreeRevision
+from .models import (
+    Change,
+    Changeset,
+    Node,
+    NodeAlias,
+    NodeDescription,
+    NodeVersion,
+    Successor,
+    Tree,
+    TreeRevision,
+)
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -63,3 +73,23 @@ class NodeAliasAdmin(admin.ModelAdmin):
     list_display = ["alias", "node", "added_by", "added_at", "removed_by", "removed_at"]
     search_fields = ["alias"]
     raw_id_fields = ["node"]
+
+
+@admin.register(NodeDescription)
+class NodeDescriptionAdmin(admin.ModelAdmin):
+    """New entries only: the history is kept, and saving "" clears a description."""
+
+    list_display = ["node", "description", "added_by", "added_at"]
+    search_fields = ["description"]
+    raw_id_fields = ["node"]
+    fields = ["node", "description"]
+
+    def has_change_permission(self, request, obj=None):
+        return obj is None
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        obj.added_by = request.user.get_username()
+        super().save_model(request, obj, form, change)

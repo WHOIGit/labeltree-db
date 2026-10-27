@@ -188,7 +188,7 @@ def tree_diff(request, tree_id: str):
             )
         fields = {
             f: [getattr(old, f), getattr(new, f)]
-            for f in ("label", "description", "aphia_id")
+            for f in ("label", "aphia_id")
             if getattr(old, f) != getattr(new, f)
         }
         if fields:

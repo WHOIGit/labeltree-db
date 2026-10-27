@@ -31,7 +31,8 @@ detailed-shape responses can be imported as they are.
 Importing SHALL expand the file into `add` changes, parents before children in
 file order, sharing one group `import#n` and using placeholder ids. Imported
 nodes SHALL go at top level or under a chosen existing node. Each node's
-`aliases` SHALL ride on its `add` and be written as initial aliases on publish.
+`description` and `aliases` SHALL ride on its `add` and be written as its
+initial description and aliases on publish.
 The result SHALL be an ordinary changeset subject to all changeset rules.
 
 #### Scenario: Nested import

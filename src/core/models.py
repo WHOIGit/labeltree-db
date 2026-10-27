@@ -10,6 +10,7 @@ from django.contrib.postgres.constraints import ExclusionConstraint
 from django.contrib.postgres.fields import IntegerRangeField, RangeOperators
 from django.db import models
 from django.db.models import F, Func, Q
+from django.utils import timezone
 
 
 class Tree(models.Model):
@@ -72,7 +73,6 @@ class NodeVersion(models.Model):
         Node, on_delete=models.PROTECT, null=True, blank=True, related_name="+"
     )
     aphia_id = models.IntegerField(null=True, blank=True)
-    description = models.TextField(blank=True, default="")
 
     class Meta:
         indexes = [
@@ -133,6 +133,35 @@ class NodeAlias(models.Model):
 
     def __str__(self):
         return self.alias
+
+
+class NodeDescription(models.Model):
+    """Unversioned description history; the newest entry is the node's description.
+
+    Setting "" clears it. Entries are never changed or deleted.
+    """
+
+    node = models.ForeignKey(Node, on_delete=models.PROTECT, related_name="descriptions")
+    description = models.TextField(blank=True)
+    added_by = models.CharField(max_length=150)
+    added_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        indexes = [models.Index(fields=["node", "-added_at"], name="nodedescription_latest_idx")]
+
+    def __str__(self):
+        return self.description[:50]
+
+
+def current_descriptions(node_ids) -> dict[int, str]:
+    """The newest description per node; nodes without entries are absent."""
+    rows = (
+        NodeDescription.objects.filter(node_id__in=list(node_ids))
+        .order_by("node_id", "-added_at", "-id")
+        .distinct("node_id")
+        .values_list("node_id", "description")
+    )
+    return dict(rows)
 
 
 class Successor(models.Model):

@@ -60,7 +60,6 @@ node_version: NODE_VERSION {
   "label": "str · unique per tree revision"
   parent: "int · null = top-level" {constraint: foreign_key}
   aphia_id: "int · nullable" {constraint: foreign_key}
-  description: string
 }
 
 node_alias: NODE_ALIAS {
@@ -73,6 +72,16 @@ node_alias: NODE_ALIAS {
   added_at: datetime
   removed_by: "string · null = current"
   removed_at: "datetime · null = current"
+}
+
+node_description: NODE_DESCRIPTION {
+  shape: sql_table
+  class: light-blue
+  id: int {constraint: primary_key}
+  node: int {constraint: foreign_key}
+  description: "string · newest row current; \"\" clears"
+  added_by: string
+  added_at: datetime
 }
 
 node_warnings: NODE_WARNINGS {
@@ -140,6 +149,7 @@ node.deprecated_in_rev -> tree_revision.number: {source-arrowhead.shape: cf-many
 
 # unversioned per-node data
 node_alias.node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
+node_description.node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
 node_warnings.node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
 successor.deprecated_node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}
 successor.successor_node -> node.id: {source-arrowhead.shape: cf-many; target-arrowhead.shape: cf-one-required}

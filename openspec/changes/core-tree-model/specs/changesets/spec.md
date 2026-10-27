@@ -20,14 +20,14 @@ produced it (e.g. `split#3`), and a payload of its arguments.
 
 ### Requirement: Change payloads
 Payloads SHALL be: `add` with `node`, `label`, `parent` (null = top level) and
-optional `description`, `aphia_id` and `aliases`; `edit` with `node` and only
-the changed fields among `label`, `description`, `aphia_id` (null clears it);
+optional `aphia_id`, initial `description` and initial `aliases`; `edit` with
+`node` and only the changed fields among `label` and `aphia_id` (null clears it);
 `move` with `node`, `from_parent` and `to_parent` (null = top level);
 `deprecate` with `node` and a possibly empty `successors` list.
 
 #### Scenario: Edit carries only changed fields
-- **WHEN** only a node's description is changed
-- **THEN** its `edit` payload holds `node` and `description` and no other field
+- **WHEN** only a node's AphiaID is changed
+- **THEN** its `edit` payload holds `node` and `aphia_id` and no other field
 
 #### Scenario: Clearing an AphiaID
 - **WHEN** an `edit` payload has `aphia_id: null`
@@ -237,12 +237,13 @@ empty (`empty_changeset`).
 A successful publish SHALL, in one transaction, create revision `latest + 1`,
 assign node ids, close the superseded node versions (`valid_to_rev = latest +
 1`), open new versions for every node whose state changed, record
-deprecations, successors and initial aliases, and mark the changeset
+deprecations, successors, initial descriptions and initial aliases, and mark
+the changeset
 `published`.
 
 #### Scenario: Failure leaves no trace
 - **WHEN** a publish fails partway
-- **THEN** no revision, node, node version or alias from it exists
+- **THEN** no revision, node, node version, description or alias from it exists
 
 ### Requirement: Publish lock-out per tree
 While a publish on a tree is in progress, any other publish on that tree SHALL

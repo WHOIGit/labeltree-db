@@ -14,9 +14,10 @@
 - [ ] 2.2 Implement create (tree and new-tree forms), list by state (paginated) and get with `ETag` and draft validation; verify the create and get scenarios
 - [ ] 2.3 Implement `PUT` (replace and rebase) and `publish` with `If-Match` (`428`, `412`) under a row lock, `201` responses, approver notes, `409`/`422` with `validation`, and `DELETE` discard (`204`); verify every `changeset-api` scenario
 
-## 3. Alias endpoints and cloning
+## 3. Alias and description endpoints, and cloning
 
 - [ ] 3.1 Implement `POST /nodes/{id}/aliases` (`201`, `409` duplicate, refused on deprecated nodes), `DELETE .../aliases/{alias_id}` (`204`) and `GET .../aliases?history=`; verify the `node-aliases` scenarios
+- [ ] 3.1a Implement `PUT /nodes/{id}/description` (`200`, `409` on deprecated nodes) and `GET .../description?history=`; verify the `node-descriptions` scenarios
 - [ ] 3.2 Implement the server-side clone expander (revision to new-tree changeset with `import#1`) for tests and management use, matching the client expander; verify the clone scenarios
 
 ## 4. Web app shell
@@ -39,7 +40,7 @@
 - [ ] 6.2 Implement the split wizard (with and without replacement, all children assigned when replacing); verify the split scenarios
 - [ ] 6.3 Implement the import wizard (upload or paste, top level or under a node), sharing JSON fixtures with the server parser; verify the import-under-a-node scenario and that both parsers agree on the fixtures
 - [ ] 6.4 Implement Add from WoRMS with the suggested parent from the lineage; verify the suggested-parent scenario against recorded WoRMS fixtures
-- [ ] 6.5 Implement alias editing from the node menu and Clone as new tree; verify the alias-in-static-mode and clone-flow scenarios
+- [ ] 6.5 Implement alias and description editing from the node menu and Clone as new tree; verify the alias-in-static-mode, description-in-static-mode and clone-flow scenarios
 
 ## 7. Integration
 

@@ -125,6 +125,10 @@ described in [backend.md](backend.md#node-fields).
 whole, not the requested revision. A node viewed at an earlier revision still
 shows that it was deprecated later.
 
+`description` is the node's current description, whatever revision is
+requested, because descriptions are not versioned
+([backend.md](backend.md#labels-aliases-and-descriptions)).
+
 `aliases` are the current aliases, each with the id used to
 [remove it](#write-endpoints). The content shape and `export_flat` list them as
 plain strings, because ids mean nothing to an import.
@@ -270,15 +274,15 @@ parents bumped only because their set of children changed.
 closed by deprecation. `from_parent: null` or `to_parent: null` means top level.
 
 `GET /trees/{tree}/diff?from=3&to=42` collapses everything in between,
-comparing each node's state at `from` with its state at `to`. Aliases and
-WoRMS warnings aren't versioned, so they don't appear.
+comparing each node's state at `from` with its state at `to`. Descriptions,
+aliases and WoRMS warnings aren't versioned, so they don't appear.
 
 ```
 {tree: "taxonomy", from: 3, to: 42,
  added:      [lite...],
  deprecated: [{id, label, deprecated_in_rev, successors}],
  moved:      [{id, label, from_parent, to_parent}],
- edited:     [{id, label, fields: {label: [old, new], description: [old, new], aphia_id: [old, new]}}]}
+ edited:     [{id, label, fields: {label: [old, new], aphia_id: [old, new]}}]}
 ```
 
 - `label` in each entry is the node's label at `to`, or its last label if
@@ -370,8 +374,8 @@ Results are lite nodes with their path and what they matched on:
 
 Token or session auth, role-checked. The browser composes changes as a
 changeset; how drafts are saved, reviewed and published is described in
-[webapp.md](webapp.md#changesets-and-concurrency). Aliases are edited directly,
-outside changesets.
+[webapp.md](webapp.md#changesets-and-concurrency). Aliases and descriptions are
+edited directly, outside changesets.
 
 ```
 # Checking (no side effects)
@@ -409,6 +413,13 @@ GET    /nodes/{id}/aliases?history=     current aliases; history=true includes r
                                         each with added_by/at and removed_by/at
 POST   /nodes/{id}/aliases {alias}      add one alias (drafter)
 DELETE /nodes/{id}/aliases/{alias_id}   remove one alias (drafter); the row is kept, marked removed
+
+# Descriptions (direct, no changeset)
+GET    /nodes/{id}/description?history= current description; history=true lists every entry,
+                                        newest first, each with added_by/at
+PUT    /nodes/{id}/description {description}
+                                        set the description (drafter); "" clears it.
+                                        Earlier entries are kept
 ```
 
 `changes[]` holds [change records](backend.md#change-records). Merge, split,
@@ -500,9 +511,9 @@ POST /trees/taxonomy/validate
 
 ## Caching
 
-The versioned content of a response pinned with `?rev=` never changes. Aliases
-and warnings are always current, so they can differ between two fetches of the
-same `?rev=`.
+The versioned content of a response pinned with `?rev=` never changes.
+Descriptions, aliases and warnings are always current, so they can differ
+between two fetches of the same `?rev=`.
 
 Responses for "latest" (no `?rev=`) include two headers:
 
@@ -510,7 +521,8 @@ Responses for "latest" (no `?rev=`) include two headers:
   calls to it with `?rev=`, so that e.g. a label lookup and its descendants
   can't come from different revisions if a publish happens in between.
 - `ETag`: a fingerprint of the response. Send it back as `If-None-Match` to get
-  `304 Not Modified` if nothing changed. It covers aliases and warnings too,
+  `304 Not Modified` if nothing changed. It covers descriptions, aliases and
+  warnings too,
   so it is a hash of the response, not just the revision number.
 
 Consumers poll `GET /trees/{tree}` to see whether the revision has moved.
@@ -525,7 +537,7 @@ Errors have one body shape:
 
 | Status | When |
 |---|---|
-| `200` | Success. A deprecated node requested at a later revision is a `200` with its [deprecation record](#deprecated-nodes), not an error. |
+| `200` | Success. A deprecated node requested at a later revision is a `200` with its [deprecation record](#deprecated-nodes), not an error. Also: description set. |
 | `201` | Created: new draft, published revision, added alias. |
 | `202` | Accepted: drift run started. |
 | `204` | No content: draft discarded, alias removed. |
@@ -534,7 +546,7 @@ Errors have one body shape:
 | `401` | Not authenticated. |
 | `403` | Authenticated, but missing the role for this tree. |
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
-| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, or starting a drift run while one is active. |
+| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a drift run while one is active. |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
 | `422` | Request body invalid, or publish blocked by structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |
@@ -556,6 +568,7 @@ and add `count` (the total) to the response.
 | `GET /trees/{tree}/changesets` | paginated; default `limit` 100 |
 | `GET /nodes/{id}/warning_history` | paginated; default `limit` 100 |
 | `GET /nodes/{id}/aliases?history=true` | paginated; default `limit` 100 |
+| `GET /nodes/{id}/description?history=true` | paginated; default `limit` 100 |
 | `GET /trees/{tree}/drift` | paginated; default `limit` 100 |
 | `GET /worms/search` | `limit`, default 20, max 100 |
 | Everything else | whole response. Use `?depth=` to limit `descendants` and `nodes_as_tree`. |
@@ -565,7 +578,7 @@ and add `count` (the total) to the response.
 A ROI annotation should store `(node_id, tree_rev)`. The node version follows
 from those two values, and the revision also captures the hierarchy at that
 moment. Storing `(node_id, node_version)` is supported too. Never store labels
-or aliases: [labels can be reused](backend.md#labels-and-aliases).
+or aliases: [labels can be reused](backend.md#labels-aliases-and-descriptions).
 
 ![Consumer lookups](diagrams/05-consumer-lookups.png)
 

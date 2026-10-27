@@ -17,10 +17,12 @@ Depends on `core-tree-model` and `worms-integration`.
 - Per-tree roles `reader`, `drafter`, `approver` and `admin`, plus a global
   tree-creation permission for new-tree changesets, managed in Django admin.
 - Write API: `validate`, changeset create/list/get/update/publish/discard with
-  `ETag`/`If-Match`, and direct alias add/remove/history.
+  `ETag`/`If-Match`, direct alias add/remove/history, and direct description
+  set/history.
 - Server-rendered web app: tree browser with revision picker, node page, draft
   editor with inline checks, draft list and review, merge and split wizards,
-  import wizard, Add from WoRMS, alias editing, and clone as new tree.
+  import wizard, Add from WoRMS, alias and description editing, and clone as new
+  tree.
 - Cloning turns a published revision into a stand-alone new-tree changeset,
   which an approved publish turns into revision 1 of a new tree.
 
@@ -34,11 +36,13 @@ Depends on `core-tree-model` and `worms-integration`.
   including concurrency control (`ETag`/`If-Match`), rebasing, publishing and
   their status codes.
 - `webapp`: the tree-management web app: pages, edit mode, draft markings, the
-  merge/split/import wizards, Add from WoRMS, alias editing and cloning.
+  merge/split/import wizards, Add from WoRMS, alias and description editing and
+  cloning.
 
 ### Modified Capabilities
 
 - `node-aliases`: adds the alias write and history endpoints.
+- `node-descriptions`: adds the description write and history endpoints.
 - `tree-import`: adds cloning a published revision into a new-tree changeset.
 
 ## Impact

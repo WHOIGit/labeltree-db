@@ -18,7 +18,7 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
   [webapp.md](webapp.md#changesets-and-concurrency).
 - **Auxilliary per-node data** (light blue). None of these ever bump a node version:
   - `NODE_ALIAS`: aliases over time; removed aliases are kept
-    ([Labels and aliases](#labels-and-aliases))
+    ([Labels, aliases and descriptions](#labels-aliases-and-descriptions))
   - `NODE_WARNINGS`: WoRMS warnings over time; the newest row per node is
     its current set ([worms.md](worms.md#how-warnings-are-stored-and-shown))
   - `SUCCESSOR`: pointers from a deprecated node to its replacements
@@ -42,7 +42,7 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
 - **The tree is the implicit root.** Nodes with `parent = null` are
   top-level nodes, and a tree may have any number of them. 
 
-### Labels and aliases
+### Labels, aliases and descriptions
 
 - **Labels are unique within a tree at each revision.** `morphotype1` under two
   genera must be e.g. `Chaetoceros_morphotype1` and
@@ -59,6 +59,12 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
   Removing an alias marks it removed rather than deleting it, so each alias
   records who added and removed it, and when. The API always searches and
   returns current aliases (not removed), even for `?rev=` requests.
+- **Descriptions are unversioned too.** A node's description (definition and
+  annotation guidance) is set directly, outside of changesets and revision
+  review. Each change adds an entry recording who set it and when; the newest
+  entry is the node's description, and setting it to `""` clears it. Entries
+  are never deleted. The API always returns the current description, even for
+  `?rev=` requests. A new node may carry an initial description on its `add`.
 - Nodes can be looked up by-label for a given revision, and search matches
   labels, current aliases and cached WoRMS names. Because labels are impermanent,
   consumers should store node ids, not labels or aliases.
@@ -76,14 +82,16 @@ Source: [`diagrams/02-data-model.d2`](diagrams/02-data-model.d2)
 | | `label` | machine-safe string, unique per tree revision |
 | | `parent` | node id, or null for a top-level node |
 | | `aphia_id` | nullable WoRMS AphiaID |
-| | `description` | free text: definition and annotation guidance |
 | `NODE_ALIAS` | `alias` | free text, one row per alias. Associated with a `node`, not a `node_version`. Unique per node among current aliases. |
 | | `added_by`, `added_at` | who added it, when |
 | | `removed_by`, `removed_at` | who removed it, when; null = current |
+| `NODE_DESCRIPTION` | `description` | free text: definition and annotation guidance. One row per change, associated with a `node`, not a `node_version`. The newest row is current; `""` clears it. |
+| | `added_by`, `added_at` | who set it, when |
 | `SUCCESSOR` | `deprecated_node`, `successor_node` | one row per successor of a deprecated node; may be none. Unversioned. |
 
-Only `NODE_VERSION` fields are versioned. The API returns aliases and
-successors on the node as `aliases[]` and `successors[]`.
+Only `NODE_VERSION` fields are versioned. The API returns the current
+description, aliases and successors on the node as `description`, `aliases[]`
+and `successors[]`.
 
 The API also returns derived, read-only values:
 
@@ -115,14 +123,14 @@ deprecated later like any other node.
 
 A node's version increases if any of these changed:
 
-- label, description or `aphia_id`
+- label or `aphia_id`
 - **parent** (the node was moved)
 - **set of immediate children**: a child was added, deprecated, or moved in or
   out.
 
 These do **not** change it:
 
-- aliases (not versioned)
+- descriptions and aliases (not versioned)
 - WoRMS warnings (derived results, stored separately)
 - a child's own edits, such as a rename
 - changes to ancestors. If a grandparent moves, the node's path changes but
@@ -138,15 +146,15 @@ Four nodes over five revisions. `Chaetoceros` and `Thalassiosira` are genera;
 `C_didymus` starts under `Chaetoceros`. Each cell is the node's version at that
 revision. **Bold** marks an increase.
 
-| node | rev 1<br>init | rev 2<br>add `C_socialis` under `Chaetoceros` | rev 3<br>rename `C_didymus` → `C_didymus_sl` | rev 4<br>move `C_socialis` → `Thalassiosira` | rev 5<br>deprecate `C_didymus_sl`, edit `Chaetoceros` description |
+| node | rev 1<br>init | rev 2<br>add `C_socialis` under `Chaetoceros` | rev 3<br>rename `C_didymus` → `C_didymus_sl` | rev 4<br>move `C_socialis` → `Thalassiosira` | rev 5<br>deprecate `C_didymus_sl`, set `Chaetoceros` AphiaID |
 |---|---|---|---|---|---|
 | `Chaetoceros` | v1 | **v2** child added | v2 child renamed: no bump | **v3** child moved out | **v4** child deprecated + edit: one bump |
 | `C_didymus` | v1 | v1 | **v2** renamed | v2 | deprecated: v2 closed, no v3 |
 | `C_socialis` | – | **v1** new | v1 | **v2** moved | v2 |
 | `Thalassiosira` | v1 | v1 | v1 | **v2** child moved in | v2 |
 
-An alias added between rev 4 and rev 5 appears nowhere: it creates no version
-and no revision.
+An alias added or a description changed between rev 4 and rev 5 appears
+nowhere: it creates no version and no revision.
 
 Each run of equal versions in a row is one `NODE_VERSION` row. For
 `Chaetoceros`: v1 `[1, 2)`, v2 `[2, 4)`, v3 `[4, 5)`, v4 `[5, null)`. For
@@ -210,7 +218,7 @@ state left by the changes before it.
 | Op | Effect | Preconditions |
 |---|---|---|
 | `add` | Create a node with a new id, under a parent or at top level. | parent in the tree, same tree, label not used in the tree |
-| `edit` | Change label, description or `aphia_id` (set or clear). | node in the tree; a new label not used in the tree |
+| `edit` | Change label or `aphia_id` (set or clear). | node in the tree; a new label not used in the tree |
 | `move` | Change parent (or make the node top-level). | new parent in the tree, same tree, no cycle, `from_parent` is the node's current parent |
 | `deprecate` | Remove the node from the tree from this revision on, with optional `successors[]`. | node has **no children**; each successor is in the same tree and not deprecated |
 
@@ -222,21 +230,30 @@ expand into these four ([webapp.md](webapp.md#merge-and-split)).
 
 ### Reduction on save
 
-When a changeset is saved, its changes are reduced per node, within each
-`group`:
+When a changeset is saved, its changes are reduced per node, whatever their
+`group` (groups only label changes for reviewers):
 
 - repeated `edit`s of a node merge into one `edit` with the net field changes
 - repeated `move`s of a node merge into one `move` from the original to the
   final parent
 - `edit`s and `move`s of a node added in the changeset fold into its `add`
+- `edit`s and `move`s of a node deprecated later in the changeset are dropped,
+  bringing the `deprecate` forward if needed (e.g. a child moved by a split and
+  then deprecated is simply deprecated before the split)
 - net no-ops are dropped: a rename and rename back, a move back to the original
   parent, or an `add` followed by a `deprecate` of the same new node
+- successor chains collapse: if A's successor B is deprecated later in the
+  changeset with successors, A's successors become B's. So a split of a split
+  (P into A and B, then A into A1 and A2) publishes as P with successors A1, A2
+  and B, and A never exists. A successor deprecated earlier in the changeset,
+  or later without successors, is an error.
 
-A merged change takes the position of the last change it replaces. A merge is
+A merged change takes the position of the last change it replaces, or of the
+first if only that is valid, and keeps the last change's group. A merge is
 skipped if it would make a valid change list invalid (e.g. a label swap through
-a temporary label), and changes in different groups are never merged. Because
-version increases compare a node's state before and after the revision, a
-reduced no-op causes no version increase.
+a temporary label) or change the resulting tree. Because version increases
+compare a node's state before and after the revision, a reduced no-op causes no
+version increase.
 
 ### Deprecation and successors
 
@@ -273,8 +290,8 @@ changeset, an optional `group` naming the macro that produced it (e.g.
 
 | Op | Payload |
 |---|---|
-| `add` | `node` (placeholder, see below), `label`, `parent`, optional `description`, `aphia_id` and initial `aliases` |
-| `edit` | `node`, and only the fields being changed: `label`, `description`, `aphia_id` (null clears it) |
+| `add` | `node` (placeholder, see below), `label`, `parent`, optional `aphia_id`, initial `description` and initial `aliases` |
+| `edit` | `node`, and only the fields being changed: `label`, `aphia_id` (null clears it) |
 | `move` | `node`, `from_parent`, `to_parent` (null = top-level) |
 | `deprecate` | `node`, `successors[]` (may be empty) |
 

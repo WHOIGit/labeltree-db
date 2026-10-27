@@ -10,7 +10,7 @@ import io
 from django.utils import timezone
 
 from core.importer import expand_import
-from core.models import NodeAlias
+from core.models import NodeAlias, NodeDescription
 from core.tests.helpers import add, deprecate, edit, move, publish, publish_new_tree
 
 # --- 9.1 tree info ---------------------------------------------------------------------------
@@ -53,8 +53,8 @@ def test_unknown_tree(get):
 
 
 def test_history_order(get, taxonomy):
-    publish(taxonomy, edit(6, description="a"))
-    publish(taxonomy, edit(6, description="b"), edit(5, description="c"))
+    publish(taxonomy, edit(6, aphia_id=1))
+    publish(taxonomy, edit(6, aphia_id=2), edit(5, label="Cd"))
     _, body, _ = get("/trees/taxonomy/revisions")
     assert [(r["rev"], r["num_changes"]) for r in body["revisions"]] == [(3, 2), (2, 1), (1, 6)]
     assert body["count"] == 3
@@ -107,11 +107,11 @@ def test_unknown_revision_changes(get, taxonomy):
 
 def test_diff(get, taxonomy):
     publish(taxonomy, edit(5, label="C_didymus"))  # rev 2: rename
-    publish(taxonomy, move(4, 3, 6), edit(4, description="genus"))  # rev 3: moved and edited
+    publish(taxonomy, move(4, 3, 6), edit(4, aphia_id=1))  # rev 3: moved and edited
     publish(taxonomy, add("new:1", "tmp", parent=6))  # rev 4: 7 added
     publish(taxonomy, deprecate(7))  # rev 5: 7 deprecated in range
     publish(taxonomy, add("new:1", "kept", parent=6))  # rev 6: 8 added
-    publish(taxonomy, edit(8, description="later"))  # rev 7: 8 edited in range
+    publish(taxonomy, edit(8, aphia_id=2))  # rev 7: 8 edited in range
     publish(taxonomy, deprecate(5, successors=[8]))  # rev 8
     _, body, _ = get("/trees/taxonomy/diff?from=1&to=8")
     assert body["added"] == [
@@ -122,7 +122,7 @@ def test_diff(get, taxonomy):
     ]
     assert body["moved"] == [{"id": 4, "label": "Chaetoceros", "from_parent": 3, "to_parent": 6}]
     assert body["edited"] == [
-        {"id": 4, "label": "Chaetoceros", "fields": {"description": ["", "genus"]}}
+        {"id": 4, "label": "Chaetoceros", "fields": {"aphia_id": [148985, 1]}}
     ]
 
     _, body, _ = get("/trees/taxonomy/diff?from=1&to=2")
@@ -134,7 +134,7 @@ def test_diff(get, taxonomy):
 def test_diff_parameters(get, taxonomy):
     assert get("/trees/taxonomy/diff?from=1")[0] == 400
     assert get("/trees/taxonomy/diff?from=1&to=9")[0] == 404
-    publish(taxonomy, edit(6, description="d"))
+    publish(taxonomy, edit(6, aphia_id=1))
     assert get("/trees/taxonomy/diff?from=2&to=1")[0] == 400
 
 
@@ -150,9 +150,10 @@ def structure(nodes):
 
 
 def test_nodes_as_tree_reimports_identically(get, taxonomy):
-    publish(taxonomy, edit(6, description="misc"))
+    NodeDescription.objects.create(node_id=6, description="misc", added_by="x")
     _, body, _ = get("/trees/taxonomy/nodes_as_tree?dropempty=true")
     assert "description" not in body["nodes"][0]
+    assert body["nodes"][1]["description"] == "misc"
     publish_new_tree("copy", *expand_import(body))
     _, copy, _ = get("/trees/copy/nodes_as_tree?dropempty=true")
     assert structure(copy["nodes"]) == structure(body["nodes"])

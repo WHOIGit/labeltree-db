@@ -17,7 +17,8 @@ from .labels import is_machine_safe
 NodeRef = int | str
 
 OPS = ("add", "edit", "move", "deprecate")
-EDIT_FIELDS = ("label", "description", "aphia_id")
+# Versioned fields an `edit` may change. Descriptions are unversioned (NodeDescription).
+EDIT_FIELDS = ("label", "aphia_id")
 _PLACEHOLDER_RE = re.compile(r"^new:\d+$")
 
 
@@ -46,13 +47,12 @@ class NodeState:
     id: NodeRef
     label: str
     parent: NodeRef | None
-    description: str = ""
     aphia_id: int | None = None
     # Version at the base revision; None for a node added in the changeset.
     version: int | None = None
 
     def content(self):
-        return (self.label, self.parent, self.description, self.aphia_id)
+        return (self.label, self.parent, self.aphia_id)
 
 
 class TreeState:
@@ -150,15 +150,12 @@ def load_state(tree_id: str, rev: int) -> TreeState:
     rows = (
         NodeVersion.objects.filter(tree_id=tree_id, valid_from_rev__lte=rev)
         .filter(Q(valid_to_rev__isnull=True) | Q(valid_to_rev__gt=rev))
-        .values_list("node_id", "label", "parent_id", "description", "aphia_id", "version")
+        .values_list("node_id", "label", "parent_id", "aphia_id", "version")
     )
     return TreeState(
         tree_id,
         rev,
-        (
-            NodeState(id=n, label=lb, parent=p, description=d, aphia_id=a, version=v)
-            for n, lb, p, d, a, v in rows
-        ),
+        (NodeState(id=n, label=lb, parent=p, aphia_id=a, version=v) for n, lb, p, a, v in rows),
     )
 
 
@@ -233,7 +230,7 @@ def _payload_problem(change: ChangeSpec) -> str | None:
             return "`aliases` must be a list of strings."
     elif change.op == "edit":
         if not any(f in p for f in EDIT_FIELDS):
-            return "`edit` needs at least one of label, description, aphia_id."
+            return "`edit` needs at least one of label, aphia_id."
     elif change.op == "move":
         if "from_parent" not in p or "to_parent" not in p:
             return "`move` needs `from_parent` and `to_parent`."
@@ -284,7 +281,6 @@ def _apply_one(state: TreeState, change: ChangeSpec) -> dict | None:
                 id=node,
                 label=p["label"],
                 parent=parent,
-                description=p.get("description") or "",
                 aphia_id=p.get("aphia_id"),
             )
         )
@@ -298,8 +294,6 @@ def _apply_one(state: TreeState, change: ChangeSpec) -> dict | None:
             return err
         if "label" in p:
             state.relabel(node, p["label"])
-        if "description" in p:
-            state.nodes[node].description = p["description"]
         if "aphia_id" in p:
             state.nodes[node].aphia_id = p["aphia_id"]
         return None
@@ -391,7 +385,7 @@ class VersionChange:
 
 def version_changes(before: TreeState, after: TreeState) -> list[VersionChange]:
     """Net per-node comparison: a node's version increases (at most once) if its
-    label, description, aphia_id, parent or set of immediate children differs."""
+    label, aphia_id, parent or set of immediate children differs."""
     result = []
     for ref in sorted(before.nodes.keys() | after.nodes.keys(), key=ref_sort_key):
         old, new = before.nodes.get(ref), after.nodes.get(ref)

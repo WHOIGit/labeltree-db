@@ -20,8 +20,8 @@ def test_two_renames():
 
 
 def test_edits_merge_net_fields():
-    assert reduce(edit(4, label="a", description="d"), edit(4, label="b", aphia_id=3)) == [
-        {"seq": 1, "op": "edit", "group": None, "node": 4, "label": "b", "description": "d",
+    assert reduce(edit(4, label="a", aphia_id=3), edit(4, label="b")) == [
+        {"seq": 1, "op": "edit", "group": None, "node": 4, "label": "b",
          "aphia_id": 3},
     ]  # fmt: skip
 
@@ -45,7 +45,7 @@ def test_move_of_new_node_folds_into_add():
 
 
 def test_folded_add_takes_last_position():
-    out = reduce(add("new:1", "a"), edit(4, label="w"), edit("new:1", description="d"))
+    out = reduce(add("new:1", "a"), edit(4, label="w"), edit("new:1", aphia_id=5))
     assert [(c["op"], c["node"]) for c in out] == [("edit", 4), ("add", "new:1")]
 
 
@@ -54,8 +54,8 @@ def test_rename_and_rename_back():
 
 
 def test_partial_no_op_edit_keeps_real_fields():
-    assert reduce(edit(4, label="tmp", description="d"), edit(4, label="x")) == [
-        {"seq": 1, "op": "edit", "group": None, "node": 4, "description": "d"},
+    assert reduce(edit(4, label="tmp", aphia_id=5), edit(4, label="x")) == [
+        {"seq": 1, "op": "edit", "group": None, "node": 4, "aphia_id": 5},
     ]
 
 

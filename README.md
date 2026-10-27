@@ -26,8 +26,11 @@ Four core tables:
 - `tree_revision`: one per published edit to a tree
 - `node`: a permanent, globally unique id, its tree, and the revisions in
   which it was created and deprecated
-- `node_version`: the node's data (label, parent, description, AphiaID) and
+- `node_version`: the node's versioned data (label, parent, AphiaID) and
   the range of tree revisions the node version data is valid for
+
+Descriptions and aliases are unversioned: they are kept per node with their
+history, and reads always show the current ones.
 
 Edits are drafted as a **changeset**: an ordered list of atomic changes
 (`add`, `edit`, `move`, `deprecate`). When an approver publishes a changeset,

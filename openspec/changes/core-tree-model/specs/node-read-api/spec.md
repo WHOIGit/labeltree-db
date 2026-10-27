@@ -21,7 +21,7 @@ have `children: []`.
 
 ### Requirement: Detailed node shape
 A detailed node SHALL contain `id`, `version`, `tree`, `rev`, `label`,
-`description`, `aliases` (current, each `{id, alias}`), `aphia_id`,
+`description` (current), `aliases` (current, each `{id, alias}`), `aphia_id`,
 `worms_data`, `worms_warnings`, `tree_depth`, `num_children`, `parent` (lite,
 unexpanded, or null), `children` (lite, unexpanded), `created_in_rev`,
 `deprecated_in_rev` and `successors`.

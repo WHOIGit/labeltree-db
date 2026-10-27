@@ -54,7 +54,7 @@ changeset id. A published revision SHALL never change.
 - **THEN** revision 8 is created and records who published it, when, and from which changeset
 
 ### Requirement: Node versions with revision ranges
-A node's versioned data (label, parent, description, `aphia_id`) SHALL be held
+A node's versioned data (label, parent, `aphia_id`) SHALL be held
 in node versions numbered from 1 per node. Each node version SHALL be valid for
 the tree revisions `[valid_from_rev, valid_to_rev)`, where a null
 `valid_to_rev` means it is current. A node's versions SHALL NOT overlap.
@@ -112,10 +112,10 @@ Every label SHALL match `^[A-Za-z0-9][A-Za-z0-9_.-]*$`.
 
 ### Requirement: What increases a node's version
 A node's version SHALL increase in a revision if, comparing its state at the
-previous revision with its state at the new one, its label, description,
-`aphia_id`, parent, or set of immediate children differs. Nothing else SHALL
-increase it, including aliases, WoRMS warnings, a child's own edits and changes
-to ancestors.
+previous revision with its state at the new one, its label, `aphia_id`,
+parent, or set of immediate children differs. Nothing else SHALL increase it,
+including descriptions, aliases, WoRMS warnings, a child's own edits and
+changes to ancestors.
 
 #### Scenario: Child added
 - **WHEN** a node is added under `Chaetoceros`
@@ -133,6 +133,10 @@ to ancestors.
 - **WHEN** an alias is added to a node between two revisions
 - **THEN** no node version and no revision is created
 
+#### Scenario: Description changed
+- **WHEN** a node's description is changed between two revisions
+- **THEN** no node version and no revision is created
+
 ### Requirement: At most one version increase per revision
 A node's version SHALL increase at most once per revision, however many changes
 in the revision affect it.
@@ -142,7 +146,7 @@ in the revision affect it.
 - **THEN** the node's version increases by exactly one
 
 #### Scenario: Child deprecated and parent edited together
-- **WHEN** one revision deprecates a child of P and edits P's description
+- **WHEN** one revision deprecates a child of P and renames P
 - **THEN** P's version increases by exactly one
 
 ### Requirement: Deprecation removes a node from the tree

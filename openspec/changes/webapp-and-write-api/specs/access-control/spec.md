@@ -57,7 +57,8 @@ and WoRMS-derived data, and calling the WoRMS lookup endpoints.
 
 ### Requirement: Drafter permissions
 `drafter` SHALL allow creating, updating and discarding any draft on the tree,
-not only one's own, running `validate`, adding and removing aliases, and
+not only one's own, running `validate`, adding and removing aliases, setting
+descriptions, and
 starting drift runs. Drafts SHALL be visible only to drafters, approvers and
 admins of the tree.
 
@@ -100,7 +101,8 @@ give the publishing user `admin` on the new tree.
 - **THEN** the tree exists and that user holds `admin` on it
 
 ### Requirement: Recorded identities
-`author`, `published_by`, alias `added_by` and `removed_by`, and drift-run
+`author`, `published_by`, alias `added_by` and `removed_by`, description
+`added_by`, and drift-run
 `started_by` SHALL record the authenticated username, or the service account's
 name for token requests.
 

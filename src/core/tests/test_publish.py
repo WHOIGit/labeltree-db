@@ -78,10 +78,10 @@ def test_base_rev_must_exist(tree):
 def test_update_replaces_changes_and_notes(tree):
     ids = ids_by_label("t")
     cs = create_changeset(author="a", tree=tree, base_rev=1, changes=[edit(ids["x"], label="a")])
-    update_changeset(cs, changes=[edit(ids["y"], description="d")], notes="n")
+    update_changeset(cs, changes=[edit(ids["y"], aphia_id=7)], notes="n")
     cs.refresh_from_db()
     assert cs.notes == "n"
-    assert [c.payload for c in cs.changes.all()] == [{"node": ids["y"], "description": "d"}]
+    assert [c.payload for c in cs.changes.all()] == [{"node": ids["y"], "aphia_id": 7}]
 
 
 def test_discarded_changeset_is_frozen(tree):
@@ -168,7 +168,7 @@ def test_five_revision_example(tree):
     soc = ids_by_label("t")["C_socialis"]
     publish(tree, edit(did, label="C_didymus_sl"))  # rev 5
     publish(tree, move(soc, ch, th))  # rev 6
-    publish(tree, deprecate(did), edit(ch, description="Genus"))  # rev 7
+    publish(tree, deprecate(did), edit(ch, aphia_id=148985))  # rev 7
 
     # Revisions 3-7 here correspond to revisions 1-5 of the design example.
     assert versions(ch)[1:] == [(2, 3, 4), (3, 4, 6), (4, 6, 7), (5, 7, None)]
@@ -288,7 +288,7 @@ def test_new_tree_publish_failure_creates_no_tree():
 def test_fell_behind_then_rebased(tree):
     ids = ids_by_label("t")
     draft = create_changeset(
-        author="a", tree=tree, base_rev=1, changes=[edit(ids["R"], description="d")]
+        author="a", tree=tree, base_rev=1, changes=[edit(ids["R"], aphia_id=7)]
     )
     publish(tree, edit(ids["x"], label="x2"))  # revision 2
     refused("stale_base", publish_changeset, draft, published_by="b")

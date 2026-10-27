@@ -27,9 +27,7 @@ def test_five_revision_example():
     s4, bumps = advance(s3, move("new:1", CHAETOCEROS, THALASSIOSIRA))
     assert bumps == {CHAETOCEROS: (2, 3), "new:1": (1, 2), THALASSIOSIRA: (1, 2)}
 
-    s5, bumps = advance(
-        s4, deprecate(C_DIDYMUS), edit(CHAETOCEROS, description="Genus of centric diatoms")
-    )
+    s5, bumps = advance(s4, deprecate(C_DIDYMUS), edit(CHAETOCEROS, aphia_id=148985))
     assert bumps == {CHAETOCEROS: (3, 4), C_DIDYMUS: (2, None)}  # one bump for two reasons
 
     assert {ref: n.version for ref, n in s5.nodes.items()} == {
@@ -61,7 +59,7 @@ def test_rename_and_back_is_no_bump():
 
 
 def test_child_deprecated_and_parent_edited():
-    assert bumps_for(make_state(TREE), deprecate(4), edit(3, description="x")) == {
+    assert bumps_for(make_state(TREE), deprecate(4), edit(3, label="N2")) == {
         3: (1, 2),
         4: (1, None),
     }

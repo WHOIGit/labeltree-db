@@ -47,7 +47,7 @@ def test_bad_parameter(get, tags):
 
 def test_revision_header_on_latest(get, tags):
     tree = tags
-    publish(tree, edit(1, description="d"))
+    publish(tree, edit(1, aphia_id=1))
     _, _, response = get("/trees/NES2022_tags/nodes/bleb")
     assert response["X-Tree-Revision"] == "2"
     _, _, response = get("/trees/NES2022_tags/nodes/bleb?rev=1")
@@ -74,7 +74,7 @@ def test_etag_on_csv(get, tags):
 
 def test_revision_history_page(get, tags):
     for i in range(41):
-        publish(tags, edit(1, description=f"d{i}"))
+        publish(tags, edit(1, aphia_id=i + 1))
     status, body, _ = get("/trees/NES2022_tags/revisions?limit=10&offset=10")
     assert status == 200 and body["count"] == 42
     assert [r["rev"] for r in body["revisions"]] == list(range(32, 22, -1))

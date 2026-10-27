@@ -109,6 +109,7 @@ changeset are shown disabled in static mode, with the hint "Edit mode only".
 |---|---|---|
 | Details… | both | modal: id, label, version, parent, description, AphiaID, aliases, warnings |
 | Edit aliases… | both (`drafter`) | saved at once via `POST /nodes/{id}/aliases` and `DELETE /nodes/{id}/aliases/{alias_id}`, one alias at a time, not part of any changeset. Disabled for nodes added in the draft, which have no id yet. |
+| Edit description… | both (`drafter`) | saved at once via `PUT /nodes/{id}/description`, not part of any changeset; an empty description clears it. Disabled for nodes added in the draft, whose description is part of their `add`. |
 | Edit… | edit | one `edit` change |
 | New child… | edit | one `add` change under this node |
 | Move to… | edit | one `move` change |
@@ -116,10 +117,10 @@ changeset are shown disabled in static mode, with the hint "Edit mode only".
 | Merge… | edit | wizard, a `merge#n` group |
 | Deprecate… | edit | one `deprecate` change |
 
-Aliases are not versioned and not part of changesets
-([backend.md](../backend.md#labels-and-aliases)), so editing them works in
-static mode and from a frozen view, and the change is live immediately. The
-alias dialog says so.
+Aliases and descriptions are not versioned and not part of changesets
+([backend.md](../backend.md#labels-aliases-and-descriptions)), so editing them works in
+static mode and from a frozen view, and the change is live immediately. Both
+dialogs say so.
 
 ## Dialogs and wizards
 
@@ -128,11 +129,13 @@ Every dialog checks its input as the user types: labels must be machine-safe
 after the changes before it. **Add** stays disabled until the input is valid.
 
 - **New node** (left panel button): label, parent (a node, or top level),
-  description, AphiaID, initial aliases. Gives one `add` with a placeholder id
-  `new:k`. Initial aliases ride on the `add` change, as for imports.
+  initial description, AphiaID, initial aliases. Gives one `add` with a
+  placeholder id `new:k`. The initial description and aliases ride on the `add`
+  change, as for imports.
 - **New child:** the same form with the parent fixed.
-- **Edit:** label, description and AphiaID, prefilled. Gives one `edit`
-  holding only the changed fields. Clearing the AphiaID sets it to null.
+- **Edit:** label and AphiaID, prefilled. Gives one `edit` holding only the
+  changed fields. Clearing the AphiaID sets it to null. The description is
+  edited separately (Edit description…), outside the changeset.
 - **Move to:** closes the menu and enters pick mode. A banner reads "Click the
   new parent for X", with **Make top level** and **Cancel**. The node and its
   descendants can't be picked, so no cycle is possible. Esc cancels. Gives one
@@ -145,7 +148,7 @@ after the changes before it. **Add** stays disabled until the input is valid.
      in the tree can be chosen.
   2. Choose **with replacement** (default) or **without replacement**, in which
      case one of the nodes survives and the others merge into it.
-  3. With replacement: label, description and AphiaID of the new node, and its
+  3. With replacement: label, initial description and AphiaID of the new node, and its
      parent (by default the merged nodes' common parent).
   4. Review the expanded changes ([webapp.md](../webapp.md#merge-and-split)).
      **Add to draft** appends them as one `merge#n` group.
@@ -194,8 +197,9 @@ so.
 
 - Both example trees from `labeldata/`, loaded as `import#1` (revision 1).
 - Two made-up later revisions of `NES2022_taxonomy`, so the revision picker
-  and frozen change list have something to show: revision 2 (a label fix, a
-  description, a new morphotype) and revision 3 (`merge#1` with replacement).
+  and frozen change list have something to show: revision 2 (a label fix and a
+  new morphotype) and revision 3 (`merge#1` with replacement). `Mesodinium`'s
+  description is set directly after revision 2, outside any changeset.
 - One open draft, #6, based on revision 2. It edits a node that revision 3
   deprecated, so it shows a conflict.
 - One discarded draft, #3: a `split#1` of `Eucampia`.

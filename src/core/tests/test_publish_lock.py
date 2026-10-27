@@ -48,7 +48,7 @@ def draft(tree, *changes):
 
 def test_concurrent_publish_is_refused_then_stale(tree):
     x = ids_by_label("t")["x"]
-    first, second = draft(tree, edit(x, label="x1")), draft(tree, edit(x, description="d"))
+    first, second = draft(tree, edit(x, label="x1")), draft(tree, edit(x, aphia_id=1))
 
     with other_process() as conn:
         hold_publish_lock(conn, "t")

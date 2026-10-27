@@ -12,6 +12,7 @@
 - [x] 2.2 Add the indexes, the one-open-version partial unique index and the label exclusion constraint; verify with a test that inserting overlapping same-label versions fails
 - [x] 2.3 Add a node id sequence and label validation helper; verify unit tests for the machine-safe regex
 - [x] 2.4 Register the models in Django admin (read-only for versioned tables, editable for `NODE_ALIAS`); verify the admin pages load
+- [x] 2.5 Move descriptions out of `NODE_VERSION` into `NODE_DESCRIPTION` (`description`, `added_by`, `added_at`; newest entry wins, `""` clears), written from `add` changes on publish, addable but not editable in Django admin, current in every read, and absent from version bumps, `edit` payloads and diffs; verify the `node-descriptions` scenarios
 
 ## 3. Tree state and apply
 
