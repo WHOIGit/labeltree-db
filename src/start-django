@@ -1,0 +1,25 @@
+#!/bin/sh
+# Container start script.
+#   ./start-django            migrate, ensure superuser, serve with gunicorn (production)
+#   ./start-django dev        migrate, ensure superuser, serve with runserver (auto-reload)
+#   ./start-django test ARGS  run pytest ARGS (needs an image built with INSTALL_DEV=true)
+#
+# Migrations are created in development and committed; this script only applies them.
+
+set -e
+
+mode="${1:-prod}"
+[ $# -gt 0 ] && shift
+
+if [ "$mode" = "test" ]; then
+  exec pytest "$@"
+fi
+
+python manage.py migrate --noinput
+python manage.py ensure_superuser
+
+case "$mode" in
+  dev)  exec python manage.py runserver 0.0.0.0:8000 ;;
+  prod) exec gunicorn config.wsgi --bind 0.0.0.0:8000 --access-logfile - ;;
+  *)    echo "usage: $0 [prod|dev|test [pytest args]]" >&2; exit 2 ;;
+esac
