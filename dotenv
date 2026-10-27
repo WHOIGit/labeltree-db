@@ -1,0 +1,20 @@
+# Template for .env (local development) and .envprod (production).
+
+DJANGO_SETTINGS_MODULE=config.settings
+DJANGO_SECRET_KEY=  # YOUR SECRET KEY
+DJANGO_DEBUG=false
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+DJANGO_CSRF_TRUSTED_ORIGINS=
+
+# Created on container start by `manage.py ensure_superuser` if missing.
+# Leave username or password empty to skip.
+DJANGO_SUPERUSER_USERNAME=admin
+DJANGO_SUPERUSER_EMAIL=
+DJANGO_SUPERUSER_PASSWORD=  # YOUR SUPERUSER PASSWORD
+
+# Shared by Django and the postgres container.
+POSTGRES_DB=labeltree
+POSTGRES_USER=labeltree
+POSTGRES_PASSWORD=  # YOUR DB PASSWORD
+POSTGRES_HOST=
+#POSTGRES_PORT=5432

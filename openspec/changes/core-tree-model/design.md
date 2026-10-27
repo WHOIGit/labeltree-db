@@ -33,12 +33,15 @@ handful of editors and read traffic from a few services.
 
 ### Stack and layout
 
-Django + django-ninja on PostgreSQL 16, run with Docker Compose (`web`, `db`).
-Python dependencies are pinned with `uv`. Tests use pytest + pytest-django
-against a real PostgreSQL. Two Django apps:
+Django + django-ninja on PostgreSQL 18, run with Docker Compose (`web`, `db`).
+Python dependencies are declared in `pyproject.toml` and installed with pip.
+Code lives in `src/` (`manage.py`, the `config` settings package and the apps).
+Tests use pytest + pytest-django against a real PostgreSQL. Django apps:
 
-- `trees`: models, the changeset engine and the management commands
+- `core`: models, the changeset engine and the management commands
 - `api`: django-ninja routers, response schemas and serialisation
+- `accounts`: the custom user model, defined up front so fields can be added
+  later without swapping `AUTH_USER_MODEL`
 
 Alternative: one app. Rejected because the engine must stay importable without
 HTTP concerns, since the web app and API both drive it later.

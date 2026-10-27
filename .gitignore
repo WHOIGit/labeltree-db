@@ -1,0 +1,24 @@
+.agents/skills/
+.claude/
+
+# Environments
+.env
+.envprod
+.venv/
+
+# Local data
+.pgdata/
+vols/
+
+# Python
+__pycache__/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Django
+src/staticfiles/

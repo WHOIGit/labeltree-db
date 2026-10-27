@@ -1,0 +1,13 @@
+.git
+.venv
+.pgdata
+vols
+.env
+.envprod
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+design
+openspec
+.claude
+.agents

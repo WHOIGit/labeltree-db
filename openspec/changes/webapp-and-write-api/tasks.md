@@ -4,7 +4,7 @@
 
 - [ ] 1.1 Add the `ApiToken` model (hashed key, revocation) and the token and session auth classes as the API's global auth; verify `401` for anonymous and revoked-token requests on every router
 - [ ] 1.2 Add `TreeRole` and the `require()` helper, and apply the role rules to every read, write and drift endpoint; verify a test matrix of role × endpoint for the `access-control` scenarios
-- [ ] 1.3 Filter `GET /trees` by the user's roles, gate new-tree changesets on `trees.add_tree`, and grant `admin` to the publisher of a new tree; verify the tree-list and first-admin scenarios
+- [ ] 1.3 Filter `GET /trees` by the user's roles, gate new-tree changesets on `core.add_tree`, and grant `admin` to the publisher of a new tree; verify the tree-list and first-admin scenarios
 - [ ] 1.4 Record authenticated usernames in `author`, `published_by`, alias and drift fields; verify the publish-via-token scenario
 - [ ] 1.5 Register tokens and roles in Django admin and document issuing a service token in README.md; verify the documented steps produce a working token
 

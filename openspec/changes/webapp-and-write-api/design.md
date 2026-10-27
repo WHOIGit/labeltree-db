@@ -45,7 +45,7 @@ expiry flows or third-party login.
 
 A `TreeRole(user, tree, role)` table with a unique `(user, tree, role)`. The
 global tree-creation permission is the Django model permission
-`trees.add_tree`, assignable to users or groups in Django admin. A single helper
+`core.add_tree`, assignable to users or groups in Django admin. A single helper
 `require(user, tree, *roles)` raises `403`, and every router and view calls it.
 The rules come from the `access-control` spec in one place:
 
@@ -114,7 +114,7 @@ so the app works on isolated lab networks.
 1. Deploy the `ApiToken` and `TreeRole` migrations.
 2. In Django admin, create service accounts and tokens for roi-db and
    datasetman with `reader` on both NES2022 trees, and create curator accounts
-   with their roles. Grant `trees.add_tree` to tree administrators. Assign
+   with their roles. Grant `core.add_tree` to tree administrators. Assign
    `admin` on existing trees to the operator who loaded them.
 3. Switch consumers to send tokens, then deploy the auth-enforcing release.
 

@@ -30,7 +30,7 @@ Roles are assigned per tree and can be combined:
 | `admin` | Manage tree settings and assign roles. Run drift reports. |
 
 New trees need the global **tree-creation permission** (Django's
-`trees.add_tree`), not a per-tree role: it allows creating, seeing and
+`core.add_tree`), not a per-tree role: it allows creating, seeing and
 publishing changesets with `base_rev: null`. Publishing one gives the publisher
 `admin` on the new tree.
 

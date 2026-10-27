@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labeltree-db"
+version = "0.1.0"
+description = "Source-of-truth service for AMPLIfy label hierarchies"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14"
+dependencies = [
+    "django>=6.1,<6.2",
+    "django-ninja>=1.7",
+    "django-environ>=0.14",
+    "gunicorn>=26.2",
+    "psycopg[binary]>=3.3",
+]
+
+[project.optional-dependencies]
+# ruff comes from the nix dev shell; pip's ruff binary does not run on NixOS.
+dev = [
+    "pytest>=9.1",
+    "pytest-django>=4.14",
+]
+
+# pip installs only the dependencies; the code runs from src/ (manage.py, pytest pythonpath).
+[tool.setuptools]
+packages = []
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+pythonpath = ["src"]
+testpaths = ["src"]
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+
+[tool.ruff]
+target-version = "py314"
+src = ["src"]
+line-length = 100
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "DJ"]

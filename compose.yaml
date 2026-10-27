@@ -1,0 +1,36 @@
+# Containerized local run and tests. Day-to-day development uses `nix develop`.
+#   docker compose up --build
+#   docker compose run --rm web ./start-django test
+
+services:
+
+  web:
+    build:
+      context: .
+      args:
+        INSTALL_DEV: "true"
+    command: ./start-django dev
+    volumes:
+      - ./src:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18
+    volumes:
+      - ./vols/db:/var/lib/postgresql
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10

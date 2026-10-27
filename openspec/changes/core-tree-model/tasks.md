@@ -2,9 +2,9 @@
 
 ## 1. Project scaffolding
 
-- [ ] 1.1 Create the Django project with `trees` and `api` apps, django-ninja mounted at `/api/v1`, dependencies pinned with `uv`; verify `manage.py check` passes
-- [ ] 1.2 Add Docker Compose (`web`, `db` on PostgreSQL 16) with `pg_trgm` and `btree_gist` enabled; verify `docker compose up` serves an empty `GET /api/v1/trees`
-- [ ] 1.3 Set up pytest + pytest-django against the Compose database and a CI-runnable `make test`; verify a smoke test passes
+- [ ] 1.1 Create the Django project in `src/` with `core`, `api` and `accounts` apps, django-ninja mounted at `/api/v1`, dependencies declared in `pyproject.toml` and installed with pip; verify `manage.py check` passes
+- [ ] 1.2 Add Docker Compose (`web`, `db` on PostgreSQL 18) with `pg_trgm` and `btree_gist` enabled; verify `docker compose up` serves an empty `GET /api/v1/trees`
+- [ ] 1.3 Set up pytest + pytest-django against the local and Compose databases, runnable with `pytest`; verify a smoke test passes
 
 ## 2. Data model
 
