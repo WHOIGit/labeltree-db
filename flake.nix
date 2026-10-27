@@ -41,10 +41,55 @@
             runtimeInputs = [ postgresql ];
             text = ''pg_ctl stop --pgdata="$PGDATA" --mode=fast'';
           };
+
+          # Postgres plus Django's runserver in the background (own process group,
+          # so app-stop also ends the autoreloader's child). State lives in ./.run.
+          app-start = pkgs.writeShellApplication {
+            name = "app-start";
+            runtimeInputs = [ db-start pkgs.util-linux ];
+            text = ''
+              : "''${PROJECT_ROOT:?run inside nix develop}"
+              run="$PROJECT_ROOT/.run"
+              pidfile="$run/runserver.pid"
+              port="''${APP_PORT:-8000}"
+              db-start
+              if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+                echo "runserver already running (pid $(cat "$pidfile"))"
+                exit 0
+              fi
+              mkdir -p "$run"
+              cd "$PROJECT_ROOT/src"
+              setsid "$PROJECT_ROOT/.venv/bin/python" manage.py runserver "0.0.0.0:$port" \
+                >"$run/runserver.log" 2>&1 </dev/null &
+              echo $! >"$pidfile"
+              echo "runserver started: http://localhost:$port/api/v1/docs (log: .run/runserver.log)"
+            '';
+          };
+
+          app-stop = pkgs.writeShellApplication {
+            name = "app-stop";
+            runtimeInputs = [ db-stop postgresql ];
+            text = ''
+              : "''${PROJECT_ROOT:?run inside nix develop}"
+              pidfile="$PROJECT_ROOT/.run/runserver.pid"
+              if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+                kill -- -"$(cat "$pidfile")"
+                echo "runserver stopped"
+              else
+                echo "runserver not running"
+              fi
+              rm -f "$pidfile"
+              if pg_ctl status --pgdata="$PGDATA" >/dev/null; then
+                db-stop
+              else
+                echo "postgres not running"
+              fi
+            '';
+          };
         in
         {
           default = pkgs.mkShell {
-            packages = [ python postgresql pkgs.ruff db-start db-stop ];
+            packages = [ python postgresql pkgs.ruff db-start db-stop app-start app-stop ];
 
             shellHook = ''
               # Anchor to the repo root even when entered from a subdirectory (e.g. src/).
