@@ -1,4 +1,4 @@
-# Spec Delta
+# worms-placement-checks Specification
 
 ## Purpose
 
@@ -6,7 +6,7 @@ Checks the placement of nodes that carry an AphiaID against WoRMS and records
 any disagreement as a warning, so differences between the owned tree and WoRMS
 are visible without ever blocking edits or changing node versions.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Anchored nodes and unanchored pass-through
 A node SHALL be anchored if it has an `aphia_id`. Placement checks SHALL treat
@@ -37,11 +37,33 @@ AphiaID is unaccepted, its `valid_AphiaID` SHALL be compared instead.
 
 ### Requirement: unaccepted_aphia warning
 An anchored node SHALL get `unaccepted_aphia` when WoRMS marks its AphiaID as
-unaccepted. The warning detail SHALL suggest the accepted AphiaID.
+unaccepted, that is, its `valid_AphiaID` is a different AphiaID, whatever its
+status (e.g. `unaccepted`, `superseded combination`, `junior subjective
+synonym`, or `unassessed` with an accepted name given). A record whose
+`valid_AphiaID` is its own AphiaID SHALL NOT get it. The warning detail SHALL
+suggest the accepted AphiaID.
 
 #### Scenario: Name became a synonym
 - **WHEN** a node's AphiaID is now unaccepted with `valid_AphiaID` 149120
 - **THEN** the node gets `unaccepted_aphia` suggesting 149120
+
+#### Scenario: Unassessed name
+- **WHEN** a node's AphiaID has status `unassessed` and is its own `valid_AphiaID`
+- **THEN** the node gets no `unaccepted_aphia`
+
+#### Scenario: Unassessed name with an accepted name
+- **WHEN** a node's AphiaID has status `unassessed` and `valid_AphiaID` 149114
+- **THEN** the node gets `unaccepted_aphia` suggesting 149114
+
+### Requirement: unknown_aphia warning
+An anchored node SHALL get `unknown_aphia` when WoRMS reports no record for its
+AphiaID. Such a node SHALL get no other WoRMS warning except `duplicate_aphia`,
+and its `worms_data` SHALL be `null`. Being unreachable is not the same: a
+WoRMS outage SHALL make the checks unavailable instead.
+
+#### Scenario: AphiaID not in WoRMS
+- **WHEN** a node has AphiaID 999999999 and WoRMS answers that it has no such record
+- **THEN** the node gets `unknown_aphia`
 
 ### Requirement: duplicate_aphia warning
 An anchored node SHALL get `duplicate_aphia` when another node in the same tree

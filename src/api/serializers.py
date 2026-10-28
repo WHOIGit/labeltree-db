@@ -2,17 +2,20 @@
 
 - lite:      {id, label, version, num_children, children}
 - content:   {id, label, version, aphia_id, description, aliases, num_children, children}
-- detailed:  every field, including lifetime fields and WoRMS placeholders
+- detailed:  every field, including lifetime fields, worms_data and worms_warnings
 - deprecation record for nodes no longer in the requested revision
 
 `depth` controls expansion: None expands everything, 0 leaves `children: null`.
-Descriptions, aliases and successors are always current, whatever revision is requested.
+Descriptions, aliases, successors and WoRMS warnings are always current, whatever
+revision is requested; worms_data comes from the newest cached WoRMS record.
 """
 
 from collections import defaultdict
 
 from core.engine import TreeState, load_state
 from core.models import Node, NodeAlias, Successor, Tree, current_descriptions
+from worms.models import current_warnings
+from worms.records import newest_rows
 
 from .conventions import drop_empty
 
@@ -31,10 +34,12 @@ class RevisionView:
         self._aliases: dict[int, list] = {}
         self._descriptions: dict[int, str] = {}
         self._successors: dict[int, list] = {}
+        self._warnings: dict[int, list] = {}
+        self._worms: dict[int, dict | None] = {}
 
     def preload(self, ids=None):
-        """Load lifetime fields and current descriptions, aliases and successors for
-        `ids` (default: all)."""
+        """Load lifetime fields, current descriptions, aliases, successors and WoRMS
+        warnings, and cached WoRMS records, for `ids` (default: all)."""
         ids = list(self.state.nodes) if ids is None else [i for i in ids if i not in self._meta]
         if not ids:
             return
@@ -57,10 +62,17 @@ class RevisionView:
         ):
             successors[nid].append(sid)
         descriptions = current_descriptions(ids)
+        warnings = current_warnings(ids)
+        aphia_ids = [self.state.nodes[nid].aphia_id for nid in ids if nid in self.state.nodes]
+        rows = newest_rows(a for a in aphia_ids if a is not None)
         for nid in ids:
             self._descriptions[nid] = descriptions.get(nid, "")
             self._aliases[nid] = aliases[nid]
             self._successors[nid] = successors[nid]
+            self._warnings[nid] = warnings.get(nid, [])
+            node = self.state.nodes.get(nid)
+            row = rows.get(node.aphia_id) if node is not None else None
+            self._worms[nid] = worms_data(row)
 
     def _out(self, node: dict) -> dict:
         return drop_empty(node) if self.dropempty else node
@@ -126,8 +138,8 @@ class RevisionView:
             "description": self.description(ref),
             "aliases": self.aliases(ref),
             "aphia_id": n.aphia_id,
-            "worms_data": None,
-            "worms_warnings": [],
+            "worms_data": self._worms[ref],
+            "worms_warnings": self._warnings[ref],
             "tree_depth": self.state.depth(ref),
             "num_children": self.state.num_children(ref),
             "parent": self.lite(n.parent) if n.parent is not None else None,
@@ -139,6 +151,21 @@ class RevisionView:
         if not parent:
             del node["parent"]
         return self._out(node)
+
+
+def worms_data(row) -> dict | None:
+    """The detailed node's `worms_data`: null if not cached or unknown to WoRMS."""
+    if row is None or row.record is None:
+        return None
+    record = row.record
+    return {
+        "scientificname": record.get("scientificname"),
+        "rank": record.get("rank"),
+        "status": record.get("status"),
+        "link": record.get("url")
+        or f"https://www.marinespecies.org/aphia.php?p=taxdetails&id={row.aphia_id}",
+        "fetched_at": row.fetched_at.isoformat(),
+    }
 
 
 def deprecation_record(node: Node, rev: int, *, dropempty=False) -> dict:

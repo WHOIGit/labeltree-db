@@ -34,14 +34,29 @@ motivation and `design/worms.md` for the background reasoning.
 A `worms` Django app holds `WORMS_RECORD` (`aphia_id`, `record` jsonb with name,
 rank, status, `valid_AphiaID` and the flattened lineage, `fetched_at`,
 `worms_modified`) and a client wrapping `httpx` with a 10 s timeout and two
-retries. `get_record(aphia_id, max_age)` returns the newest cached row if it is
-younger than `max_age`, else fetches, compares `modified`, and either inserts a
-row or bumps `fetched_at`.
+retries. `get_record(aphia_id, max_age)` returns the newest cached row (latest
+`fetched_at`) if it is younger than `max_age`, else fetches record and lineage
+and stores them with `INSERT .. ON CONFLICT (aphia_id, content_hash) DO UPDATE
+SET fetched_at`. `content_hash` is a SHA-256 of the stored record including its
+lineage, so a changed record **or** a changed lineage adds a row, an unchanged
+one only bumps `fetched_at`, and concurrent fetches of one AphiaID store one
+row. Comparing `modified` alone isn't enough: when WoRMS moves a family, the
+genera below it get a new lineage but keep their record and `modified` time.
+
+WoRMS answering "no such record" is cached too (a row with `record` null), so
+`unknown_aphia` is stable and isn't re-fetched on every save.
 
 - Lookups and saves use a long `max_age` (cache first, fetch on miss).
-- Publish re-fetches the AphiaIDs that its changes add or alter, so new anchors
-  are checked against current WoRMS.
+- Publish re-fetches the AphiaIDs that its changes add or alter if their row is
+  older than 10 minutes, so new anchors are checked against current WoRMS
+  without fetching twice when a draft is saved and published right away (as
+  `import_tree` does).
 - Drift uses `max_age = 0`.
+
+Search results come without lineages, and fetching one per hit would make a
+search cost up to 100 extra calls. They are cached with `lineage` null, which
+`get_record` treats as a miss; the first full fetch fills the lineage into that
+row if the record is unchanged, instead of adding a row.
 
 Lineage is stored with the record, because `out_of_lineage` needs it for every
 anchored node and it is fetched in the same pass. Alternative: separate lineage
@@ -50,8 +65,13 @@ rows. Rejected, because nothing queries lineage independently of the record.
 The client classifies failures as `worms_unreachable` (timeout or connection
 error), `worms_rate_limited` (HTTP 429) or `worms_error` (other non-2xx). On a
 429 it waits for `Retry-After` (default 30 s) before retrying, up to the retry
-limit. Callers get the classified reason: drift records it in its status, and
-the lookup endpoints return it as the `error` code of their `503`.
+limit. Other transient failures (timeouts, connection errors, 5xx) are retried
+twice, after 1 s and then 2 s, when a user is waiting on the answer (lookups,
+saves, publishes). Drift runs, which run in the background, retry four times,
+after 10 s, 30 s, 1 min and 2 min, so they ride out a WoRMS outage of about four
+minutes per AphiaID before failing. Callers get the classified reason: drift
+records it in its status, and the lookup endpoints return it as the `error`
+code of their `503`.
 
 `between` and `common_ancestor` are computed from the two cached lineages, with
 no extra WoRMS calls.
@@ -59,7 +79,9 @@ no extra WoRMS calls.
 ### Checks as a pure function
 
 `check_nodes(state, node_ids, records) -> {node_id: [warning]}` computes the
-three warnings for the given nodes. The recheck scope (spec: "Recheck scope of
+four warnings (`out_of_lineage`, `unaccepted_aphia`, `unknown_aphia`,
+`duplicate_aphia`) for the given nodes, or None for a node whose records are
+unavailable. The recheck scope (spec: "Recheck scope of
 an edit") is computed by the engine from the change list and the before and
 after states, and passed in as `node_ids`. Drift passes every anchored node.
 `duplicate_aphia` uses an AphiaID → nodes index built on the `TreeState`.

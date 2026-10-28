@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "ninja",
     "accounts",
     "core",
+    "worms",
     "api",
 ]
 
@@ -89,6 +90,18 @@ DATABASES = {
         "PASSWORD": env("POSTGRES_PASSWORD", default=""),
         "HOST": env("POSTGRES_HOST", default=""),
         "PORT": env.int("POSTGRES_PORT", default=5432),
+    }
+}
+
+
+# Cache
+# Django's database cache: a table in PostgreSQL (created by a worms migration),
+# shared by every server process. Holds drift-run status.
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache",
     }
 }
 
@@ -140,5 +153,7 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "INFO"},
     "loggers": {
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # httpx logs every WoRMS request at INFO; a drift run makes hundreds.
+        "httpx": {"level": "WARNING"},
     },
 }

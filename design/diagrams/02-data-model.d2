@@ -104,7 +104,8 @@ worms_record: WORMS_RECORD {
   class: light-blue
   id: int {constraint: primary_key}
   aphia_id: int
-  record: "jsonb · name, rank, status, lineage"
+  record: "jsonb · name, rank, status, lineage; null = no such record"
+  content_hash: "text · unique with aphia_id"
   fetched_at: datetime
   worms_modified: datetime
 }

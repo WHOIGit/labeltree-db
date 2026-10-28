@@ -4,8 +4,9 @@ from ninja import Router
 
 from core.changesets import latest_rev
 from core.models import Node, NodeVersion
+from worms.models import NodeWarnings
 
-from .conventions import bad_parameter, not_found, parse_depth, resolve_rev, respond
+from .conventions import bad_parameter, not_found, paginate, parse_depth, resolve_rev, respond
 from .serializers import RevisionView, deprecation_record
 
 router = Router(tags=["nodes"])
@@ -106,3 +107,20 @@ def node_at_version(
         header_rev = None
     view = RevisionView(node.tree, rev, dropempty=dropempty)
     return respond(request, view.detailed(node.id), rev=header_rev)
+
+
+@router.get("/{node_id}/warning_history")
+def node_warning_history(request, node_id: int, limit: int | None = None, offset: int = 0):
+    """WoRMS warnings over time, newest first; the first row is the current set."""
+    node = get_node(node_id)
+    rows = NodeWarnings.objects.filter(node=node).order_by("-computed_at", "-id")
+    page, count = paginate(rows, limit, offset)
+    data = {
+        "id": node.id,
+        "tree": node.tree_id,
+        "count": count,
+        "history": [
+            {"computed_at": row.computed_at.isoformat(), "warnings": row.warnings} for row in page
+        ],
+    }
+    return respond(request, data)

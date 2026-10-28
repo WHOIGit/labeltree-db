@@ -47,7 +47,8 @@ such as `morphotype1` or `artifact`, as if they weren't there.
 | Warning | Meaning | Example |
 |---|---|---|
 | `out_of_lineage` | The node's nearest anchored ancestor isn't one of its WoRMS ancestors. | *Chaetoceros* placed under *Dinophyceae*. Also catches rank inversions, e.g. a genus under a species. |
-| `unaccepted_aphia` | WoRMS marks this AphiaID as unaccepted (e.g. now a synonym). The accepted AphiaID is suggested. | A species renamed in WoRMS since it was added. |
+| `unaccepted_aphia` | WoRMS points this AphiaID to a different accepted AphiaID, whatever its status (`unaccepted`, `superseded combination`, a synonym, or `unassessed` with an accepted name given). The accepted AphiaID is suggested. | A species renamed in WoRMS since it was added. |
+| `unknown_aphia` | WoRMS has no record for this AphiaID. | A mistyped AphiaID. |
 | `duplicate_aphia` | Another node in the same tree has the same AphiaID. | The same species added twice under different labels. |
 
 "WoRMS ancestors" means the node's lineage from WoRMS
@@ -147,8 +148,12 @@ WoRMS has no releases or version numbers; it is edited continuously.
 
 So the service keeps its own snapshot of the parts of WoRMS it uses. The
 `WORMS_RECORD` cache stores each record as fetched, with `fetched_at` and
-WoRMS's `modified` time. A new row is added whenever `modified` changes, so the
-record seen when a node version was published can always be looked up. The
+WoRMS's `modified` time. A new row is added whenever the record or its lineage
+changes, so the record seen when a node version was published can always be
+looked up. The lineage is compared too because when WoRMS moves a family, the
+genera below it get a new lineage while their own records, and `modified`
+times, stay the same. Search results arrive without lineages; they are cached
+without one, and the lineage is filled in on the first full fetch. The
 cache is not a node field, so refreshing it never changes node versions. The
 browser never calls WoRMS directly; it uses the
 [WoRMS lookup endpoints](api.md#write-endpoints).

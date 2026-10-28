@@ -62,6 +62,34 @@ python manage.py import_tree ../labeldata/NES2022_tags.json --tree NES2022_tags 
 Options: `--description`, `--notes` (revision notes, default `Import of <file>`)
 and `--user` (author and publisher, default the current OS user).
 
+Importing a tree with AphiaIDs fetches their WoRMS records, so it needs access
+to marinespecies.org. If WoRMS can't be reached, the import still succeeds and
+the next drift run fills in the warnings.
+
+## WoRMS drift runs
+
+A [drift run](design/worms.md#drift-reports) re-fetches every AphiaID in a
+tree's latest revision from WoRMS and updates its nodes' WoRMS warnings. It
+never edits the tree. Run it from `src/`:
+
+```sh
+python manage.py run_drift NES2022_taxonomy --user cron
+```
+
+It runs in the foreground and exits non-zero if WoRMS keeps failing or another
+run on the tree is active. `--user` is recorded as who started the run (default
+the current OS user). `POST /api/v1/trees/{tree}/drift` starts the same run in
+the background; `GET /api/v1/trees/{tree}/drift/status` shows its progress and
+`GET /api/v1/trees/{tree}/drift` lists the nodes with warnings.
+
+To run it nightly on the production host, add a crontab entry there, using the
+deploy directory and image from `deploy.sh`:
+
+```
+# m h dom mon dow  command
+30 3 * * *  cd /srv/labeltree-db && IMAGE=registry.example.org/amplify/labeltree-db:latest docker compose exec -T web python manage.py run_drift NES2022_taxonomy --user cron
+```
+
 ## Design documents
 
 - [Backend](design/backend.md): data model, versioning rules, atomic changes

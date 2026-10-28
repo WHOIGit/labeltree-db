@@ -38,9 +38,60 @@ def test_top_level_node(get, taxonomy):
     assert node["parent"] is None and node["tree_depth"] == 0
 
 
-def test_worms_fields_before_worms_integration(get, taxonomy):
+# --- WoRMS fields ----------------------------------------------------------------------------
+
+
+def test_anchored_and_cached(get, taxonomy):
+    from worms.models import WormsRecord
+
     _, node, _ = get("/nodes/5")
-    assert (node["aphia_id"], node["worms_data"], node["worms_warnings"]) == (149122, None, [])
+    row = WormsRecord.objects.get(aphia_id=149122)
+    assert node["worms_data"] == {
+        "scientificname": "Chaetoceros didymus",
+        "rank": "Species",
+        "status": "accepted",
+        "link": "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149122",
+        "fetched_at": row.fetched_at.isoformat(),
+    }
+    assert node["worms_warnings"] == []
+
+
+def test_unanchored_node(get, taxonomy):
+    _, node, _ = get("/nodes/6")
+    assert (node["worms_data"], node["worms_warnings"]) == (None, [])
+
+
+def test_uncached_record(get, taxonomy):
+    from worms.models import WormsRecord
+
+    WormsRecord.objects.filter(aphia_id=149122).delete()
+    assert get("/nodes/5")[1]["worms_data"] is None
+
+
+def test_warnings_at_a_past_revision(get, taxonomy):
+    publish(taxonomy, edit(4, aphia_id=19542))  # Chaetoceros anchored as Dinophyceae
+    _, node, _ = get("/nodes/5?rev=1")
+    assert [w["warning"] for w in node["worms_warnings"]] == ["out_of_lineage"]
+    assert "Chaetoceros (19542)" in node["worms_warnings"][0]["detail"]
+
+
+def test_reads_never_call_worms(get, taxonomy, worms_http):
+    worms_http.calls.clear()
+    worms_http.strict()
+    for path in ("/nodes/5", "/trees/taxonomy/export", "/trees/taxonomy/export_flat"):
+        assert get(path)[0] == 200
+    assert worms_http.calls == []
+    assert get("/nodes/5")[1]["worms_data"]["scientificname"] == "Chaetoceros didymus"
+
+
+def test_etag_changes_when_warnings_change(get, taxonomy):
+    from worms.warnings import record_warnings
+
+    _, before, first = get("/nodes/5")
+    record_warnings({5: [{"warning": "unaccepted_aphia", "detail": "x"}]})
+    status, after, second = get("/nodes/5", **{"If-None-Match": first["ETag"]})
+    assert status == 200 and second["ETag"] != first["ETag"]
+    assert after["version"] == before["version"]
 
 
 def test_dropempty_on_nested_nodes(get, taxonomy):
@@ -190,3 +241,23 @@ def test_description_change_changes_etag_not_version(get, taxonomy):
     status, after, second = get("/nodes/4", **{"If-None-Match": first["ETag"]})
     assert status == 200 and second["ETag"] != first["ETag"]
     assert (after["version"], after["rev"]) == (before["version"], before["rev"])
+
+
+def test_warning_raised_then_cleared(get, taxonomy):
+    publish(taxonomy, edit(4, aphia_id=19542))  # rev 2: Chaetoceros_didymus out of lineage
+    publish(taxonomy, edit(4, aphia_id=148985))  # rev 3: cleared
+    _, body, response = get("/nodes/5/warning_history")
+    assert (body["id"], body["tree"], body["count"]) == (5, "taxonomy", 2)
+    assert [[w["warning"] for w in row["warnings"]] for row in body["history"]] == [
+        [], ["out_of_lineage"],
+    ]  # fmt: skip
+    assert body["history"][0]["computed_at"] > body["history"][1]["computed_at"]
+    assert "X-Tree-Revision" not in response
+    assert get("/nodes/5/warning_history?limit=1&offset=1")[1]["history"][0]["warnings"] != []
+
+
+def test_warning_history_of_a_node_never_warned(get, taxonomy):
+    assert get("/nodes/6/warning_history")[1] == {
+        "id": 6, "tree": "taxonomy", "count": 0, "history": [],
+    }  # fmt: skip
+    assert get("/nodes/99/warning_history")[0] == 404

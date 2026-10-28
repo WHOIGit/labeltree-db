@@ -285,3 +285,38 @@ def test_search_limits_and_parameters(get, taxonomy):
     assert len(get("/trees/taxonomy/search?q=c&limit=2")[1]["results"]) == 2
     for bad in ("q=c&limit=101", "q=c&limit=0", "q=c&method=regex", "", "q=c&aphia_id=1"):
         assert get(f"/trees/taxonomy/search?{bad}")[0] == 400, bad
+
+
+# --- WoRMS in search and flat export ----------------------------------------------------
+
+
+def test_flat_export_worms_columns(get, taxonomy):
+    from worms.warnings import record_warnings
+
+    record_warnings(
+        {5: [{"warning": "out_of_lineage", "detail": "x"}, {"warning": "duplicate_aphia",
+                                                            "detail": "y"}]}
+    )  # fmt: skip
+    rows = {
+        r["label"]: r for r in csv.DictReader(io.StringIO(get("/trees/taxonomy/export_flat")[1]))
+    }
+    didymus = rows["Chaetoceros_didymus"]
+    assert (didymus["worms_scientificname"], didymus["worms_rank"], didymus["worms_status"]) == (
+        "Chaetoceros didymus", "Species", "accepted",
+    )  # fmt: skip
+    assert didymus["worms_link"].endswith("id=149122")
+    assert didymus["worms_warnings"] == "out_of_lineage|duplicate_aphia"
+    assert rows["other"]["worms_scientificname"] == rows["other"]["worms_warnings"] == ""
+
+
+def test_search_scientific_name_with_a_space(get, taxonomy):
+    _, body, _ = get("/trees/taxonomy/search?q=Chaetoceros didymus")
+    hits = [r for r in body["results"] if r["id"] == 5]
+    assert len(hits) == 1 and hits[0]["matched_on"] == "label"
+
+
+def test_search_worms_name_only(get, taxonomy):
+    publish(taxonomy, add("new:1", "Thalassiosira_morphotype1", parent=4, aphia_id=148942))
+    _, body, _ = get("/trees/taxonomy/search?q=rotula")
+    (hit,) = body["results"]
+    assert (hit["label"], hit["matched_on"]) == ("Thalassiosira_morphotype1", "worms")

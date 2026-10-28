@@ -1,4 +1,4 @@
-# Spec Delta
+# worms-records Specification
 
 ## Purpose
 
@@ -7,22 +7,31 @@ lookups to clients from that snapshot, so reads never depend on
 marinespecies.org and past WoRMS states the tree was checked against stay
 available.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: WoRMS record cache
 The system SHALL store each fetched WoRMS record, including name, rank, status,
 `valid_AphiaID` and lineage, with `fetched_at` and WoRMS's `modified` time. A
-new row SHALL be added whenever a fetched record's `modified` time differs from
-the newest stored row for that AphiaID; otherwise only its `fetched_at` SHALL
-be refreshed.
+new row SHALL be added whenever a fetched record or its lineage differs from the
+newest stored row for that AphiaID; otherwise only its `fetched_at` SHALL be
+refreshed. The newest row is the one fetched most recently. Concurrent fetches of
+one AphiaID with the same content SHALL store one row.
 
 #### Scenario: Record changed in WoRMS
 - **WHEN** AphiaID 149122 is re-fetched and its `modified` time is newer than the cached row
 - **THEN** a second row is stored and the first is kept
 
+#### Scenario: Lineage changed in WoRMS
+- **WHEN** AphiaID 148985 is re-fetched with the same `modified` time but its family now sits under a different order
+- **THEN** a second row with the new lineage is stored and the first is kept
+
 #### Scenario: Record unchanged
-- **WHEN** AphiaID 149122 is re-fetched with the same `modified` time
+- **WHEN** AphiaID 149122 is re-fetched with the same record and lineage
 - **THEN** no new row is added and the newest row's `fetched_at` is updated
+
+#### Scenario: Search results cached without lineage
+- **WHEN** `GET /worms/search` caches a record and the record is later fetched in full, unchanged
+- **THEN** its lineage is filled into the same row and no second row is added
 
 ### Requirement: Cache is independent of node versions
 Refreshing the WoRMS cache SHALL NOT create node versions or tree revisions.

@@ -14,11 +14,11 @@ Depends on `core-tree-model`.
 ## What Changes
 
 - A service-side cache of WoRMS records and lineages, with a new row whenever a
-  record's WoRMS `modified` time changes. Reads never call WoRMS.
+  record or its lineage changes. Reads never call WoRMS.
 - WoRMS lookup endpoints (`/worms/search`, `/worms/{aphia_id}`, `lineage`,
   `between`, `common_ancestor`) served from the cache, fetching on a miss.
-- Placement checks producing `out_of_lineage`, `unaccepted_aphia` and
-  `duplicate_aphia` warnings, run when a changeset is saved and published. The
+- Placement checks producing `out_of_lineage`, `unaccepted_aphia`,
+  `unknown_aphia` and `duplicate_aphia` warnings, run when a changeset is saved and published. The
   results are stored on each change and, on publish, as per-node warning history.
   Warnings never block publishing and never bump versions.
 - Drift reports: an asynchronous whole-tree re-fetch and re-check that updates

@@ -9,8 +9,12 @@ from ninja import Router
 
 from core.changesets import latest_rev
 from core.models import Change, Node, NodeAlias, NodeVersion, Tree, TreeRevision
+from worms import drift
+from worms.models import current_warnings
+from worms.records import newest_rows
 
 from .conventions import (
+    APIError,
     bad_parameter,
     get_tree,
     not_found,
@@ -272,6 +276,7 @@ def export_flat(request, tree_id: str, rev: int | None = None):
     while stack:  # depth-first, parents before children
         ref = stack.pop()
         node = view.detailed(ref)
+        worms = node["worms_data"] or {}
         writer.writerow(
             [
                 ref,
@@ -283,11 +288,11 @@ def export_flat(request, tree_id: str, rev: int | None = None):
                 node["description"],
                 "|".join(a["alias"] for a in node["aliases"]),
                 "" if node["aphia_id"] is None else node["aphia_id"],
-                "",
-                "",
-                "",
-                "",
-                "|".join(node["worms_warnings"]),
+                worms.get("scientificname") or "",
+                worms.get("rank") or "",
+                worms.get("status") or "",
+                worms.get("link") or "",
+                "|".join(w["warning"] for w in node["worms_warnings"]),
                 node["created_in_rev"],
             ]
         )
@@ -410,6 +415,12 @@ def search(
         node_id__in=list(state.nodes), removed_at__isnull=True
     ).values_list("node_id", "alias"):
         candidates.append((ref, "alias", _normalise(alias)))
+    anchored = {ref: n.aphia_id for ref, n in state.nodes.items() if n.aphia_id is not None}
+    rows = newest_rows(anchored.values())
+    for ref, aphia_id in anchored.items():
+        row = rows.get(aphia_id)
+        if row is not None and row.record and row.record.get("scientificname"):
+            candidates.append((ref, "worms", _normalise(row.record["scientificname"])))
 
     methods = [method] if method else list(SEARCH_METHODS)
     fuzzy = _fuzzy_scores(query, [c[2] for c in candidates]) if "fuzzy" in methods else {}
@@ -437,5 +448,53 @@ def search(
         "rev": view.rev,
         "q": q,
         "results": [result(ref, best[ref][3]) for ref in ranked[:limit]],
+    }
+    return respond(request, data, rev=header_rev)
+
+
+# --- Drift ---------------------------------------------------------------------------------
+
+
+@router.post("/{tree_id}/drift")
+def start_drift(request, tree_id: str):
+    """Start a drift run in the background: 202, or 409 if one is active."""
+    tree = get_tree(tree_id)
+    user = request.user.get_username() if request.user.is_authenticated else "anonymous"
+    try:
+        drift.start_drift(tree.id, user)
+    except drift.DriftBusy as exc:
+        raise APIError(409, "drift_in_progress", str(exc)) from None
+    response = respond(request, drift.get_status(tree.id))
+    response.status_code = 202
+    return response
+
+
+@router.get("/{tree_id}/drift/status")
+def drift_status(request, tree_id: str):
+    tree = get_tree(tree_id)
+    drift.clear_status(tree.id)  # a run whose process died isn't active
+    return respond(request, drift.get_status(tree.id))
+
+
+@router.get("/{tree_id}/drift")
+def drift_report(request, tree_id: str, limit: int | None = None, offset: int = 0):
+    """Nodes in the latest revision that currently have WoRMS warnings."""
+    view, header_rev = view_at(tree_id, None)
+    warnings = {ref: ws for ref, ws in current_warnings(view.state.nodes).items() if ws}
+    page, count = paginate(sorted(warnings), limit, offset)
+    data = {
+        "tree": view.tree.id,
+        "rev": view.rev,
+        "count": count,
+        "nodes": [
+            {
+                "id": ref,
+                "label": view.state.nodes[ref].label,
+                "version": view.state.nodes[ref].version,
+                "aphia_id": view.state.nodes[ref].aphia_id,
+                "worms_warnings": warnings[ref],
+            }
+            for ref in page
+        ],
     }
     return respond(request, data, rev=header_rev)

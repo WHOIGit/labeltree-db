@@ -2,7 +2,7 @@ from django.http import Http404
 from ninja import NinjaAPI
 from ninja.errors import ValidationError
 
-from . import nodes, trees
+from . import nodes, trees, worms
 from .conventions import APIError, bad_parameter, error_response, not_found
 
 api = NinjaAPI(title="labeltree-db", version="1")
@@ -34,3 +34,4 @@ def health(request):
 
 api.add_router("/nodes", nodes.router)
 api.add_router("/trees", trees.router)
+api.add_router("/worms", worms.router)

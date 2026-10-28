@@ -234,6 +234,9 @@ class Change(models.Model):
     op = models.CharField(max_length=10, choices=Op.choices)
     group = models.CharField(max_length=100, null=True, blank=True)  # noqa: DJ001 null = ungrouped
     payload = models.JSONField()
+    # WoRMS warnings this change would cause, [{warning, node, detail}], or
+    # "unavailable" if WoRMS couldn't be reached; refreshed on save and publish.
+    checks = models.JSONField(null=True, blank=True)
 
     class Meta:
         constraints = [
