@@ -1,11 +1,15 @@
 from django.http import Http404
 from ninja import NinjaAPI
-from ninja.errors import ValidationError
+from ninja.errors import AuthenticationError, HttpError, ValidationError
 
-from . import nodes, trees, worms
+from accounts.roles import Forbidden, NotAuthenticated
+
+from . import nodes, orgs, trees, worms
+from .auth import DEFAULT_AUTH
 from .conventions import APIError, bad_parameter, error_response, not_found
 
-api = NinjaAPI(title="labeltree-db", version="1")
+# Every route needs a login unless it opts out with auth=None (see api.auth).
+api = NinjaAPI(title="labeltree-db", version="1", auth=DEFAULT_AUTH)
 
 
 @api.exception_handler(APIError)
@@ -27,11 +31,29 @@ def handle_404(request, exc):
     return error_response(not_found(str(exc) or "Not found."))
 
 
-@api.get("/health")
+@api.exception_handler(AuthenticationError)
+@api.exception_handler(NotAuthenticated)
+def handle_unauthenticated(request, exc):
+    return error_response(APIError(401, "unauthorized", "Log in or send an API token."))
+
+
+@api.exception_handler(Forbidden)
+def handle_forbidden(request, exc: Forbidden):
+    return error_response(APIError(403, "forbidden", str(exc)))
+
+
+@api.exception_handler(HttpError)
+def handle_http_error(request, exc: HttpError):
+    error = "forbidden" if exc.status_code == 403 else "error"
+    return error_response(APIError(exc.status_code, error, exc.message))
+
+
+@api.get("/health", auth=None)
 def health(request):
     return {"status": "ok"}
 
 
 api.add_router("/nodes", nodes.router)
 api.add_router("/trees", trees.router)
+api.add_router("/orgs", orgs.router)
 api.add_router("/worms", worms.router)

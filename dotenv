@@ -5,6 +5,11 @@ DJANGO_SECRET_KEY=  # YOUR SECRET KEY
 DJANGO_DEBUG=false
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 DJANGO_CSRF_TRUSTED_ORIGINS=
+# true in production behind Apache (config/apache2/): trusts its X-Forwarded-Proto
+# and sends cookies over HTTPS only. Staging, e.g.:
+#   DJANGO_ALLOWED_HOSTS=labeltree-staging.whoi.edu
+#   DJANGO_CSRF_TRUSTED_ORIGINS=https://labeltree-staging.whoi.edu
+DJANGO_BEHIND_TLS_PROXY=false
 
 # Created on container start by `manage.py ensure_superuser` if missing.
 # Leave username or password empty to skip.

@@ -32,7 +32,7 @@ interaction. See proposal.md for motivation.
   stored.
 - Linking a clone to its source tree.
 - Users creating their own tokens, or managing users outside Django admin.
-- Roles that apply to every tree (beyond site admins owning all trees).
+- Roles that apply to a single tree within an organization.
 
 ## Decisions
 
@@ -53,52 +53,72 @@ interaction. See proposal.md for motivation.
   the API and checks it against the list of anonymous routes, so a new route
   is authenticated unless it is deliberately added there.
 
+- **Login rate limiting** with django-axes: 5 failed logins for one username
+  from one address lock that pair out for 15 minutes. Apache's stock modules
+  only throttle bandwidth, and locking the pair rather than the username keeps
+  others from locking a user out. The address is the `X-Forwarded-For` entry
+  Apache sets; gunicorn listens on `127.0.0.1` only, so the header can't be
+  sent around the proxy. Tokens are 256-bit random keys, so guessing them
+  needs no limit.
+
 Alternative: django-rest-knox, OAuth or WHOI single sign-on. Rejected or out
 of scope: nothing here needs expiry flows or third-party login.
 
-### Roles
+### Organizations and roles
 
 ```
- site      admin (Django superuser): users, tokens, tree creators; owner of every tree; sync_all
-           tree creator (Django permission core.add_tree): new-tree changesets
- per tree  owner > approver > drafter > reader      one row per (user, tree)
+ site      admin (Django superuser): users, tokens, organizations; owner of every organization; sync_all
+ per org   owner > approver > drafter > reader      one row per (user, organization)
+           every tree belongs to one organization; a role applies to all of its trees
 ```
 
-- **Storage:** `TreeMember(user, tree, role)`, unique on `(user, tree)`, with
-  `role` an ordered choice. One row holds the highest role; the lower ones are
-  implied, which is how "setting approver also gives drafter" works without
-  extra rows, and why the interface shows one role.
-- **Checks:** one helper, `require(user, tree, minimum)`, compares the user's
-  role (`owner` for superusers) with the minimum and raises `401` or `403`.
-  Every router and view calls it. The minimums, from the `access-control`
-  spec, in one place:
+- **Storage:** `Organization(id slug, name)` and `OrgMember(user, org, role)`
+  in `accounts`, unique on `(user, org)`, with `role` an ordered choice.
+  `Tree.org` is a required foreign key. One row holds the highest role; the
+  lower ones are implied, which is how "setting approver also gives drafter"
+  works without extra rows, and why the interface shows one role. Existing
+  trees move into organization `amplify` (`AMPLIfy`) in the migration.
+- **Checks:** one helper, `require(user, tree, minimum)`, looks up the user's
+  role in the tree's organization (`owner` for superusers), compares it with
+  the minimum and raises `401` or `403`. Every router and view calls it. It
+  keeps the tree in its signature, so per-tree overrides could be added in one
+  place later. The minimums, from the `access-control` spec, in one place:
 
   | Minimum | Actions |
   |---|---|
-  | none | tree and node reads, warnings report |
+  | none | tree, node and organization reads, warnings report |
   | `reader` | drafts (list, get), job status, members list, WoRMS lookups |
   | `drafter` | save, rebase and discard drafts, `validate`, fetch, `sync_new` and `sync_tree` jobs, aliases, descriptions |
   | `approver` | publish |
-  | `owner` | change members |
-  | superuser | `sync_all` |
+  | `owner` | change members; create, change, publish and discard new-tree changesets in the organization |
+  | superuser | `sync_all`; create organizations and move trees between them (Django admin) |
 
   WoRMS lookups and job status for `sync_all` aren't tree-scoped: any
-  authenticated user may call them.
-- **Members:** `GET /trees/{tree}/members`, `PUT
-  /trees/{tree}/members/{username} {role}` and `DELETE
-  /trees/{tree}/members/{username}`. Changing or removing an owner locks the
-  tree's member rows (`SELECT ... FOR UPDATE`) and refuses with `409
-  last_owner` if no owner would remain, unless a superuser makes the change.
-- **Tree creators:** the Django model permission `core.add_tree`, assignable
-  to users or groups in Django admin. Publishing a new tree inserts
-  `TreeMember(publisher, tree, owner)` in the publish transaction.
-- **Django admin** is for site admins only: users, tokens, the tree-creator
-  permission, and `TreeMember` rows for repairs such as a tree with no owner.
-  Owners never need staff access.
+  authenticated user may call them. A new-tree changeset has no tree yet; its
+  checks use the organization in `new_tree.org`, stored as
+  `Changeset.new_tree_org`.
+- **Members:** `GET /orgs/{org}/members`, `PUT /orgs/{org}/members/{username}
+  {role}` and `DELETE /orgs/{org}/members/{username}`. Changing or removing an
+  owner locks the organization's member rows (`SELECT ... FOR UPDATE`) and
+  refuses with `409 last_owner` if no owner would remain, unless a superuser
+  makes the change.
+- **Organization reads:** `GET /orgs` and `GET /orgs/{org}` (name and trees)
+  are anonymous, like tree reads; `GET /trees` adds each tree's `org`. Tree
+  ids stay globally unique and `/trees/{tree}` URLs are unchanged, so
+  consumers don't need to know about organizations.
+- **Django admin** is for site admins only: users, tokens, organizations,
+  `OrgMember` rows for repairs such as an organization with no owner, and a
+  tree's organization, the only editable field on a tree.
 
-Alternative: owners managing roles in Django admin. Rejected: Django admin
-permissions are per model, not per tree, so an owner could grant roles on any
-tree. A restricted admin is easy to get wrong.
+Alternatives:
+- Roles per tree (`TreeMember`). Rejected: every new tree would need its
+  members set up again, and the trees curators share are managed by the same
+  people anyway.
+- Organization roles with per-tree overrides. Deferred: it brings back a
+  second membership table and rules for which role wins. A tree that needs
+  different people can live in its own organization.
+- Owners managing roles in Django admin. Rejected: Django admin permissions
+  are per model, not per organization, so an owner could grant roles anywhere.
 
 ### WoRMS stays out of saves and publishes
 
@@ -278,8 +298,9 @@ Alpine.js and maps directly onto the API.
 ### Bootstrap and Alpine from static files
 
 Bootstrap 5 and Alpine.js are vendored into `static/`, not loaded from a CDN,
-so the app works on isolated lab networks. In production the reverse proxy
-serves `/static/` from `STATIC_ROOT`, filled by `collectstatic` at deploy.
+so the app works on isolated lab networks. In production Apache
+serves `/static/` from `/opt/labeltree/static`, which the container's
+`collectstatic` fills on start through a bind mount.
 
 ### Content Security Policy and Alpine's CSP build
 
@@ -313,8 +334,11 @@ could still execute through Alpine attributes.
 - [Anonymous reads expose tree content to anyone on the network] → As today;
   trees hold label names and descriptions, nothing sensitive. Drafts, members
   and job details need a login.
-- [A tree is left without an owner] → The last-owner rule; a site admin can
-  repair it in Django admin.
+- [An organization is left without an owner] → The last-owner rule; a site
+  admin can repair it in Django admin.
+- [A role covers trees its holder shouldn't edit] → Roles apply to the whole
+  organization by design; trees maintained by different people belong in
+  different organizations, which a site admin can move them to.
 - [Warnings computed at publish may use an older cached record] → A record is
   as fresh as the last fetch or sync; nightly `sync_tree` runs and Sync this
   tree bound the age. Each warning-history row's `computed_at` is unchanged in
@@ -334,13 +358,16 @@ could still execute through Alpine attributes.
 
 ## Migration Plan
 
-1. Deploy the `ApiToken` and `TreeMember` migrations. Reads are unaffected, so
+1. Deploy the migrations, which add tokens, organizations and members, and
+   put the existing trees in organization `amplify`. Reads are unaffected, so
    consumers need no change.
-2. In Django admin, create curator accounts, grant the tree-creator permission
-   to those who start trees, and make an owner of each existing tree (the
-   operator who loaded it). Owners then add their members on the Members page.
+2. In Django admin, create curator accounts and make at least one of them an
+   owner of `amplify`. Owners then add the other members on the organization
+   page.
 3. Issue tokens to scripts that write.
-4. Configure the reverse proxy to serve `/static/` from `STATIC_ROOT`.
+4. Install the Apache site from `config/apache2/` (TLS, `/static/` from
+   `/opt/labeltree/static`, which `collectstatic` fills on start) and set
+   `DJANGO_BEHIND_TLS_PROXY=true`.
 5. Replace `run_drift` with `worms_sync` in the cron entry. Its exit status
    now reports any failed AphiaID rather than a stopped run.
 

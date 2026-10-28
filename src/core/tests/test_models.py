@@ -3,13 +3,14 @@ from django.db import IntegrityError, transaction
 
 from core.labels import allocate_node_ids
 from core.models import Node, NodeVersion, Tree
+from core.tests.helpers import org
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
 def tree():
-    return Tree.objects.create(id="t", title="T")
+    return Tree.objects.create(id="t", title="T", org_id=org())
 
 
 def make_node(tree, node_id, created=1):
@@ -48,7 +49,7 @@ def test_labels_are_case_sensitive(tree):
 
 
 def test_same_label_in_other_tree(tree):
-    other = Tree.objects.create(id="u", title="U")
+    other = Tree.objects.create(id="u", title="U", org_id=org())
     make_version(make_node(tree, 1), 1, "bleb", 1)
     make_version(make_node(other, 2), 1, "bleb", 1)
 

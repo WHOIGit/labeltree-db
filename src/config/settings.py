@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/6.1/topics/settings/
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -27,8 +28,12 @@ DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
 
-# TODO: production security settings (SECURE_PROXY_SSL_HEADER, secure cookies,
-# HSTS) once the reverse proxy is decided.
+# Behind Apache (config/apache2/), which terminates TLS and sets
+# X-Forwarded-Proto. Off for local development over plain HTTP.
+if env.bool("DJANGO_BEHIND_TLS_PROXY", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 
 # Application definition
@@ -42,6 +47,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.postgres",
     "ninja",
+    "axes",
     "accounts",
     "core",
     "worms",
@@ -56,6 +62,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Last, as django-axes requires.
+    "axes.middleware.AxesMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -109,6 +117,26 @@ CACHES = {
 # Authentication
 
 AUTH_USER_MODEL = "accounts.User"
+
+AUTHENTICATION_BACKENDS = [
+    # First: refuses logins while a username and address are locked out.
+    "axes.backends.AxesStandaloneBackend",
+    "django.contrib.auth.backends.ModelBackend",
+]
+
+# Login rate limiting (django-axes): after 5 failed logins for one username from
+# one address, that pair is locked out for 15 minutes. Locking the pair rather
+# than the username keeps others from locking a user out.
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = timedelta(minutes=15)
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
+AXES_RESET_ON_SUCCESS = True
+# The client address is the X-Forwarded-For entry Apache sets. A header with
+# more entries means the client sent its own; then the proxy's address is used,
+# so spoofing the header can't dodge the limit. Only Apache must reach gunicorn
+# (compose-prod.yaml binds it to 127.0.0.1).
+AXES_IPWARE_PROXY_COUNT = 0
+AXES_IPWARE_META_PRECEDENCE_ORDER = ["HTTP_X_FORWARDED_FOR", "REMOTE_ADDR"]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

@@ -35,14 +35,14 @@ def node_at(node_id: int, rev: int | None, dropempty: bool):
     return node, r, header_rev, RevisionView(node.tree, r, dropempty=dropempty)
 
 
-@router.get("/{node_id}")
+@router.get("/{node_id}", auth=None)
 def node_detail(request, node_id: int, rev: int | None = None, dropempty: bool = False):
     node, r, header_rev, view = node_at(node_id, rev, dropempty)
     data = view.detailed(node.id) if view else deprecation_record(node, r, dropempty=dropempty)
     return respond(request, data, rev=header_rev)
 
 
-@router.get("/{node_id}/ancestors")
+@router.get("/{node_id}/ancestors", auth=None)
 def node_ancestors(request, node_id: int, rev: int | None = None, dropempty: bool = False):
     node, r, header_rev, view = node_at(node_id, rev, dropempty)
     if view is None:
@@ -56,7 +56,7 @@ def node_ancestors(request, node_id: int, rev: int | None = None, dropempty: boo
     return respond(request, data, rev=header_rev)
 
 
-@router.get("/{node_id}/descendants")
+@router.get("/{node_id}/descendants", auth=None)
 def node_descendants(
     request, node_id: int, rev: int | None = None, depth: str = "all", dropempty: bool = False
 ):
@@ -68,7 +68,7 @@ def node_descendants(
     return respond(request, data, rev=header_rev)
 
 
-@router.get("/{node_id}/versions")
+@router.get("/{node_id}/versions", auth=None)
 def node_versions(request, node_id: int):
     node = get_node(node_id)
     data = {
@@ -86,7 +86,7 @@ def node_versions(request, node_id: int):
     return respond(request, data)
 
 
-@router.get("/{node_id}/versions/{version}")
+@router.get("/{node_id}/versions/{version}", auth=None)
 def node_at_version(
     request, node_id: int, version: int, rev: int | None = None, dropempty: bool = False
 ):
@@ -109,7 +109,7 @@ def node_at_version(
     return respond(request, view.detailed(node.id), rev=header_rev)
 
 
-@router.get("/{node_id}/warning_history")
+@router.get("/{node_id}/warning_history", auth=None)
 def node_warning_history(request, node_id: int, limit: int | None = None, offset: int = 0):
     """WoRMS warnings over time, newest first; the first row is the current set."""
     node = get_node(node_id)

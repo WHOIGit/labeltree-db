@@ -1,8 +1,23 @@
 """/worms lookups (spec: worms-records)."""
 
 import httpx
+import pytest
 
 from worms.models import WormsRecord
+
+from .conftest import logged_in, make_user
+
+
+@pytest.fixture
+def get(db):
+    """Lookups need a login (any user, no role)."""
+    client = logged_in(make_user("someone"))
+
+    def _get(path, **headers):
+        response = client.get(f"/api/v1{path}", headers=headers)
+        return response.status_code, response.json(), response
+
+    return _get
 
 
 def test_cache_miss_is_fetched_cached_and_returned(get, worms_http):

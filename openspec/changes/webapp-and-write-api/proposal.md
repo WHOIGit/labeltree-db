@@ -4,9 +4,9 @@
 
 After `core-tree-model` and `worms-integration`, trees can only be created or
 changed from the command line, and nothing records who may change which tree.
-Curators need to draft, review and publish edits in a browser, tree owners need
-to decide who may edit their trees, and edits must go through role-checked
-endpoints, while published trees stay readable by anyone. Saves
+Curators need to draft, review and publish edits in a browser, the groups that
+maintain trees need to decide who may edit them, and edits must go through
+role-checked endpoints, while published trees stay readable by anyone. Saves
 and publishes also wait on WoRMS today, which makes them slow and unpredictable
 when WoRMS is slow.
 
@@ -15,11 +15,13 @@ when WoRMS is slow.
 - Tree and node reads stay anonymous. Everything else (drafts, `validate`,
   WoRMS lookups and jobs, alias and description writes, members) requires
   authentication: a session for the web app, a per-user API token for scripts.
-- Per-tree roles on a ladder, `reader` < `drafter` < `approver` < `owner`, one
-  per user and tree, each including the ones below. Owners manage their tree's
-  members in the web app. Site admins (Django superusers) manage users, tokens
-  and the global tree-creator role in Django admin, own every tree, and run
-  full cache syncs.
+- Organizations: every tree belongs to one. Users hold one role per
+  organization on a ladder, `reader` < `drafter` < `approver` < `owner`, each
+  including the ones below and applying to all the organization's trees.
+  Owners manage members and create trees in their organization. Site admins
+  (Django superusers) manage users, tokens and organizations in Django admin,
+  own every organization, and run full cache syncs. Existing trees go into
+  organization `AMPLIfy`.
 - Write API: `validate`, changeset create/list/get/update/publish/discard with
   `ETag`/`If-Match`, direct alias add/remove/history, and direct description
   set/history. `validate` returns each reduced change's `sources` and the net
@@ -39,10 +41,10 @@ when WoRMS is slow.
 - Server-rendered web app: tree browser with revision picker, AphiaID pills,
   warnings panel and sync menu; node page with warning history; draft editor
   with a Validate step, tabbed changes panel and jump-to-node; draft list and
-  review by node; a Members page per tree; merge and split wizards; import
-  wizard; Add from WoRMS; alias and description editing; and clone as new
-  tree. Anonymous visitors can browse read only. The page scripts run under a
-  strict Content Security Policy.
+  review by node; an organization page with its members; merge and split
+  wizards; import wizard; Add from WoRMS; alias and description editing; and
+  clone as new tree. Anonymous visitors can browse read only. The page scripts
+  run under a strict Content Security Policy.
 - Cloning turns a published revision into a stand-alone new-tree changeset,
   which an approved publish turns into revision 1 of a new tree.
 
@@ -51,8 +53,8 @@ when WoRMS is slow.
 ### New Capabilities
 
 - `access-control`: which endpoints are anonymous, authentication (sessions,
-  API tokens), the per-tree role ladder and what each role may do, tree
-  members, site admins and tree creators.
+  API tokens), organizations, the role ladder and what each role may do,
+  organization members, site admins and creating trees.
 - `changeset-api`: the `validate` endpoint and the changeset endpoints,
   including change provenance, net changes per node, cache-only WoRMS checks,
   concurrency control (`ETag`/`If-Match`), rebasing, publishing and their
@@ -80,7 +82,9 @@ when WoRMS is slow.
 
 - API consumers that only read (roi-db, datasetman, annotation tools) are
   unaffected. Scripts that write need a token.
-- New tables for API tokens and tree members.
+- New tables for API tokens, organizations and organization members; trees
+  gain a required organization. `GET /trees` adds `org`, and `GET /orgs` is
+  new; existing read responses are otherwise unchanged.
 - `src/worms` gains a job runner that generalises the drift runner, renamed
   `worms/sync.py`; the `run_drift` and `clear_drift_status` commands become
   `worms_sync` and `clear_worms_jobs`;

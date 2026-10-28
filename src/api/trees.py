@@ -7,6 +7,8 @@ from django.db import connection
 from django.db.models import Count
 from ninja import Router
 
+from accounts.models import Role
+from accounts.roles import require
 from core.changesets import latest_rev
 from core.models import Change, Node, NodeAlias, NodeVersion, Tree, TreeRevision
 from worms import drift
@@ -60,7 +62,7 @@ def int_param(request, name: str) -> int:
 # --- Tree info and history -------------------------------------------------------------
 
 
-@router.get("")
+@router.get("", auth=None)
 def list_trees(request):
     trees = []
     for tree in Tree.objects.order_by("id"):
@@ -70,6 +72,7 @@ def list_trees(request):
                 "id": tree.id,
                 "title": tree.title,
                 "description": tree.description,
+                "org": tree.org_id,
                 "latest_rev": latest.number,
                 "published_at": latest.published_at.isoformat(),
                 "num_nodes": NodeVersion.objects.filter(
@@ -80,7 +83,7 @@ def list_trees(request):
     return respond(request, {"trees": trees})
 
 
-@router.get("/{tree_id}")
+@router.get("/{tree_id}", auth=None)
 def tree_summary(request, tree_id: str, rev: int | None = None):
     view, header_rev = view_at(tree_id, rev)
     revision = view.tree.revisions.select_related("changeset").get(number=view.rev)
@@ -98,7 +101,7 @@ def tree_summary(request, tree_id: str, rev: int | None = None):
     return respond(request, data, rev=header_rev)
 
 
-@router.get("/{tree_id}/revisions")
+@router.get("/{tree_id}/revisions", auth=None)
 def tree_revisions(request, tree_id: str, limit: int | None = None, offset: int = 0):
     tree = get_tree(tree_id)
     revisions = (
@@ -142,7 +145,7 @@ def ordered_payload(payload: dict) -> dict:
     return dict(sorted(payload.items(), key=lambda kv: PAYLOAD_ORDER.index(kv[0])))
 
 
-@router.get("/{tree_id}/revisions/{rev}/changes")
+@router.get("/{tree_id}/revisions/{rev}/changes", auth=None)
 def revision_changes(request, tree_id: str, rev: int):
     tree = get_tree(tree_id)
     try:
@@ -163,7 +166,7 @@ def revision_changes(request, tree_id: str, rev: int):
     return respond(request, data)
 
 
-@router.get("/{tree_id}/diff")
+@router.get("/{tree_id}/diff", auth=None)
 def tree_diff(request, tree_id: str):
     tree = get_tree(tree_id)
     frm, to = int_param(request, "from"), int_param(request, "to")
@@ -212,7 +215,7 @@ def tree_diff(request, tree_id: str):
 # --- Browsing and export ----------------------------------------------------------------
 
 
-@router.get("/{tree_id}/nodes_as_tree")
+@router.get("/{tree_id}/nodes_as_tree", auth=None)
 def nodes_as_tree(
     request, tree_id: str, rev: int | None = None, depth: str = "all", dropempty: bool = False
 ):
@@ -230,7 +233,7 @@ def nodes_as_tree(
     return respond(request, data, rev=header_rev)
 
 
-@router.get("/{tree_id}/export")
+@router.get("/{tree_id}/export", auth=None)
 def export(
     request, tree_id: str, rev: int | None = None, parents: bool = False, dropempty: bool = False
 ):
@@ -265,7 +268,7 @@ FLAT_COLUMNS = [
 ]
 
 
-@router.get("/{tree_id}/export_flat")
+@router.get("/{tree_id}/export_flat", auth=None)
 def export_flat(request, tree_id: str, rev: int | None = None):
     view, header_rev = view_at(tree_id, rev)
     view.preload()
@@ -303,7 +306,7 @@ def export_flat(request, tree_id: str, rev: int | None = None):
 # --- Finding nodes -------------------------------------------------------------------------
 
 
-@router.get("/{tree_id}/nodes/{label}")
+@router.get("/{tree_id}/nodes/{label}", auth=None)
 def node_by_label(
     request, tree_id: str, label: str, rev: int | None = None, dropempty: bool = False
 ):
@@ -318,7 +321,7 @@ def _split(raw: str | None) -> list[str]:
     return [part for part in (raw or "").split(",") if part != ""]
 
 
-@router.get("/{tree_id}/nodes")
+@router.get("/{tree_id}/nodes", auth=None)
 def nodes_batch(
     request,
     tree_id: str,
@@ -375,7 +378,7 @@ def _fuzzy_scores(query: str, candidates: list[str]) -> dict[str, float]:
         return dict(cursor.fetchall())
 
 
-@router.get("/{tree_id}/search")
+@router.get("/{tree_id}/search", auth=None)
 def search(
     request,
     tree_id: str,
@@ -459,9 +462,9 @@ def search(
 def start_drift(request, tree_id: str):
     """Start a drift run in the background: 202, or 409 if one is active."""
     tree = get_tree(tree_id)
-    user = request.user.get_username() if request.user.is_authenticated else "anonymous"
+    require(request.user, tree.id, Role.DRAFTER)
     try:
-        drift.start_drift(tree.id, user)
+        drift.start_drift(tree.id, request.user.get_username())
     except drift.DriftBusy as exc:
         raise APIError(409, "drift_in_progress", str(exc)) from None
     response = respond(request, drift.get_status(tree.id))
@@ -472,11 +475,12 @@ def start_drift(request, tree_id: str):
 @router.get("/{tree_id}/drift/status")
 def drift_status(request, tree_id: str):
     tree = get_tree(tree_id)
+    require(request.user, tree.id, Role.READER)
     drift.clear_status(tree.id)  # a run whose process died isn't active
     return respond(request, drift.get_status(tree.id))
 
 
-@router.get("/{tree_id}/drift")
+@router.get("/{tree_id}/drift", auth=None)
 def drift_report(request, tree_id: str, limit: int | None = None, offset: int = 0):
     """Nodes in the latest revision that currently have WoRMS warnings."""
     view, header_rev = view_at(tree_id, None)

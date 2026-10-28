@@ -17,6 +17,8 @@ class Tree(models.Model):
     id = models.SlugField(primary_key=True, max_length=100)
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
+    # Who may change the tree: roles are held per organization.
+    org = models.ForeignKey("accounts.Organization", on_delete=models.PROTECT, related_name="trees")
 
     def __str__(self):
         return self.id
@@ -197,6 +199,10 @@ class Changeset(models.Model):
     new_tree_id = models.SlugField(max_length=100, null=True, blank=True)  # noqa: DJ001
     new_tree_title = models.CharField(max_length=200, blank=True, default="")
     new_tree_description = models.TextField(blank=True, default="")
+    new_tree_org = models.ForeignKey(
+        "accounts.Organization", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="+",
+    )  # fmt: skip
     state = models.CharField(max_length=10, choices=State.choices, default=State.DRAFT)
     # Null for a new-tree changeset.
     base_rev = models.PositiveIntegerField(null=True, blank=True)

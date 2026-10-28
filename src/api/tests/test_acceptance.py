@@ -20,7 +20,7 @@ import pytest
 from django.core.management import call_command
 
 from core.models import Tree
-from core.tests.helpers import TAGS, deprecate, edit, move, publish
+from core.tests.helpers import TAGS, deprecate, edit, move, org, publish
 
 FIXTURES = Path(__file__).parent / "acceptance"
 MASKED = {"published_at", "changeset"}
@@ -55,7 +55,7 @@ def mask(value):
 def two_revisions():
     call_command(
         "import_tree", str(TAGS), tree="NES2022_tags", title="NES2022 tags", user="op",
-        stdout=StringIO(),
+        org=org(), stdout=StringIO(),
     )  # fmt: skip
     publish(
         Tree.objects.get(id="NES2022_tags"),

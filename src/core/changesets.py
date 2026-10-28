@@ -58,6 +58,7 @@ class ChangesetError(Exception):
 class NewTree:
     id: str
     title: str
+    org: str  # the organization the tree will belong to
     description: str = ""
 
 
@@ -144,6 +145,7 @@ def create_changeset(
             new_tree_id=new_tree.id,
             new_tree_title=new_tree.title,
             new_tree_description=new_tree.description,
+            new_tree_org_id=new_tree.org,
             author=author,
             notes=notes,
         )
@@ -294,6 +296,7 @@ def _write_revision(changeset, base, result: CheckResult, number, published_by, 
             id=changeset.new_tree_id,
             title=changeset.new_tree_title,
             description=changeset.new_tree_description,
+            org_id=changeset.new_tree_org_id,
         )
     else:
         tree = changeset.tree

@@ -4,7 +4,7 @@ REST API built with django-ninja, served under `/api/v1`. Consumers **pull**;
 the service pushes no notifications or events.
 
 - [Authentication and roles](#authentication-and-roles)
-- [Read endpoints](#read-endpoints): [nodes](#nodes), [trees](#trees)
+- [Read endpoints](#read-endpoints): [nodes](#nodes), [trees](#trees), [organizations](#organizations)
 - [Write endpoints](#write-endpoints): [WoRMS jobs and warnings](#worms-jobs-and-warnings)
 - [Caching](#caching)
 - [Errors and status codes](#errors-and-status-codes)
@@ -13,33 +13,29 @@ the service pushes no notifications or events.
 
 ## Authentication and roles
 
-Published trees are open: the [read endpoints](#read-endpoints), alias and
-description history, the WoRMS warnings report and `/health` need no
-credentials, so consumers such as roi-db and datasetman read anonymously.
+Published trees are open: the [read endpoints](#read-endpoints), including
+organizations, alias and description history, the WoRMS warnings report and
+`/health` need no credentials, so consumers such as roi-db and datasetman read anonymously.
 Everything else needs a logged-in user and returns `401` without one:
 
 - Django users and sessions for the web app (CSRF-checked).
 - Per-user API tokens for scripts, sent as `Authorization: Token <key>`. A
   token acts as its user. Its key is shown once when a site admin creates it.
 
-Each user holds at most one role per tree. Roles form a ladder, and each
-includes everything below it:
+Every tree belongs to one **organization**, such as `amplify` (AMPLIfy). Each
+user holds at most one role per organization, which applies to all its trees.
+Roles form a ladder, and each includes everything below it:
 
-| Role | Can |
+| Role | Can, on every tree of the organization |
 |---|---|
-| `reader` | See the tree's drafts, its WoRMS jobs and its members. Use the WoRMS lookups. |
-| `drafter` | Create, update, rebase and discard any draft, validate, run fetch jobs and sync the tree's WoRMS data. Add and remove aliases, set descriptions. |
+| `reader` | See drafts, WoRMS jobs and the organization's members. Use the WoRMS lookups. |
+| `drafter` | Create, update, rebase and discard any draft, validate, run fetch jobs and sync WoRMS data. Add and remove aliases, set descriptions. |
 | `approver` | Publish drafts, including their own. |
-| `owner` | Manage the tree's members: add users, change roles (including to `owner`), remove members. The last owner can't be removed or demoted. |
+| `owner` | Manage the organization's members: add users, change roles (including to `owner`), remove members; the last owner can't be removed or demoted. Create new trees in the organization (changesets with `base_rev: null`). |
 
-Two roles apply across trees, assigned in Django admin:
-
-- **Site admin** (Django superuser): manages users, tokens and tree creators,
-  is `owner` of every tree, and alone can start a full cache sync
-  (`sync_all`).
-- **Tree creator** (Django's `core.add_tree` permission): may create, see and
-  publish changesets with `base_rev: null`. Publishing one makes the publisher
-  `owner` of the new tree.
+**Site admins** (Django superusers) manage users, tokens and organizations in
+Django admin, move trees between organizations, are `owner` in every
+organization, and alone can start a full cache sync (`sync_all`).
 
 ## Read endpoints
 
@@ -231,7 +227,7 @@ GET /trees/{tree}/search?aphia_id=           every node with that AphiaID
 `GET /trees`:
 
 ```
-{trees: [{id: "taxonomy", title, description, latest_rev: 42, published_at, num_nodes: 1180}, ...]}
+{trees: [{id: "taxonomy", title, description, org: "amplify", latest_rev: 42, published_at, num_nodes: 1180}, ...]}
 ```
 
 `GET /trees/{tree}?rev=42` returns the tree summary **and** the metadata of
@@ -374,6 +370,19 @@ Results are lite nodes with their path and what they matched on:
             path: "Chromista/Bacillariophyceae/Chaetoceros", matched_on: "label"}, ...]}
 ```
 
+### Organizations
+
+```
+GET /orgs                                    organizations with their trees
+GET /orgs/{org}                              one organization
+```
+
+```
+{orgs: [{id: "amplify", name: "AMPLIfy", trees: ["NES2022_tags", "NES2022_taxonomy"]}]}
+```
+
+Members and their roles need a login; see [write endpoints](#write-endpoints).
+
 ## Write endpoints
 
 Token or session auth, role-checked. The browser composes changes as a
@@ -391,8 +400,8 @@ POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, confli
 # Changesets
 GET    /trees/{tree}/changesets?state=  list changesets, e.g. drafts awaiting approval
 POST   /trees/{tree}/changesets         {base_rev, changes[], notes} → new draft
-POST   /changesets                      {new_tree: {id, title, description}, changes[], notes}
-                                        → new-tree draft (tree creator)
+POST   /changesets                      {new_tree: {id, title, description, org}, changes[], notes}
+                                        → new-tree draft (owner of org)
 PUT    /changesets/{cs}                 replace a draft's changes, notes and base_rev (If-Match)
 GET    /changesets/{cs}                 a changeset's atomic changes, plus validation results if a draft
 POST   /changesets/{cs}/publish {notes} approver; draft → new tree revision (If-Match)
@@ -420,12 +429,12 @@ PUT    /nodes/{id}/description {description}
                                         set the description (drafter); "" clears it.
                                         Earlier entries are kept
 
-# Members
-GET    /trees/{tree}/members            members with their roles (reader)
-PUT    /trees/{tree}/members/{username} {role}
+# Organization members
+GET    /orgs/{org}/members              members with their roles (reader)
+PUT    /orgs/{org}/members/{username} {role}
                                         add a user or change their role (owner);
                                         409 last_owner if it would leave no owner
-DELETE /trees/{tree}/members/{username} remove a member (owner); 409 last_owner as above
+DELETE /orgs/{org}/members/{username}   remove a member (owner); 409 last_owner as above
 ```
 
 WoRMS jobs and the warnings report are [under `/worms`](#worms-jobs-and-warnings).
@@ -604,9 +613,9 @@ Errors have one body shape:
 | `304` | Not modified, after `If-None-Match` ([Caching](#caching)). |
 | `400` | Bad parameter, e.g. `?rev` outside a version's range on `/versions/{v}`, or `between` on records where neither is an ancestor of the other. |
 | `401` | Not authenticated, on an endpoint that needs a login. |
-| `403` | Authenticated, but the user's role on this tree is too low, or not a site admin for `sync_all`. |
+| `403` | Authenticated, but the user's role in the tree's organization is too low, or not a site admin for `sync_all`. |
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
-| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting a tree's last owner (`last_owner`). |
+| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting an organization's last owner (`last_owner`). |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
 | `422` | Request body invalid, or publish blocked by structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |

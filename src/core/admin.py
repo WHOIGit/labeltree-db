@@ -28,7 +28,16 @@ class ReadOnlyAdmin(admin.ModelAdmin):
 
 @admin.register(Tree)
 class TreeAdmin(ReadOnlyAdmin):
-    list_display = ["id", "title"]
+    """Only a tree's organization can change here, by a site admin; its content
+    changes by publishing."""
+
+    list_display = ["id", "title", "org"]
+    list_filter = ["org"]
+    fields = ["id", "title", "description", "org"]
+    readonly_fields = ["id", "title", "description"]
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
 
 
 @admin.register(TreeRevision)
@@ -57,7 +66,9 @@ class SuccessorAdmin(ReadOnlyAdmin):
 
 @admin.register(Changeset)
 class ChangesetAdmin(ReadOnlyAdmin):
-    list_display = ["id", "tree", "new_tree_id", "state", "base_rev", "author", "updated_at"]
+    list_display = [
+        "id", "tree", "new_tree_id", "new_tree_org", "state", "base_rev", "author", "updated_at",
+    ]  # fmt: skip
     list_filter = ["state", "tree"]
 
 

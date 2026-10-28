@@ -14,7 +14,7 @@ same role checks as API clients. Controls the user's roles do not allow SHALL be
 shown disabled, with the reason as a tooltip.
 
 #### Scenario: Reader opens the edit menu
-- **WHEN** a user who is `reader` on a tree views it
+- **WHEN** a user who is `reader` in a tree's organization views it
 - **THEN** the Edit button is disabled with a tooltip naming the role needed
 
 #### Scenario: Anonymous visitor
@@ -25,8 +25,8 @@ shown disabled, with the reason as a tooltip.
 The tree browser SHALL show a selected tree at a selected published revision as
 an expandable nested list, with each node's label and child count, Expand all
 and Collapse all, and a filter matching labels and aliases that expands the
-matches' ancestors. The revision picker SHALL list each revision with its
-publish date and author.
+matches' ancestors. The tree picker SHALL group trees by organization. The
+revision picker SHALL list each revision with its publish date and author.
 
 #### Scenario: Viewing a past revision
 - **WHEN** a user picks revision 2 of a tree whose latest revision is 3
@@ -105,20 +105,20 @@ kind of job for the failed AphiaIDs only, or Proceed anyway.
 - **WHEN** a fetch job started by Validate finishes with AphiaID 149122 failed and the user chooses Proceed anyway
 - **THEN** the validation result is shown with the changes needing 149122 marked as unchecked, and Save is enabled
 
-### Requirement: Members page
-Each tree SHALL have a Members page listing its members with their highest
-role, shown to members of the tree. Owners SHALL be able to add an existing
-user at a role, change a member's role and remove a member there. The page
-SHALL explain that each role includes the ones below it, and a user's own page
-SHALL list their trees and roles.
+### Requirement: Organization page
+Each organization SHALL have a page listing its trees, and, for its members,
+its members with their role. Owners SHALL be able to add an existing user at a
+role, change a member's role and remove a member there. The page SHALL explain
+that each role includes the ones below it and applies to every tree of the
+organization, and a user's own page SHALL list their organizations and roles.
 
 #### Scenario: Owner adds a drafter
-- **WHEN** an owner adds user `curator2` as `drafter` on the Members page
-- **THEN** `curator2` is listed as `drafter` and can save drafts on the tree
+- **WHEN** an owner adds user `curator2` as `drafter` on the organization page
+- **THEN** `curator2` is listed as `drafter` and can save drafts on every tree of the organization
 
 #### Scenario: Last owner
-- **WHEN** the only owner tries to demote themselves on the Members page
-- **THEN** the change is refused with an explanation that the tree needs an owner
+- **WHEN** the only owner tries to demote themselves on the organization page
+- **THEN** the change is refused with an explanation that the organization needs an owner
 
 ### Requirement: Revision changes in static mode
 When browsing a published revision, the changes panel SHALL show the changeset
@@ -341,10 +341,11 @@ its `add` and be written on publish.
 - **THEN** the description is saved immediately and no draft is created
 
 ### Requirement: Clone as new tree
-Users with the tree-creation permission SHALL be able to clone the displayed
-revision as a new tree by entering its id, title and description. This SHALL
+Owners of an organization SHALL be able to clone the displayed revision as a
+new tree in that organization by choosing the organization and entering the
+new tree's id, title and description. This SHALL
 create a new-tree draft that opens in edit mode for review before publishing.
 
 #### Scenario: Clone flow
-- **WHEN** a permitted user clones revision 3 as `lab_taxonomy`
+- **WHEN** an owner of `lab_a` clones revision 3 of `NES2022_taxonomy` as `lab_taxonomy` in `lab_a`
 - **THEN** a new-tree draft for `lab_taxonomy` opens in edit mode with one collapsed `import#1` group

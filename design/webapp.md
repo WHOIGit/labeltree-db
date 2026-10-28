@@ -29,8 +29,11 @@ An interactive mockup of the tree browser and draft editor is in
   parent from its lineage. The label is the scientific name with spaces turned
   into `_` and characters that aren't machine-safe dropped
   (`Chaetoceros (Hyalochaete) debilis` → `Chaetoceros_Hyalochaete_debilis`).
-- **Members:** each tree's members and their roles. Owners add users, change
-  roles and remove members here.
+- **Organization:** an organization's trees and, for its members, its members
+  and their roles. Owners add users, change roles and remove members here. A
+  role applies to every tree of the organization. The tree picker groups
+  trees by organization, and each user's own page lists their organizations
+  and roles.
 
 Anyone can browse trees, revisions and node pages without logging in; the top
 bar then shows **Log in to edit** instead of the edit and sync controls. Roles
@@ -59,7 +62,7 @@ creates the tree together with its revision 1 ([New trees](#new-trees)).
   records its `base_rev`; updating it replaces its changes, notes and
   `base_rev`. Saving [reduces](backend.md#reduction-on-save) the change list, and only the
   reduced list is stored: reopening a draft starts from it.
-  Drafts are visible to the tree's members (readers and up).
+  Drafts are visible to members of the tree's organization (readers and up).
   Any drafter may update or discard any draft, not only their own.
 - **Publishing** is done by an approver. `base_rev` must equal the latest
   revision `r`, and all checks run again, the WoRMS checks against cached
@@ -289,12 +292,12 @@ only `label` required:
 
 There are no empty trees: a tree exists only once it has a revision.
 
-1. A tree creator (a global role assigned by site admins) creates a changeset with
-   `base_rev: null` carrying the new tree's id, title and description, by
+1. An owner of an organization creates a changeset with `base_rev: null`
+   carrying the new tree's id, title, description and organization, by
    importing, building it by hand, or both.
-2. A tree creator publishes it. This creates the
-   tree and its revision 1 together, and makes the publisher `owner` of the
-   new tree, who then adds its members on the Members page.
+2. An owner of that organization publishes it. This creates the tree in the
+   organization with its revision 1, and the organization's members have
+   their roles on it at once.
 
 So every revision, including revision 1, comes from a published changeset. The
 [example trees](backend.md#example-trees) are loaded this way, through the
@@ -306,8 +309,8 @@ Cloning converts a published revision of an existing tree into a stand-alone
 new-tree changeset. It is the [new tree](#new-trees) flow with the import taken
 from that revision:
 
-1. A tree creator enters the new tree's id, title and
-   description.
+1. An owner of an organization picks it and enters the new tree's id, title
+   and description.
 2. The source revision's nodes become an `import#1` draft with
    `base_rev: null`, as if its `/export` output had been imported. Labels and
    AphiaIDs at that revision, and the current descriptions and aliases, are

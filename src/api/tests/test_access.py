@@ -1,0 +1,318 @@
+"""Authentication, organizations and roles (spec: access-control)."""
+
+import re
+
+import pytest
+from django.test import Client
+
+from accounts.models import ApiToken, Organization, OrgMember, Role
+from api.api import api
+from core.tests.helpers import add, publish_new_tree
+from worms import drift
+
+from .conftest import call, logged_in, make_user
+
+pytestmark = pytest.mark.django_db
+
+# Routes that need no login. A new route needs one unless it is added here.
+ANONYMOUS_ROUTES = {
+    "GET /health",
+    "GET /orgs",
+    "GET /orgs/{org_id}",
+    "GET /nodes/{node_id}",
+    "GET /nodes/{node_id}/ancestors",
+    "GET /nodes/{node_id}/descendants",
+    "GET /nodes/{node_id}/versions",
+    "GET /nodes/{node_id}/versions/{version}",
+    "GET /nodes/{node_id}/warning_history",
+    "GET /trees",
+    "GET /trees/{tree_id}",
+    "GET /trees/{tree_id}/revisions",
+    "GET /trees/{tree_id}/revisions/{rev}/changes",
+    "GET /trees/{tree_id}/diff",
+    "GET /trees/{tree_id}/nodes_as_tree",
+    "GET /trees/{tree_id}/export",
+    "GET /trees/{tree_id}/export_flat",
+    "GET /trees/{tree_id}/nodes/{label}",
+    "GET /trees/{tree_id}/nodes",
+    "GET /trees/{tree_id}/search",
+    "GET /trees/{tree_id}/drift",
+}
+
+SAMPLE_PARAMS = {
+    "tree_id": "taxonomy", "node_id": "1", "version": "1", "rev": "1", "label": "other",
+    "username": "someone", "org_id": "amplify", "aphia_id": "148985", "a": "148985", "b": "149122",
+}  # fmt: skip
+
+
+def routes() -> dict[str, bool]:
+    """'METHOD /path' -> whether the route needs authentication.
+
+    Walks the API's bound routers rather than the OpenAPI schema, so routes
+    hidden from the docs (include_in_schema=False) are checked too.
+    """
+    found = {}
+    for router in api._get_bound_routers():
+        for path, view in router.path_operations.items():
+            for operation in view.operations:
+                for method in operation.methods:
+                    route = f"{method} {router.prefix}{path}".rstrip("/") or "/"
+                    found[route] = bool(operation.auth_callbacks)
+    return found
+
+
+def test_anonymous_routes_are_exactly_the_listed_ones():
+    anonymous = {route for route, needs_auth in routes().items() if not needs_auth}
+    assert anonymous == ANONYMOUS_ROUTES
+
+
+def test_every_other_route_answers_401_without_credentials(taxonomy, worms_http):
+    worms_http.calls.clear()  # publishing the fixture tree fetched its records
+    anonymous = Client()
+    for route, needs_auth in routes().items():
+        if not needs_auth:
+            continue
+        method, path = route.split(" ")
+        url = re.sub(r"\{(\w+)\}", lambda m: SAMPLE_PARAMS[m.group(1)], path)
+        status, body = call(anonymous, method.lower(), url, None if method == "GET" else {})
+        assert (status, body["error"]) == (401, "unauthorized"), route
+    assert worms_http.calls == []
+
+
+# --- Anonymous reads -----------------------------------------------------------------
+
+
+def test_anonymous_read(taxonomy):
+    status, body = call(Client(), "get", "/trees")
+    assert status == 200 and [t["id"] for t in body["trees"]] == ["taxonomy"]
+
+
+def test_anonymous_worms_search(worms_http):
+    status, _ = call(Client(), "get", "/worms/search?name=Chaetoceros")
+    assert status == 401 and worms_http.calls == []
+
+
+# --- Sessions and tokens -----------------------------------------------------------------
+
+
+def token_client(key):
+    """A client that enforces CSRF, as a browser would; tokens aren't CSRF-checked."""
+    client = Client(enforce_csrf_checks=True)
+    return lambda method, path, body=None: call(
+        client, method, path, body, Authorization=f"Token {key}"
+    )
+
+
+def test_script_token(taxonomy, token_for):
+    user = make_user("script1", roles={"amplify": "owner"})
+    key = token_for(user)
+    as_script = token_client(key)
+    assert as_script("get", "/orgs/amplify/members")[0] == 200
+    status, body = as_script("put", "/orgs/amplify/members/script1", {"role": "owner"})
+    assert status == 200 and body["role"] == "owner"
+    assert ApiToken.objects.get(user=user).last_used_at is not None
+
+
+def test_revoked_token(taxonomy, token_for):
+    user = make_user("script1", roles={"amplify": "owner"})
+    key = token_for(user)
+    ApiToken.objects.update(revoked_at="2026-01-01T00:00Z")
+    status, body = token_client(key)("get", "/orgs/amplify/members")
+    assert (status, body["error"]) == (401, "unauthorized")
+
+
+def test_unknown_or_malformed_token(taxonomy):
+    assert token_client("nope")("get", "/orgs/amplify/members")[0] == 401
+    client = Client()
+    assert call(client, "get", "/orgs/amplify/members", Authorization="Bearer x")[0] == 401
+
+
+def test_token_key_is_stored_hashed(token_for):
+    user = make_user("script1")
+    key = token_for(user)
+    assert not ApiToken.objects.filter(key_hash=key).exists()
+
+
+def test_session_writes_are_csrf_checked(taxonomy):
+    owner = make_user("owner1", roles={"amplify": "owner"})
+    client = Client(enforce_csrf_checks=True)
+    client.force_login(owner)
+    status, body = call(client, "put", "/orgs/amplify/members/owner1", {"role": "owner"})
+    assert (status, body["error"]) == (403, "forbidden")
+    assert "CSRF" in body["detail"]
+
+
+# --- Role matrix -----------------------------------------------------------------------
+
+LADDER = ["none", "reader", "drafter", "approver", "owner", "superuser"]
+
+# (method, path, body, minimum role). Later endpoints add rows here.
+MATRIX = [
+    ("get", "/orgs/amplify/members", None, "reader"),
+    ("put", "/orgs/amplify/members/target", {"role": "reader"}, "owner"),
+    ("delete", "/orgs/amplify/members/target", None, "owner"),
+    ("get", "/trees/taxonomy/drift/status", None, "reader"),
+    ("post", "/trees/taxonomy/drift", None, "drafter"),
+    ("get", "/worms/148985", None, "none"),
+    ("get", "/worms/148985/lineage", None, "none"),
+]
+
+
+def user_with(level: str, org_id="amplify"):
+    if level == "superuser":
+        return make_user("actor", superuser=True)
+    return make_user("actor", roles={} if level == "none" else {org_id: level})
+
+
+@pytest.mark.parametrize("level", LADDER)
+@pytest.mark.parametrize("method,path,body,minimum", MATRIX)
+def test_role_matrix(level, method, path, body, minimum, taxonomy, monkeypatch):
+    monkeypatch.setattr(drift, "start_drift", lambda tree, user: None)
+    make_user("target", roles={"amplify": "reader"})
+    make_user("other_owner", roles={"amplify": "owner"})
+    client = logged_in(user_with(level))
+    status, _ = call(client, method, path, body)
+    allowed = LADDER.index(level) >= LADDER.index(minimum)
+    assert (status != 403) == allowed, (status, level)
+    assert status != 401
+
+
+def test_member_of_another_organization(taxonomy, monkeypatch):
+    monkeypatch.setattr(drift, "start_drift", lambda tree, user: None)
+    publish_new_tree("lab_tree", add("new:1", "a"), org_id="lab_a")
+    client = logged_in(make_user("actor", roles={"lab_a": "drafter"}))
+    assert call(client, "post", "/trees/taxonomy/drift")[0] == 403
+    assert call(client, "post", "/trees/lab_tree/drift")[0] == 202
+
+
+def test_new_tree_in_the_organization(taxonomy, monkeypatch):
+    monkeypatch.setattr(drift, "start_drift", lambda tree, user: None)
+    client = logged_in(make_user("actor", roles={"amplify": "drafter"}))
+    publish_new_tree("NES2022_tags", add("new:1", "a"))  # published after they joined
+    assert call(client, "post", "/trees/NES2022_tags/drift")[0] == 202
+
+
+# --- Organizations and members ------------------------------------------------------------------
+
+
+def test_trees_by_organization(taxonomy):
+    publish_new_tree("lab_tree", add("new:1", "a"), org_id="lab_a")
+    status, body = call(Client(), "get", "/orgs")
+    assert status == 200 and body["orgs"] == [
+        {"id": "amplify", "name": "AMPLIfy", "trees": ["taxonomy"]},
+        {"id": "lab_a", "name": "lab_a", "trees": ["lab_tree"]},
+    ]
+    assert call(Client(), "get", "/orgs/lab_a")[1]["trees"] == ["lab_tree"]
+    assert call(Client(), "get", "/orgs/nope")[0] == 404
+    trees = call(Client(), "get", "/trees")[1]["trees"]
+    assert {t["id"]: t["org"] for t in trees} == {"lab_tree": "lab_a", "taxonomy": "amplify"}
+
+
+@pytest.fixture
+def owner(taxonomy):
+    return make_user("owner1", roles={"amplify": "owner"})
+
+
+def role_on(username, org_id="amplify"):
+    row = OrgMember.objects.filter(user__username=username, org_id=org_id).first()
+    return Role(row.role).label if row else None
+
+
+def test_list_members(owner):
+    make_user("drafter1", roles={"amplify": "drafter"})
+    reader = logged_in(make_user("reader1", roles={"amplify": "reader"}))
+    status, body = call(reader, "get", "/orgs/amplify/members")
+    assert status == 200
+    assert body["members"] == [
+        {"username": "owner1", "role": "owner"},
+        {"username": "drafter1", "role": "drafter"},
+        {"username": "reader1", "role": "reader"},
+    ]
+
+
+def test_owner_raises_a_member(owner, taxonomy):
+    make_user("drafter1", roles={"amplify": "drafter"})
+    status, body = call(logged_in(owner), "put", "/orgs/amplify/members/drafter1",
+                        {"role": "approver"})  # fmt: skip
+    assert status == 200 and body == {"org": "amplify", "username": "drafter1",
+                                      "role": "approver"}  # fmt: skip
+    assert role_on("drafter1") == "approver"
+
+
+def test_owner_adds_a_user(owner):
+    make_user("newcomer")
+    call(logged_in(owner), "put", "/orgs/amplify/members/newcomer", {"role": "reader"})
+    assert role_on("newcomer") == "reader"
+
+
+def test_co_owner(owner):
+    make_user("drafter1", roles={"amplify": "drafter"})
+    call(logged_in(owner), "put", "/orgs/amplify/members/drafter1", {"role": "owner"})
+    assert OrgMember.objects.filter(org_id="amplify", role=Role.OWNER).count() == 2
+
+
+def test_approver_manages_members(owner):
+    approver = make_user("approver1", roles={"amplify": "approver"})
+    make_user("drafter1", roles={"amplify": "drafter"})
+    status, _ = call(logged_in(approver), "put", "/orgs/amplify/members/drafter1",
+                     {"role": "approver"})  # fmt: skip
+    assert status == 403 and role_on("drafter1") == "drafter"
+
+
+def test_last_owner_steps_down(owner):
+    status, body = call(logged_in(owner), "put", "/orgs/amplify/members/owner1",
+                        {"role": "approver"})  # fmt: skip
+    assert (status, body["error"]) == (409, "last_owner")
+    assert call(logged_in(owner), "delete", "/orgs/amplify/members/owner1")[0] == 409
+    assert role_on("owner1") == "owner"
+
+
+def test_owner_steps_down_when_another_remains(owner):
+    make_user("owner2", roles={"amplify": "owner"})
+    assert call(logged_in(owner), "delete", "/orgs/amplify/members/owner1")[0] == 204
+    assert role_on("owner1") is None
+
+
+def test_site_admin_may_remove_the_last_owner(owner):
+    admin = logged_in(make_user("admin", superuser=True))
+    assert call(admin, "delete", "/orgs/amplify/members/owner1")[0] == 204
+
+
+def test_remove_member(owner):
+    make_user("drafter1", roles={"amplify": "drafter"})
+    status, _ = call(logged_in(owner), "delete", "/orgs/amplify/members/drafter1")
+    assert status == 204 and role_on("drafter1") is None
+    assert call(logged_in(owner), "delete", "/orgs/amplify/members/drafter1")[0] == 404
+
+
+def test_member_errors(owner):
+    client = logged_in(owner)
+    assert call(client, "put", "/orgs/amplify/members/nobody", {"role": "reader"})[0] == 404
+    make_user("drafter1")
+    status, body = call(client, "put", "/orgs/amplify/members/drafter1", {"role": "admin"})
+    assert (status, body["error"]) == (400, "bad_parameter")
+    assert call(client, "get", "/orgs/nope/members")[0] == 404
+
+
+def test_non_member_cannot_list_members(owner):
+    assert call(logged_in(make_user("outsider")), "get", "/orgs/amplify/members")[0] == 403
+
+
+# --- Creating trees -------------------------------------------------------------------------
+
+
+def test_new_tree_belongs_to_its_organization():
+    publish_new_tree("lab_tree", add("new:1", "a"), org_id="lab_a")
+    assert role_on("nobody", "lab_a") is None
+    assert Organization.objects.get(id="lab_a").trees.get().id == "lab_tree"
+
+
+# --- Recorded identities --------------------------------------------------------------------
+
+
+def test_drift_started_by_token_user(taxonomy, token_for, monkeypatch):
+    started = []
+    monkeypatch.setattr(drift, "start_drift", lambda tree, user: started.append(user))
+    key = token_for(make_user("script1", roles={"amplify": "drafter"}))
+    assert token_client(key)("post", "/trees/taxonomy/drift")[0] == 202
+    assert started == ["script1"]

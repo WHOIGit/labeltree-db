@@ -56,15 +56,55 @@ In `nix develop`, with the database running (`db-start`) and migrated:
 
 ```sh
 cd src
-python manage.py import_tree ../labeldata/NES2022_tags.json --tree NES2022_tags --title "NES2022 tags"
+python manage.py import_tree ../labeldata/NES2022_tags.json --tree NES2022_tags --title "NES2022 tags" --org amplify
 ```
 
-Options: `--description`, `--notes` (revision notes, default `Import of <file>`)
-and `--user` (author and publisher, default the current OS user).
+`--org` is the [organization](#users-organizations-and-tokens) the tree belongs
+to; it must exist. Other options: `--description`, `--notes` (revision notes,
+default `Import of <file>`) and `--user` (author and publisher, default the
+current OS user).
 
 Importing a tree with AphiaIDs fetches their WoRMS records, so it needs access
 to marinespecies.org. If WoRMS can't be reached, the import still succeeds and
 the next drift run fills in the warnings.
+
+## Users, organizations and tokens
+
+Reading trees and nodes needs no login. Everything else needs a user with a
+[role](design/api.md#authentication-and-roles) in the tree's organization:
+`reader` < `drafter` < `approver` < `owner`, each including the ones below and
+applying to every tree of the organization. Every tree belongs to one
+organization; the existing trees are in `amplify` (AMPLIfy). Superusers are
+site admins: they are owners in every organization and manage users and
+organizations in Django admin at `/admin/`. A superuser is created on start
+from `DJANGO_SUPERUSER_USERNAME` and `DJANGO_SUPERUSER_PASSWORD`.
+
+To set up an organization and its first owner, in Django admin:
+
+1. **Organizations → Add organization**: a slug id and a name. (`amplify`
+   already exists.)
+2. **Users → Add user**, unless they already have an account.
+3. **Org members → Add org member**: pick the user and organization, role
+   `owner`.
+
+Owners then add and promote the other members on the organization's page, and
+create new trees in it. To move a tree to another organization, change its
+organization on the tree's admin page.
+
+Scripts that write authenticate with an API token:
+
+1. **Api tokens → Add api token**: pick the user the script acts as, and name
+   the token after the script.
+2. Copy the key from the message shown after saving. It is shown only once;
+   only a hash is stored.
+3. Send it with every request:
+
+   ```sh
+   curl -H "Authorization: Token <key>" https://labeltree.example.org/api/v1/orgs/amplify/members
+   ```
+
+The token acts with its user's roles. To revoke it, select it in **Api
+tokens** and run **Revoke selected tokens**.
 
 ## WoRMS drift runs
 

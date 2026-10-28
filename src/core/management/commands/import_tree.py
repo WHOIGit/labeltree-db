@@ -4,6 +4,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
+from accounts.models import Organization
 from core.changesets import ChangesetError, NewTree, create_changeset, publish_changeset
 from core.engine import TreeState, check_changes, specs_from_dicts
 from core.importer import ImportFormatError, expand_import
@@ -22,14 +23,17 @@ class Command(BaseCommand):
         )
         parser.add_argument("--tree", required=True, help="new tree id (slug)")
         parser.add_argument("--title", required=True)
+        parser.add_argument(
+            "--org", required=True, help="organization the tree belongs to (its id, e.g. amplify)"
+        )
         parser.add_argument("--description", default="")
         parser.add_argument("--user", default=getpass.getuser(), help="author and publisher")
         parser.add_argument(
             "--notes", default=None, help="revision notes (default: 'Import of FILE')"
         )
 
-    def handle(self, *args, file: Path, tree: str, title: str, description: str, user: str,
-               notes, **options):  # fmt: skip
+    def handle(self, *args, file: Path, tree: str, title: str, org: str, description: str,
+               user: str, notes, **options):  # fmt: skip
         try:
             data = json.loads(file.read_text())
         except (OSError, json.JSONDecodeError) as exc:
@@ -39,6 +43,8 @@ class Command(BaseCommand):
         except ImportFormatError as exc:
             raise CommandError(f"Malformed import file at {exc.position}: {exc.detail}") from exc
 
+        if not Organization.objects.filter(id=org).exists():
+            raise CommandError(f"Organization {org} does not exist; create it in Django admin.")
         if Tree.objects.filter(id=tree).exists():
             raise CommandError(f"tree_exists: Tree {tree} already exists.")
 
@@ -53,7 +59,7 @@ class Command(BaseCommand):
         changeset = create_changeset(
             author=user,
             changes=changes,
-            new_tree=NewTree(tree, title, description),
+            new_tree=NewTree(tree, title, org, description),
             notes=notes if notes is not None else f"Import of {file.name}",
         )
         try:

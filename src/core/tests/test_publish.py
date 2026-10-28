@@ -14,7 +14,7 @@ from core.changesets import (
 )
 from core.models import Changeset, Node, NodeAlias, NodeVersion, Successor, Tree, TreeRevision
 
-from .helpers import add, deprecate, edit, ids_by_label, move, publish, publish_new_tree
+from .helpers import add, deprecate, edit, ids_by_label, move, org, publish, publish_new_tree
 
 pytestmark = pytest.mark.django_db
 
@@ -270,13 +270,17 @@ def test_first_revision():
 
 
 def test_tree_id_taken(tree):
-    cs = create_changeset(author="a", changes=[add("new:1", "x")], new_tree=NewTree("t", "dup"))
+    cs = create_changeset(
+        author="a", changes=[add("new:1", "x")], new_tree=NewTree("t", "dup", org())
+    )
     refused("tree_exists", publish_changeset, cs, published_by="b")
 
 
 def test_new_tree_publish_failure_creates_no_tree():
     cs = create_changeset(
-        author="a", changes=[add("new:1", "x"), add("new:2", "x")], new_tree=NewTree("u", "U")
+        author="a",
+        changes=[add("new:1", "x"), add("new:2", "x")],
+        new_tree=NewTree("u", "U", org()),
     )
     refused("structural", publish_changeset, cs, published_by="b")
     assert not Tree.objects.filter(id="u").exists()

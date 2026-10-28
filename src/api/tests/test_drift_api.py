@@ -12,6 +12,8 @@ from core.changesets import latest_rev
 from core.tests.helpers import deprecate, edit, publish
 from worms.warnings import record_warnings
 
+from .conftest import logged_in, make_user
+
 
 def other_connection():
     s = connection.settings_dict
@@ -22,12 +24,26 @@ def other_connection():
 
 
 @pytest.fixture
-def post(client):
+def post(db):
+    client = logged_in(make_user("curator1", superuser=True))
+
     def _post(path):
         response = client.post(f"/api/v1{path}")
         return response.status_code, response.json()
 
     return _post
+
+
+@pytest.fixture
+def get(db):
+    """Status needs a login; the report doesn't."""
+    client = logged_in(make_user("reader1", superuser=True))
+
+    def _get(path, **headers):
+        response = client.get(f"/api/v1{path}", headers=headers)
+        return response.status_code, response.json(), response
+
+    return _get
 
 
 @pytest.mark.django_db(transaction=True)
@@ -41,7 +57,7 @@ def test_start_a_run(post, get, taxonomy):
                 break
             time.sleep(0.05)
         assert body["active"] is None
-        assert (body["last"]["ok"], body["last"]["started_by"]) == (True, "anonymous")
+        assert (body["last"]["ok"], body["last"]["started_by"]) == (True, "curator1")
         assert body["last"]["total"] == 2
         assert latest_rev("taxonomy") == 1  # no revision
     finally:

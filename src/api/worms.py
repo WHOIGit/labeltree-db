@@ -2,6 +2,7 @@
 
 Only these endpoints (plus saves, publishes and drift) call WoRMS, and only on a
 cache miss, except search, which always asks WoRMS and caches what it returns.
+They need a login, since a cache miss calls WoRMS, but no role on any tree.
 Every WoRMS-derived value carries the `fetched_at` of the cached row it came
 from, for citation ("WoRMS, accessed <fetched_at>").
 """

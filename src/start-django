@@ -1,6 +1,7 @@
 #!/bin/sh
 # Container start script.
-#   ./start-django            migrate, ensure superuser, serve with gunicorn (production)
+#   ./start-django            migrate, ensure superuser, collect static files,
+#                             serve with gunicorn (production)
 #   ./start-django dev        migrate, ensure superuser, serve with runserver (auto-reload)
 #   ./start-django test ARGS  run pytest ARGS (needs an image built with INSTALL_DEV=true)
 #
@@ -21,6 +22,7 @@ python manage.py clear_drift_status
 
 case "$mode" in
   dev)  exec python manage.py runserver 0.0.0.0:8000 ;;
-  prod) exec gunicorn config.wsgi --bind 0.0.0.0:8000 --access-logfile - ;;
+  prod) python manage.py collectstatic --noinput -v0
+        exec gunicorn config.wsgi --bind 0.0.0.0:8000 --access-logfile - ;;
   *)    echo "usage: $0 [prod|dev|test [pytest args]]" >&2; exit 2 ;;
 esac

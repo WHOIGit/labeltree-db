@@ -78,11 +78,24 @@ def publish(tree, *changes, author="alice", notes="", published_by="bob"):
     return publish_changeset(cs, published_by=published_by)
 
 
-def publish_new_tree(tree_id, *changes, title=None, author="alice", published_by="bob"):
+def org(org_id="amplify", name=None) -> str:
+    """Make sure the organization exists; returns its id. Named after its id, but
+    `amplify` is AMPLIfy."""
+    from accounts.models import Organization
+
+    name = name or ("AMPLIfy" if org_id == "amplify" else org_id)
+    return Organization.objects.get_or_create(id=org_id, defaults={"name": name})[0].id
+
+
+def publish_new_tree(
+    tree_id, *changes, title=None, author="alice", published_by="bob", org_id="amplify"
+):
     from core.changesets import NewTree, create_changeset, publish_changeset
 
     cs = create_changeset(
-        author=author, changes=list(changes), new_tree=NewTree(tree_id, title or tree_id)
+        author=author,
+        changes=list(changes),
+        new_tree=NewTree(tree_id, title or tree_id, org(org_id)),
     )
     return publish_changeset(cs, published_by=published_by)
 

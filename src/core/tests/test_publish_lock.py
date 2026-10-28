@@ -12,7 +12,7 @@ from django.db import connection
 from core.changesets import ChangesetError, create_changeset, latest_rev, publish_changeset
 from core.models import Node, NodeAlias, NodeVersion, Tree, TreeRevision
 
-from .helpers import add, edit, ids_by_label, publish_new_tree
+from .helpers import add, edit, ids_by_label, org, publish_new_tree
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -73,7 +73,9 @@ def test_lock_is_per_tree(tree):
 def test_new_tree_locks_its_proposed_id():
     from core.changesets import NewTree
 
-    cs = create_changeset(author="a", changes=[add("new:1", "x")], new_tree=NewTree("v", "V"))
+    cs = create_changeset(
+        author="a", changes=[add("new:1", "x")], new_tree=NewTree("v", "V", org())
+    )
     with other_process() as conn:
         hold_publish_lock(conn, "v")
         with pytest.raises(ChangesetError) as exc:

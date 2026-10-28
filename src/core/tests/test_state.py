@@ -4,6 +4,7 @@ import pytest
 
 from core.engine import load_state
 from core.models import Node, NodeVersion, Tree
+from core.tests.helpers import org
 
 pytestmark = pytest.mark.django_db
 
@@ -16,7 +17,7 @@ def history():
     rev 2: D deprecated
     rev 3: L moved from K to J (K and J bump, L bumps)
     """
-    tree = Tree.objects.create(id="t", title="T")
+    tree = Tree.objects.create(id="t", title="T", org_id=org())
     nodes = {
         i: Node.objects.create(id=i, tree=tree, created_in_rev=1, deprecated_in_rev=None)
         for i in (1, 2, 3, 4, 5)
@@ -76,5 +77,5 @@ def test_revision_3_after_move(history):
 
 
 def test_other_tree_is_separate(history):
-    Tree.objects.create(id="u", title="U")
+    Tree.objects.create(id="u", title="U", org_id=org())
     assert load_state("u", 1).nodes == {}

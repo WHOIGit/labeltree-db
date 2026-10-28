@@ -2,10 +2,12 @@ import json
 
 import pytest
 from django.db import connection
+from django.test import Client
 
+from accounts.models import ApiToken, OrgMember, Role, User
 from core.importer import expand_import
 from core.models import Tree
-from core.tests.helpers import TAGS, add, ids_by_label, publish_new_tree
+from core.tests.helpers import TAGS, add, ids_by_label, org, publish_new_tree
 
 
 @pytest.fixture(autouse=True)
@@ -56,3 +58,56 @@ def taxonomy():
 @pytest.fixture
 def ids():
     return ids_by_label
+
+
+# --- Users and roles ---------------------------------------------------------------
+
+
+def make_user(username, *, roles=None, superuser=False) -> User:
+    """A user with `roles` {org_id: "drafter", ...}; missing organizations are created."""
+    user = User.objects.create_user(username, is_superuser=superuser)
+    for org_id, role in (roles or {}).items():
+        OrgMember.objects.create(user=user, org_id=org(org_id), role=Role.named(role))
+    return user
+
+
+def logged_in(user) -> Client:
+    client = Client()
+    client.force_login(user)
+    return client
+
+
+def call(client, method, path, body=None, **headers):
+    """Send a request under /api/v1; returns (status, json-or-None)."""
+    kwargs = {"headers": headers}
+    if body is not None:
+        kwargs |= {"data": json.dumps(body), "content_type": "application/json"}
+    response = getattr(client, method)(f"/api/v1{path}", **kwargs)
+    is_json = response.get("Content-Type", "").startswith("application/json")
+    return response.status_code, response.json() if is_json else None
+
+
+@pytest.fixture
+def user_factory(db):
+    return make_user
+
+
+@pytest.fixture
+def as_user():
+    """as_user(user) -> a function (method, path, body=None) -> (status, json)."""
+
+    def _as(user):
+        client = logged_in(user) if user is not None else Client()
+        return lambda method, path, body=None, **headers: call(
+            client, method, path, body, **headers
+        )
+
+    return _as
+
+
+@pytest.fixture
+def token_for():
+    def _token(user, name="script"):
+        return ApiToken.issue(user, name)[1]
+
+    return _token

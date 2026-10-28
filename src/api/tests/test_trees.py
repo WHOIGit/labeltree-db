@@ -23,7 +23,7 @@ def test_two_loaded_trees(get, tags, taxonomy):
         ("taxonomy", 1, 6),
     ]
     assert set(body["trees"][0]) == {
-        "id", "title", "description", "latest_rev", "published_at", "num_nodes",
+        "id", "title", "description", "org", "latest_rev", "published_at", "num_nodes",
     }  # fmt: skip
 
 

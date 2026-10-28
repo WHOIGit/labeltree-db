@@ -94,7 +94,7 @@ only the reduced changes, SHALL succeed even when the changes have structural
 errors, and SHALL NOT call WoRMS.
 `GET /trees/{tree}/changesets?state=` SHALL list the tree's changesets filtered
 by state, paginated. A new-tree changeset SHALL be created at `POST
-/changesets` with `{new_tree: {id, title, description}, changes[], notes}`.
+/changesets` with `{new_tree: {id, title, description, org}, changes[], notes}`.
 
 #### Scenario: New draft
 - **WHEN** a drafter posts a draft with two renames of the same node

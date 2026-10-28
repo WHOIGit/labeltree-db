@@ -2,12 +2,13 @@
 
 ## 1. Authentication and roles
 
-- [ ] 1.1 Add the `ApiToken` model (hashed key shown once, `last_used_at`, revocation) and token and session auth as the API's global default, with the read routes and `/health` opting out; verify a test that walks every API route against the anonymous list (`401` for the rest), plus the revoked-token and script-token scenarios
-- [ ] 1.2 Add `TreeMember` (one ordered role per user and tree, superusers as owner) and `require(user, tree, minimum)`, and apply the minimums to every changeset, job, lookup, alias, description and member endpoint; verify a role × endpoint matrix covering the `access-control` scenarios, including approvers drafting and publishing their own drafts
-- [ ] 1.3 Implement `GET/PUT/DELETE /trees/{tree}/members[/{username}]` with the last-owner rule under a row lock (superusers exempt); verify the owner, co-owner, approver-refused and last-owner scenarios
-- [ ] 1.4 Gate new-tree changesets on the tree-creator permission (`core.add_tree`) and make the publisher `owner` of the new tree; verify the drafter-proposes and first-owner scenarios
+- [x] 1.1 Add the `ApiToken` model (hashed key shown once, `last_used_at`, revocation) and token and session auth as the API's global default, with the read routes and `/health` opting out; verify a test that walks every API route against the anonymous list (`401` for the rest), plus the revoked-token and script-token scenarios
+- [ ] 1.2 Add `Organization`, `OrgMember` (one ordered role per user and organization, superusers as owner) and `Tree.org` (existing trees into `amplify`), and `require(user, tree, minimum)` through the tree's organization, applied to every changeset, job, lookup, alias, description and member endpoint; verify a role × endpoint matrix covering the `access-control` scenarios, including approvers drafting and publishing their own drafts, members of another organization, and trees added to an organization after a member joined
+- [x] 1.3 Implement `GET /orgs`, `GET /orgs/{org}`, `org` in `GET /trees`, and `GET/PUT/DELETE /orgs/{org}/members[/{username}]` with the last-owner rule under a row lock (superusers exempt); verify the trees-by-organization, owner, co-owner, approver-refused and last-owner scenarios
+- [ ] 1.4 Store a new-tree changeset's organization (`new_tree.org`, `--org` for `import_tree`), require `owner` there to create, change, publish or discard it and `reader` to see it, and create the tree in it on publish; verify the drafter-proposes and owner-creates-a-tree scenarios
 - [ ] 1.5 Record authenticated usernames in `author`, `published_by`, alias, description and WoRMS job `started_by` fields; verify the publish-via-token scenario
-- [ ] 1.6 Register users, tokens, `TreeMember` and the tree-creator permission in Django admin for site admins, and document issuing a token and making a tree owner in README.md; verify the documented steps produce a working token and owner
+- [x] 1.6 Register users, tokens, organizations, `OrgMember` and a tree's organization (its only editable field) in Django admin for site admins, and document issuing a token, creating an organization and making an owner in README.md; verify the documented steps produce a working token and owner
+- [x] 1.7 Rate-limit logins (django-axes, per username and address behind the proxy) and add the Apache site config with TLS-aware Django settings; verify lockout, reset and spoofed `X-Forwarded-For` tests
 
 ## 2. WoRMS jobs
 
@@ -39,7 +40,7 @@
 - [ ] 5.4 Implement the node page (state, version history, WoRMS card, warning history, aliases, successors); verify against a deprecated node and a node with warning history
 - [ ] 5.5 Build the shared job-progress component (job bar, one bar per retrying AphiaID, pause bar, failure list with Try again / Proceed anyway) and the sync menu (`sync_new`, `sync_tree`, superuser-only `sync_all`) that also shows runs started elsewhere; verify with browser tests against fixture-driven jobs, including a retry and a failure
 
-- [ ] 5.6 Implement the Members page (list with highest role, owner controls to add, change and remove, last-owner refusal) and the user's own page listing their trees and roles; verify the members-page scenarios in browser tests
+- [ ] 5.6 Implement the organization page (its trees; members with their role; owner controls to add, change and remove; last-owner refusal), the tree picker grouped by organization, and the user's own page listing their organizations and roles; verify the organization-page scenarios in browser tests
 
 ## 6. Draft editor
 
@@ -62,7 +63,7 @@
 
 - [ ] 8.1 End-to-end browser test: a drafter splits a node in `NES2022_taxonomy` and validates (fetch job runs), another drafter edits the same draft (`412` then re-fetch), an approver rebases after an intervening publish and publishes; verify the revision, version changes, successors and warning history via the read API
 - [ ] 8.2 Verify that roi-db's and datasetman's read calls work without credentials against both NES2022 trees, and that the same calls to write, validate or start jobs get `401`
-- [ ] 8.3 Update `design/mockups/webapp-mockup.html` and its spec to the Validate flow, changes panel tabs, AphiaID pills with `!` and `?` badges, warnings panel, sync menu, progress bars, Members page and a role selector of anonymous, `reader`, `drafter`, `approver` and `owner`, and refresh the snapshot; verify by opening the mockup
+- [ ] 8.3 Update `design/mockups/webapp-mockup.html` and its spec to the Validate flow, changes panel tabs, AphiaID pills with `!` and `?` badges, warnings panel, sync menu, progress bars, organization page and a role selector of anonymous, `reader`, `drafter`, `approver` and `owner`, and refresh the snapshot; verify by opening the mockup
 
 ## Workflow follow-up
 

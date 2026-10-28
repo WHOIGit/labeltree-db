@@ -10,7 +10,7 @@ from core.engine import check_changes, specs_from_dicts
 from core.importer import ImportFormatError, expand_import
 from core.models import Changeset, NodeAlias, NodeVersion, Tree
 
-from .helpers import TAGS, ids_by_label, make_state, publish_new_tree
+from .helpers import TAGS, ids_by_label, make_state, org, publish_new_tree
 
 # --- 6.1 format and expansion -----------------------------------------------------------
 
@@ -94,6 +94,7 @@ def test_imported_aliases_become_initial_aliases():
 
 def import_tree(path, tree="NES2022_tags", **kwargs):
     out, err = StringIO(), StringIO()
+    kwargs.setdefault("org", org())
     call_command(
         "import_tree", str(path), tree=tree, title="NES2022 tags", stdout=out, stderr=err, **kwargs
     )
@@ -111,6 +112,7 @@ def test_load_nes2022_tags():
     assert set(current.values_list("version", flat=True)) == {1}
     revision = tree.revisions.get()
     assert (revision.number, revision.published_by, revision.changeset.author) == (1, "op", "op")
+    assert tree.org_id == "amplify"
     assert set(revision.changeset.changes.values_list("group", flat=True)) == {"import#1"}
 
 
@@ -137,7 +139,7 @@ def test_errors_are_reported_per_change(tmp_path):
     path.write_text(json.dumps({"nodes": [{"label": "a"}, {"label": "a"}]}))
     err = StringIO()
     with pytest.raises(CommandError):
-        call_command("import_tree", str(path), tree="d", title="D", stderr=err)
+        call_command("import_tree", str(path), tree="d", title="D", org=org(), stderr=err)
     assert "change 2 (new:2): label_in_use" in err.getvalue()
 
 
@@ -155,3 +157,10 @@ def test_existing_tree_is_refused():
     import_tree(TAGS)
     with pytest.raises(CommandError, match="tree_exists"):
         import_tree(TAGS)
+
+
+@pytest.mark.django_db
+def test_unknown_organization_is_refused():
+    with pytest.raises(CommandError, match="Organization lab_a does not exist"):
+        import_tree(TAGS, org="lab_a")
+    assert not Tree.objects.exists()

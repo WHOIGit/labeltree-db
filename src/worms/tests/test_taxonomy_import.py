@@ -15,7 +15,7 @@ from django.core.management import call_command
 
 from api.serializers import RevisionView
 from core.models import Tree
-from core.tests.helpers import LABELDATA
+from core.tests.helpers import LABELDATA, org
 from worms.models import WormsRecord, current_warnings
 
 EXPECTED = Path(__file__).parent / "expected_taxonomy_warnings.json"
@@ -27,7 +27,7 @@ def test_import_taxonomy(worms_http):
     worms_http.strict()  # every WoRMS response must be recorded
     call_command(
         "import_tree", str(LABELDATA / "NES2022_taxonomy.json"), "--tree", "NES2022_taxonomy",
-        "--title", "NES2022 taxonomy", "--user", "importer", stdout=StringIO(),
+        "--title", "NES2022 taxonomy", "--user", "importer", "--org", org(), stdout=StringIO(),
     )  # fmt: skip
     tree = Tree.objects.get(id="NES2022_taxonomy")
     view = RevisionView(tree, 1)
