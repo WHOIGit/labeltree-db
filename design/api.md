@@ -13,32 +13,33 @@ the service pushes no notifications or events.
 
 ## Authentication and roles
 
-All access, including reads, requires authentication. There is no anonymous
-access.
+Published trees are open: the [read endpoints](#read-endpoints), alias and
+description history, the WoRMS warnings report and `/health` need no
+credentials, so consumers such as roi-db and datasetman read anonymously.
+Everything else needs a logged-in user and returns `401` without one:
 
-- Django users and sessions for the web app.
-- Per-user or per-service API tokens, sent in a header (django-ninja `APIKey`),
-  for scripts and services.
+- Django users and sessions for the web app (CSRF-checked).
+- Per-user API tokens for scripts, sent as `Authorization: Token <key>`. A
+  token acts as its user. Its key is shown once when a site admin creates it.
 
-Roles are assigned per tree and can be combined:
+Each user holds at most one role per tree. Roles form a ladder, and each
+includes everything below it:
 
 | Role | Can |
 |---|---|
-| `reader` | Read published revisions. Most downstream apps have this role. |
-| `drafter` | Create, update and discard any draft, run checks and fetch jobs, and sync the tree's WoRMS data. Add and remove aliases, set descriptions. |
-| `approver` | Publish drafts and sync the tree's WoRMS data. Holding both `drafter` and `approver` lets a user publish their own drafts. |
-| `admin` | Manage tree settings and assign roles. Sync the tree's WoRMS data. |
+| `reader` | See the tree's drafts, its WoRMS jobs and its members. Use the WoRMS lookups. |
+| `drafter` | Create, update, rebase and discard any draft, validate, run fetch jobs and sync the tree's WoRMS data. Add and remove aliases, set descriptions. |
+| `approver` | Publish drafts, including their own. |
+| `owner` | Manage the tree's members: add users, change roles (including to `owner`), remove members. The last owner can't be removed or demoted. |
 
-A full cache sync (`sync_all`), which spans every tree, needs a Django
-superuser.
+Two roles apply across trees, assigned in Django admin:
 
-New trees need the global **tree-creation permission** (Django's
-`core.add_tree`), not a per-tree role: it allows creating, seeing and
-publishing changesets with `base_rev: null`. Publishing one gives the publisher
-`admin` on the new tree.
-
-Service accounts for roi-db and datasetman get `reader`. Roles, tokens and the
-tree-creation permission are managed through Django admin, not the API.
+- **Site admin** (Django superuser): manages users, tokens and tree creators,
+  is `owner` of every tree, and alone can start a full cache sync
+  (`sync_all`).
+- **Tree creator** (Django's `core.add_tree` permission): may create, see and
+  publish changesets with `base_rev: null`. Publishing one makes the publisher
+  `owner` of the new tree.
 
 ## Read endpoints
 
@@ -391,7 +392,7 @@ POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, confli
 GET    /trees/{tree}/changesets?state=  list changesets, e.g. drafts awaiting approval
 POST   /trees/{tree}/changesets         {base_rev, changes[], notes} → new draft
 POST   /changesets                      {new_tree: {id, title, description}, changes[], notes}
-                                        → new-tree draft (tree-creation permission)
+                                        → new-tree draft (tree creator)
 PUT    /changesets/{cs}                 replace a draft's changes, notes and base_rev (If-Match)
 GET    /changesets/{cs}                 a changeset's atomic changes, plus validation results if a draft
 POST   /changesets/{cs}/publish {notes} approver; draft → new tree revision (If-Match)
@@ -418,6 +419,13 @@ GET    /nodes/{id}/description?history= current description; history=true lists 
 PUT    /nodes/{id}/description {description}
                                         set the description (drafter); "" clears it.
                                         Earlier entries are kept
+
+# Members
+GET    /trees/{tree}/members            members with their roles (reader)
+PUT    /trees/{tree}/members/{username} {role}
+                                        add a user or change their role (owner);
+                                        409 last_owner if it would leave no owner
+DELETE /trees/{tree}/members/{username} remove a member (owner); 409 last_owner as above
 ```
 
 WoRMS jobs and the warnings report are [under `/worms`](#worms-jobs-and-warnings).
@@ -595,10 +603,10 @@ Errors have one body shape:
 | `204` | No content: draft discarded, alias removed. |
 | `304` | Not modified, after `If-None-Match` ([Caching](#caching)). |
 | `400` | Bad parameter, e.g. `?rev` outside a version's range on `/versions/{v}`, or `between` on records where neither is an ancestor of the other. |
-| `401` | Not authenticated. |
-| `403` | Authenticated, but missing the role for this tree, or not a superuser for `sync_all`. |
+| `401` | Not authenticated, on an endpoint that needs a login. |
+| `403` | Authenticated, but the user's role on this tree is too low, or not a site admin for `sync_all`. |
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
-| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`). |
+| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting a tree's last owner (`last_owner`). |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
 | `422` | Request body invalid, or publish blocked by structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |
@@ -634,8 +642,8 @@ or aliases: [labels can be reused](backend.md#labels-aliases-and-descriptions).
 
 ![Consumer lookups](diagrams/05-consumer-lookups.png)
 
-The diagram follows roi-db as the tree changes underneath it. Every call
-carries a `reader` token (not shown).
+The diagram follows roi-db as the tree changes underneath it. Its calls are
+anonymous reads.
 
 **Setup.**
 

@@ -2,11 +2,12 @@
 
 ## 1. Authentication and roles
 
-- [ ] 1.1 Add the `ApiToken` model (hashed key, revocation) and the token and session auth classes as the API's global auth; verify `401` for anonymous and revoked-token requests on every router
-- [ ] 1.2 Add `TreeRole` and the `require()` helper, and apply the role rules to every read, write and WoRMS job endpoint (`sync_all` superuser-only); verify a test matrix of role × endpoint for the `access-control` scenarios
-- [ ] 1.3 Filter `GET /trees` by the user's roles, gate new-tree changesets on `core.add_tree`, and grant `admin` to the publisher of a new tree; verify the tree-list and first-admin scenarios
-- [ ] 1.4 Record authenticated usernames in `author`, `published_by`, alias, description and WoRMS job `started_by` fields; verify the publish-via-token scenario
-- [ ] 1.5 Register tokens and roles in Django admin and document issuing a service token in README.md; verify the documented steps produce a working token
+- [ ] 1.1 Add the `ApiToken` model (hashed key shown once, `last_used_at`, revocation) and token and session auth as the API's global default, with the read routes and `/health` opting out; verify a test that walks every API route against the anonymous list (`401` for the rest), plus the revoked-token and script-token scenarios
+- [ ] 1.2 Add `TreeMember` (one ordered role per user and tree, superusers as owner) and `require(user, tree, minimum)`, and apply the minimums to every changeset, job, lookup, alias, description and member endpoint; verify a role × endpoint matrix covering the `access-control` scenarios, including approvers drafting and publishing their own drafts
+- [ ] 1.3 Implement `GET/PUT/DELETE /trees/{tree}/members[/{username}]` with the last-owner rule under a row lock (superusers exempt); verify the owner, co-owner, approver-refused and last-owner scenarios
+- [ ] 1.4 Gate new-tree changesets on the tree-creator permission (`core.add_tree`) and make the publisher `owner` of the new tree; verify the drafter-proposes and first-owner scenarios
+- [ ] 1.5 Record authenticated usernames in `author`, `published_by`, alias, description and WoRMS job `started_by` fields; verify the publish-via-token scenario
+- [ ] 1.6 Register users, tokens, `TreeMember` and the tree-creator permission in Django admin for site admins, and document issuing a token and making a tree owner in README.md; verify the documented steps produce a working token and owner
 
 ## 2. WoRMS jobs
 
@@ -32,11 +33,13 @@
 
 ## 5. Web app shell
 
-- [ ] 5.1 Add login/logout, the base template, and vendored Bootstrap 5 and Alpine.js static files; verify an anonymous visit redirects to login
-- [ ] 5.2 Port the mockup's tree browser to an Alpine store backed by `/api/v1`: tree and revision pickers, expand/collapse, filter, AphiaID pills and the frozen revision changes panel; verify the pill colours (none, grey, green, orange, red) and tooltips with browser tests on the tags and taxonomy trees
+- [ ] 5.1 Add login/logout, the base template, vendored Bootstrap 5 and Alpine.js (CSP build) static files, Django's CSP middleware with the policy from design.md, and anonymous read-only browsing with "Log in to edit"; verify that an anonymous visit shows the tree without edit or sync controls, that login-only pages redirect, and that pages load with no CSP violations in the browser console
+- [ ] 5.2 Port the mockup's tree browser to an Alpine store backed by `/api/v1`: tree and revision pickers, expand/collapse, filter, AphiaID pills and the frozen revision changes panel; verify the pill colours and badges (none, grey, green, orange `!`, red `?`) and tooltips with browser tests on the tags and taxonomy trees
 - [ ] 5.3 Add the hideable warnings panel (from `GET /worms/warnings?tree=`) with jump-to-node; verify on `NES2022_taxonomy`'s 13 `unaccepted_aphia` nodes
 - [ ] 5.4 Implement the node page (state, version history, WoRMS card, warning history, aliases, successors); verify against a deprecated node and a node with warning history
 - [ ] 5.5 Build the shared job-progress component (job bar, one bar per retrying AphiaID, pause bar, failure list with Try again / Proceed anyway) and the sync menu (`sync_new`, `sync_tree`, superuser-only `sync_all`) that also shows runs started elsewhere; verify with browser tests against fixture-driven jobs, including a retry and a failure
+
+- [ ] 5.6 Implement the Members page (list with highest role, owner controls to add, change and remove, last-owner refusal) and the user's own page listing their trees and roles; verify the members-page scenarios in browser tests
 
 ## 6. Draft editor
 
@@ -58,10 +61,9 @@
 ## 8. Integration and docs
 
 - [ ] 8.1 End-to-end browser test: a drafter splits a node in `NES2022_taxonomy` and validates (fetch job runs), another drafter edits the same draft (`412` then re-fetch), an approver rebases after an intervening publish and publishes; verify the revision, version changes, successors and warning history via the read API
-- [ ] 8.2 Verify that the roi-db and datasetman service tokens can read both NES2022 trees and are refused writes and job starts
-- [ ] 8.3 Update `design/mockups/webapp-mockup.html` and its spec to the Validate flow, changes panel tabs, AphiaID pills, warnings panel, sync menu and progress bars, and refresh the snapshot; verify by opening the mockup
+- [ ] 8.2 Verify that roi-db's and datasetman's read calls work without credentials against both NES2022 trees, and that the same calls to write, validate or start jobs get `401`
+- [ ] 8.3 Update `design/mockups/webapp-mockup.html` and its spec to the Validate flow, changes panel tabs, AphiaID pills with `!` and `?` badges, warnings panel, sync menu, progress bars, Members page and a role selector of anonymous, `reader`, `drafter`, `approver` and `owner`, and refresh the snapshot; verify by opening the mockup
 
 ## Workflow follow-up
 
-- Coordinate the auth cut-over date with roi-db and datasetman maintainers before deploying.
 - The archive syncs this change's deltas into the `worms-records` and `worms-placement-checks` main specs, creates `worms-sync`, and deletes `worms-drift` (`retire_capabilities: true`).

@@ -3,20 +3,23 @@
 ## Why
 
 After `core-tree-model` and `worms-integration`, trees can only be created or
-changed from the command line, and the API is open to anyone on the network.
-Curators need to draft, review and publish edits in a browser, consumers need
-authenticated access, and edits must go through role-checked endpoints. Saves
+changed from the command line, and nothing records who may change which tree.
+Curators need to draft, review and publish edits in a browser, tree owners need
+to decide who may edit their trees, and edits must go through role-checked
+endpoints, while published trees stay readable by anyone. Saves
 and publishes also wait on WoRMS today, which makes them slow and unpredictable
 when WoRMS is slow.
 
 ## What Changes
 
-- **BREAKING**: every endpoint, including reads, requires authentication
-  (session for the web app, API token for services). Unauthenticated requests
-  get `401`.
-- Per-tree roles `reader`, `drafter`, `approver` and `admin`, plus a global
-  tree-creation permission for new-tree changesets, managed in Django admin.
-  Full cache syncs are for superusers.
+- Tree and node reads stay anonymous. Everything else (drafts, `validate`,
+  WoRMS lookups and jobs, alias and description writes, members) requires
+  authentication: a session for the web app, a per-user API token for scripts.
+- Per-tree roles on a ladder, `reader` < `drafter` < `approver` < `owner`, one
+  per user and tree, each including the ones below. Owners manage their tree's
+  members in the web app. Site admins (Django superusers) manage users, tokens
+  and the global tree-creator role in Django admin, own every tree, and run
+  full cache syncs.
 - Write API: `validate`, changeset create/list/get/update/publish/discard with
   `ETag`/`If-Match`, direct alias add/remove/history, and direct description
   set/history. `validate` returns each reduced change's `sources` and the net
@@ -36,8 +39,10 @@ when WoRMS is slow.
 - Server-rendered web app: tree browser with revision picker, AphiaID pills,
   warnings panel and sync menu; node page with warning history; draft editor
   with a Validate step, tabbed changes panel and jump-to-node; draft list and
-  review by node; merge and split wizards; import wizard; Add from WoRMS; alias
-  and description editing; and clone as new tree.
+  review by node; a Members page per tree; merge and split wizards; import
+  wizard; Add from WoRMS; alias and description editing; and clone as new
+  tree. Anonymous visitors can browse read only. The page scripts run under a
+  strict Content Security Policy.
 - Cloning turns a published revision into a stand-alone new-tree changeset,
   which an approved publish turns into revision 1 of a new tree.
 
@@ -45,9 +50,9 @@ when WoRMS is slow.
 
 ### New Capabilities
 
-- `access-control`: authentication (sessions, API tokens), per-tree roles, the
-  global tree-creation permission, full-cache-sync permission, and what each
-  role may do.
+- `access-control`: which endpoints are anonymous, authentication (sessions,
+  API tokens), the per-tree role ladder and what each role may do, tree
+  members, site admins and tree creators.
 - `changeset-api`: the `validate` endpoint and the changeset endpoints,
   including change provenance, net changes per node, cache-only WoRMS checks,
   concurrency control (`ETag`/`If-Match`), rebasing, publishing and their
@@ -73,9 +78,9 @@ when WoRMS is slow.
 
 ## Impact
 
-- All API consumers (roi-db, datasetman, annotation tools) need a `reader`
-  token before this is deployed.
-- New tables for API tokens and per-tree role assignments.
+- API consumers that only read (roi-db, datasetman, annotation tools) are
+  unaffected. Scripts that write need a token.
+- New tables for API tokens and tree members.
 - `src/worms` gains a job runner that generalises the drift runner, renamed
   `worms/sync.py`; the `run_drift` and `clear_drift_status` commands become
   `worms_sync` and `clear_worms_jobs`;

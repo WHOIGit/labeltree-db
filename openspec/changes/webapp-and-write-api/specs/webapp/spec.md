@@ -14,8 +14,12 @@ same role checks as API clients. Controls the user's roles do not allow SHALL be
 shown disabled, with the reason as a tooltip.
 
 #### Scenario: Reader opens the edit menu
-- **WHEN** a user with only `reader` views a tree
-- **THEN** the Edit button is disabled with a tooltip naming the missing role
+- **WHEN** a user who is `reader` on a tree views it
+- **THEN** the Edit button is disabled with a tooltip naming the role needed
+
+#### Scenario: Anonymous visitor
+- **WHEN** a visitor who is not logged in views a tree
+- **THEN** a "Log in to edit" button is shown instead of the Edit and sync controls
 
 ### Requirement: Tree browser
 The tree browser SHALL show a selected tree at a selected published revision as
@@ -35,22 +39,31 @@ publish date and author.
 ### Requirement: AphiaID pill
 A node with an `aphia_id` SHALL show a round pill containing a worm emoji
 (🪱), coloured by its WoRMS state: green with no current warnings, orange with
-any warning, red with `unknown_aphia` (whatever its other warnings), and grey
-when its record has never been fetched. Its tooltip SHALL show the AphiaID and
-every current warning. Clicking it SHALL open the AphiaID's WoRMS page in a new
-tab, also for `unknown_aphia`. A node without an `aphia_id` SHALL show no pill.
+a `!` badge with any warning, red with a `?` badge with `unknown_aphia`
+(whatever its other warnings), and grey when its record has never been
+fetched. A node without an `aphia_id` SHALL show no
+pill.
 
 #### Scenario: Node with warnings
 - **WHEN** a node has `out_of_lineage` and `duplicate_aphia`
-- **THEN** its pill is orange and its tooltip shows its AphiaID and both warnings
+- **THEN** its pill is orange with a `!` badge and its tooltip shows its AphiaID and both warnings
 
 #### Scenario: Unknown and duplicated
 - **WHEN** a node has `unknown_aphia` and `duplicate_aphia`
-- **THEN** its pill is red and its tooltip lists both warnings
+- **THEN** its pill is red with a `?` badge and its tooltip lists both warnings
 
 #### Scenario: Never fetched
 - **WHEN** a node's AphiaID has no cached record
 - **THEN** its pill is grey
+
+### Requirement: AphiaID pill tooltip and link
+An AphiaID pill's tooltip SHALL show the AphiaID and every current warning.
+Clicking it SHALL open the AphiaID's WoRMS page in a new tab, also for
+`unknown_aphia`.
+
+#### Scenario: Open in WoRMS
+- **WHEN** a user clicks the pill of a node with AphiaID 149122
+- **THEN** the WoRMS page of AphiaID 149122 opens in a new tab
 
 ### Requirement: Warnings panel
 The tree browser SHALL have a hideable panel listing the nodes of the latest
@@ -91,6 +104,21 @@ kind of job for the failed AphiaIDs only, or Proceed anyway.
 #### Scenario: Proceed anyway
 - **WHEN** a fetch job started by Validate finishes with AphiaID 149122 failed and the user chooses Proceed anyway
 - **THEN** the validation result is shown with the changes needing 149122 marked as unchecked, and Save is enabled
+
+### Requirement: Members page
+Each tree SHALL have a Members page listing its members with their highest
+role, shown to members of the tree. Owners SHALL be able to add an existing
+user at a role, change a member's role and remove a member there. The page
+SHALL explain that each role includes the ones below it, and a user's own page
+SHALL list their trees and roles.
+
+#### Scenario: Owner adds a drafter
+- **WHEN** an owner adds user `curator2` as `drafter` on the Members page
+- **THEN** `curator2` is listed as `drafter` and can save drafts on the tree
+
+#### Scenario: Last owner
+- **WHEN** the only owner tries to demote themselves on the Members page
+- **THEN** the change is refused with an explanation that the tree needs an owner
 
 ### Requirement: Revision changes in static mode
 When browsing a published revision, the changes panel SHALL show the changeset

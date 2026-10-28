@@ -29,8 +29,13 @@ An interactive mockup of the tree browser and draft editor is in
   parent from its lineage. The label is the scientific name with spaces turned
   into `_` and characters that aren't machine-safe dropped
   (`Chaetoceros (Hyalochaete) debilis` → `Chaetoceros_Hyalochaete_debilis`).
+- **Members:** each tree's members and their roles. Owners add users, change
+  roles and remove members here.
 
-Roles are described in [api.md](api.md#authentication-and-roles).
+Anyone can browse trees, revisions and node pages without logging in; the top
+bar then shows **Log in to edit** instead of the edit and sync controls. Roles
+are described in [api.md](api.md#authentication-and-roles). Controls a user's
+role doesn't allow are shown disabled, with the role needed as a tooltip.
 
 ## Changesets and concurrency
 
@@ -54,7 +59,7 @@ creates the tree together with its revision 1 ([New trees](#new-trees)).
   records its `base_rev`; updating it replaces its changes, notes and
   `base_rev`. Saving [reduces](backend.md#reduction-on-save) the change list, and only the
   reduced list is stored: reopening a draft starts from it.
-  Drafts are visible to the tree's drafters, approvers and admins.
+  Drafts are visible to the tree's members (readers and up).
   Any drafter may update or discard any draft, not only their own.
 - **Publishing** is done by an approver. `base_rev` must equal the latest
   revision `r`, and all checks run again, the WoRMS checks against cached
@@ -147,8 +152,8 @@ A node with an AphiaID shows a round 🪱 pill; a node without one shows none.
 |---|---|
 | grey | the AphiaID's record has never been fetched |
 | green | no current warnings |
-| orange | any [warning](worms.md#the-warnings) |
-| red | `unknown_aphia`, whatever its other warnings |
+| orange, `!` badge | any [warning](worms.md#the-warnings) |
+| red, `?` badge | `unknown_aphia`, whatever its other warnings |
 
 The tooltip shows the AphiaID and every current warning. Clicking the pill opens
 its WoRMS page in a new tab.
@@ -284,12 +289,12 @@ only `label` required:
 
 There are no empty trees: a tree exists only once it has a revision.
 
-1. A user holding the global tree-creation permission creates a changeset with
+1. A tree creator (a global role assigned by site admins) creates a changeset with
    `base_rev: null` carrying the new tree's id, title and description, by
    importing, building it by hand, or both.
-2. A user holding the tree-creation permission publishes it. This creates the
-   tree and its revision 1 together, and gives the publisher `admin` on the
-   new tree, from where they assign its roles.
+2. A tree creator publishes it. This creates the
+   tree and its revision 1 together, and makes the publisher `owner` of the
+   new tree, who then adds its members on the Members page.
 
 So every revision, including revision 1, comes from a published changeset. The
 [example trees](backend.md#example-trees) are loaded this way, through the
@@ -301,7 +306,7 @@ Cloning converts a published revision of an existing tree into a stand-alone
 new-tree changeset. It is the [new tree](#new-trees) flow with the import taken
 from that revision:
 
-1. A user with the tree-creation permission enters the new tree's id, title and
+1. A tree creator enters the new tree's id, title and
    description.
 2. The source revision's nodes become an `import#1` draft with
    `base_rev: null`, as if its `/export` output had been imported. Labels and

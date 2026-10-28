@@ -31,40 +31,74 @@ interaction. See proposal.md for motivation.
 - Keeping the as-composed list of a saved draft: only the reduced list is
   stored.
 - Linking a clone to its source tree.
-- Managing roles or tokens outside Django admin.
+- Users creating their own tokens, or managing users outside Django admin.
+- Roles that apply to every tree (beyond site admins owning all trees).
 
 ## Decisions
 
 ### Authentication
 
+- **Anonymous reads.** The read routers (`/trees` and `/nodes` GETs, alias and
+  description history, `GET /worms/warnings`, `/health`) take no auth, so
+  roi-db, datasetman and annotation tools keep reading as they do today.
 - **Sessions** via Django auth for the web app, with standard login and CSRF.
   django-ninja's `SessionAuth` (CSRF-checked) covers API calls the browser
   makes.
 - **Tokens:** an `ApiToken` model (hashed key, owning user, name, created,
-  revoked) checked by a django-ninja `APIKeyHeader` (`Authorization: Token
-  <key>`). Service accounts are ordinary Django users with no password.
-- Both auth classes are set as the API's global `auth`, so a route can't be
-  left unauthenticated by forgetting it.
+  `last_used_at`, revoked) checked by a django-ninja `APIKeyHeader`
+  (`Authorization: Token <key>`). The admin add form shows the key once. A
+  token acts as its user, with that user's roles.
+- **Default deny.** Token and session auth are the API's global `auth`; the
+  read routes opt out explicitly with `auth=None`. A test walks every route of
+  the API and checks it against the list of anonymous routes, so a new route
+  is authenticated unless it is deliberately added there.
 
-Alternative: django-rest-knox or OAuth. Rejected, since nothing here needs
-expiry flows or third-party login.
+Alternative: django-rest-knox, OAuth or WHOI single sign-on. Rejected or out
+of scope: nothing here needs expiry flows or third-party login.
 
 ### Roles
 
-A `TreeRole(user, tree, role)` table with a unique `(user, tree, role)`. The
-global tree-creation permission is the Django model permission
-`core.add_tree`, assignable to users or groups in Django admin. A single helper
-`require(user, tree, *roles)` raises `403`, and every router and view calls it.
-The rules come from the `access-control` spec in one place:
+```
+ site      admin (Django superuser): users, tokens, tree creators; owner of every tree; sync_all
+           tree creator (Django permission core.add_tree): new-tree changesets
+ per tree  owner > approver > drafter > reader      one row per (user, tree)
+```
 
-- reads, job status: any role
-- draft, validate, fetch jobs, aliases, descriptions: `drafter`
-- publish: `approver`
-- `sync_new`, `sync_tree`: `drafter`, `approver` or `admin`
-- `sync_all`: Django superuser
+- **Storage:** `TreeMember(user, tree, role)`, unique on `(user, tree)`, with
+  `role` an ordered choice. One row holds the highest role; the lower ones are
+  implied, which is how "setting approver also gives drafter" works without
+  extra rows, and why the interface shows one role.
+- **Checks:** one helper, `require(user, tree, minimum)`, compares the user's
+  role (`owner` for superusers) with the minimum and raises `401` or `403`.
+  Every router and view calls it. The minimums, from the `access-control`
+  spec, in one place:
 
-Publishing a new tree inserts `TreeRole(publisher, tree, admin)` in the publish
-transaction. `GET /trees` filters to trees the user has a role on.
+  | Minimum | Actions |
+  |---|---|
+  | none | tree and node reads, warnings report |
+  | `reader` | drafts (list, get), job status, members list, WoRMS lookups |
+  | `drafter` | save, rebase and discard drafts, `validate`, fetch, `sync_new` and `sync_tree` jobs, aliases, descriptions |
+  | `approver` | publish |
+  | `owner` | change members |
+  | superuser | `sync_all` |
+
+  WoRMS lookups and job status for `sync_all` aren't tree-scoped: any
+  authenticated user may call them.
+- **Members:** `GET /trees/{tree}/members`, `PUT
+  /trees/{tree}/members/{username} {role}` and `DELETE
+  /trees/{tree}/members/{username}`. Changing or removing an owner locks the
+  tree's member rows (`SELECT ... FOR UPDATE`) and refuses with `409
+  last_owner` if no owner would remain, unless a superuser makes the change.
+- **Tree creators:** the Django model permission `core.add_tree`, assignable
+  to users or groups in Django admin. Publishing a new tree inserts
+  `TreeMember(publisher, tree, owner)` in the publish transaction.
+- **Django admin** is for site admins only: users, tokens, the tree-creator
+  permission, and `TreeMember` rows for repairs such as a tree with no owner.
+  Owners never need staff access.
+
+Alternative: owners managing roles in Django admin. Rejected: Django admin
+permissions are per model, not per tree, so an owner could grant roles on any
+tree. A restricted admin is easy to get wrong.
 
 ### WoRMS stays out of saves and publishes
 
@@ -218,7 +252,9 @@ from that view would act on a list the user can't see in order.
   scrolls into view and flashes the row.
 - **AphiaID pill:** colour from `worms_data` and current `worms_warnings` in
   the node payload: no `worms_data` and no `unknown_aphia` is grey (never
-  fetched), `unknown_aphia` red, any other warning orange, else green. The link
+  fetched), `unknown_aphia` red with a `?` badge, any other warning orange with
+  a `!` badge, else green. The badges keep the states apart without relying on
+  colour. The link
   is `https://www.marinespecies.org/aphia.php?p=taxdetails&id=<id>`.
 - **Sync menu and progress** share one progress component with Validate's
   fetch step; the menu polls `GET /trees/{tree}/worms/jobs` while open, so a
@@ -242,12 +278,43 @@ Alpine.js and maps directly onto the API.
 ### Bootstrap and Alpine from static files
 
 Bootstrap 5 and Alpine.js are vendored into `static/`, not loaded from a CDN,
-so the app works on isolated lab networks.
+so the app works on isolated lab networks. In production the reverse proxy
+serves `/static/` from `STATIC_ROOT`, filled by `collectstatic` at deploy.
+
+### Content Security Policy and Alpine's CSP build
+
+Standard Alpine compiles the expressions in HTML attributes with
+`new Function()`, which needs `script-src 'unsafe-eval'` and turns any
+injected `x-init` or `@click` attribute into running script. So the app uses
+Alpine's CSP build, under Django's built-in CSP middleware:
+
+```
+script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none';
+base-uri 'self'; frame-ancestors 'none'
+```
+
+- All logic lives in `Alpine.data` components and `Alpine.store` in static ES
+  modules; attributes only name properties and methods (`@click="toggle"`,
+  `x-text="label"`). The mockup's inline expressions become getters and
+  methods as they are ported.
+- No inline `<script>`; page data a script needs comes from `json_script` or
+  the API.
+- Inline styles stay allowed: injected styles are a much smaller risk than
+  injected scripts, and Alpine's string `:style` bindings need them.
+- Bootstrap 5 runs unchanged under this policy.
+
+Alternative: standard Alpine with `'unsafe-eval'`. Rejected: injected markup
+could still execute through Alpine attributes.
 
 ## Risks / Trade-offs
 
-- [BREAKING auth on reads cuts off existing consumers] → Issue `reader` tokens
-  to roi-db and datasetman before deploy, and announce the cut-over date.
+- [A new route is accidentally anonymous] → Auth is the default; the route
+  test fails for any anonymous route not on the list.
+- [Anonymous reads expose tree content to anyone on the network] → As today;
+  trees hold label names and descriptions, nothing sensitive. Drafts, members
+  and job details need a login.
+- [A tree is left without an owner] → The last-owner rule; a site admin can
+  repair it in Django admin.
 - [Warnings computed at publish may use an older cached record] → A record is
   as fresh as the last fetch or sync; nightly `sync_tree` runs and Sync this
   tree bound the age. Each warning-history row's `computed_at` is unchanged in
@@ -267,14 +334,15 @@ so the app works on isolated lab networks.
 
 ## Migration Plan
 
-1. Deploy the `ApiToken` and `TreeRole` migrations.
-2. In Django admin, create service accounts and tokens for roi-db and
-   datasetman with `reader` on both NES2022 trees, and create curator accounts
-   with their roles. Grant `core.add_tree` to tree administrators. Assign
-   `admin` on existing trees to the operator who loaded them.
-3. Switch consumers to send tokens, then deploy the auth-enforcing release.
-4. Replace `run_drift` with `worms_sync` in the cron entry. Its exit status
+1. Deploy the `ApiToken` and `TreeMember` migrations. Reads are unaffected, so
+   consumers need no change.
+2. In Django admin, create curator accounts, grant the tree-creator permission
+   to those who start trees, and make an owner of each existing tree (the
+   operator who loaded it). Owners then add their members on the Members page.
+3. Issue tokens to scripts that write.
+4. Configure the reverse proxy to serve `/static/` from `STATIC_ROOT`.
+5. Replace `run_drift` with `worms_sync` in the cron entry. Its exit status
    now reports any failed AphiaID rather than a stopped run.
 
-Rollback: revert to the previous release. Tokens and roles stay in place,
+Rollback: revert to the previous release. Tokens and members stay in place,
 unused.
