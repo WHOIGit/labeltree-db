@@ -68,10 +68,20 @@ def advance(state: TreeState, *changes):
 # --- Database helpers -------------------------------------------------------------
 
 
+def fetch_aphia_ids(changes):
+    """Cache the WoRMS records of the AphiaIDs `changes` set, as the web app's fetch
+    step before validating does; saves and publishes only read the cache."""
+    from worms.records import get_records
+
+    get_records([c["aphia_id"] for c in changes if isinstance(c.get("aphia_id"), int)])
+
+
 def publish(tree, *changes, author="alice", notes="", published_by="bob"):
-    """Save a draft on `tree`'s latest revision and publish it."""
+    """Fetch the AphiaIDs the changes set, save a draft on `tree`'s latest revision
+    and publish it."""
     from core.changesets import create_changeset, latest_rev, publish_changeset
 
+    fetch_aphia_ids(changes)
     cs = create_changeset(
         author=author, changes=list(changes), tree=tree, base_rev=latest_rev(tree.id), notes=notes
     )
@@ -92,6 +102,7 @@ def publish_new_tree(
 ):
     from core.changesets import NewTree, create_changeset, publish_changeset
 
+    fetch_aphia_ids(changes)
     cs = create_changeset(
         author=author,
         changes=list(changes),

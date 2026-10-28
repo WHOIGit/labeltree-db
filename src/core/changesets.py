@@ -4,10 +4,10 @@ Publishing is the only way tree data changes. It runs in one transaction that
 first takes a per-tree advisory lock, so concurrent publishes on a tree are
 refused instead of queued, and a crashed publish never leaves the tree locked.
 
-Saving and publishing also run the WoRMS placement checks (worms.checks). The
-records they need are fetched before any transaction opens, so a slow WoRMS
-never holds a lock; a record that couldn't be fetched makes the affected
-changes' checks "unavailable" and never blocks.
+Saving and publishing also run the WoRMS placement checks (worms.checks),
+against cached records only: they never call WoRMS. A record that isn't cached
+makes the affected changes' checks "unavailable" and never blocks; the fetch
+step before validating, or a later sync, fills it in.
 """
 
 from dataclasses import dataclass
@@ -16,8 +16,8 @@ from django.db import connection, transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from worms.checks import change_checks, changed_aphia_ids, check_nodes, needed_for_changes
-from worms.records import PUBLISH_MAX_AGE, get_records
+from worms.checks import change_checks, check_nodes, needed_for_changes
+from worms.records import cached_records
 from worms.warnings import record_warnings
 
 from .engine import (
@@ -90,20 +90,13 @@ def _store_changes(changeset: Changeset, specs: list[ChangeSpec], checks: list):
     )  # fmt: skip
 
 
-def fetch_records(base: TreeState, specs: list[ChangeSpec], *, publish=False) -> dict:
-    """The WoRMS records checking `specs` needs, cached first. For a publish, the
-    AphiaIDs the changes set are re-fetched unless fetched within PUBLISH_MAX_AGE.
-    AphiaIDs that couldn't be fetched are absent."""
-    needed = needed_for_changes(base, specs)
-    fresh = changed_aphia_ids(specs) & needed if publish else set()
-    records = get_records(needed - fresh).records()
-    if fresh:
-        records |= get_records(fresh, PUBLISH_MAX_AGE).records()
-    return records
+def records_for(base: TreeState, specs: list[ChangeSpec]) -> dict:
+    """The cached WoRMS records checking `specs` needs; uncached ones are absent."""
+    return cached_records(needed_for_changes(base, specs))
 
 
-def _save_reduced(changeset: Changeset, base: TreeState, reduced: list[ChangeSpec], records):
-    checks, _ = change_checks(base, reduced, records)
+def _save_reduced(changeset: Changeset, base: TreeState, reduced: list[ChangeSpec]):
+    checks, _ = change_checks(base, reduced, records_for(base, reduced))
     _store_changes(changeset, reduced, checks)
 
 
@@ -151,38 +144,17 @@ def create_changeset(
         )
     base = base_state(changeset)
     reduced = reduce_changes(base, specs_from_dicts(changes))
-    records = fetch_records(base, reduced)
     with transaction.atomic():
         changeset.save()
-        _save_reduced(changeset, base, reduced, records)
+        _save_reduced(changeset, base, reduced)
     return changeset
 
 
-def _prefetch_for_update(changeset: Changeset, changes, base_rev) -> dict:
-    """Fetch the records an update will need before its transaction opens. Problems
-    (not a draft, bad base_rev) are left for the update itself to report."""
-    current = Changeset.objects.get(pk=changeset.pk)
-    if current.state != Changeset.State.DRAFT:
-        return {}
-    if base_rev is not None:
-        if current.tree_id is None or not isinstance(base_rev, int):
-            return {}
-        current.base_rev = base_rev
-    base = base_state(current)
-    specs = specs_from_dicts(changes) if changes is not None else stored_specs(current)
-    return fetch_records(base, reduce_changes(base, specs))
-
-
+@transaction.atomic
 def update_changeset(
     changeset: Changeset, *, changes: list[dict] | None = None, notes=None, base_rev=None
 ) -> Changeset:
     """Replace a draft's changes, notes or base revision; changes are reduced on save."""
-    records = _prefetch_for_update(changeset, changes, base_rev)
-    with transaction.atomic():
-        return _update(changeset, changes, notes, base_rev, records)
-
-
-def _update(changeset, changes, notes, base_rev, records) -> Changeset:
     changeset = Changeset.objects.select_for_update().get(pk=changeset.pk)
     _require_draft(changeset)
     if base_rev is not None:
@@ -195,7 +167,7 @@ def _update(changeset, changes, notes, base_rev, records) -> Changeset:
     changeset.save()
     specs = specs_from_dicts(changes) if changes is not None else stored_specs(changeset)
     base = base_state(changeset)
-    _save_reduced(changeset, base, reduce_changes(base, specs), records)
+    _save_reduced(changeset, base, reduce_changes(base, specs))
     return changeset
 
 
@@ -251,14 +223,6 @@ def publish_changeset(changeset: Changeset, *, published_by: str, notes=None) ->
     stale_base, or structural (with the per-change errors, including
     empty_changeset). WoRMS warnings never refuse a publish.
     """
-    # WoRMS first, without the lock. Should the draft change before the lock is
-    # taken, records missing for the new changes make their checks unavailable.
-    current = Changeset.objects.get(pk=changeset.pk)
-    records = {}
-    if current.state == Changeset.State.DRAFT:
-        base = base_state(current)
-        records = fetch_records(base, reduce_changes(base, stored_specs(current)), publish=True)
-
     with transaction.atomic():
         # First statement of the transaction; released when it commits or rolls back.
         _take_publish_lock(changeset.tree_key)
@@ -286,6 +250,7 @@ def publish_changeset(changeset: Changeset, *, published_by: str, notes=None) ->
                 f"The changeset has {len(result.errors)} structural error(s).",
                 result.errors,
             )
+        records = records_for(base, result.reduced)
         return _write_revision(changeset, base, result, number, published_by, notes, records)
 
 

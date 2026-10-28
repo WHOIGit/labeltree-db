@@ -1,22 +1,114 @@
-"""/worms lookups, served from the record cache (spec: worms-records).
+"""/worms: lookups, WoRMS jobs and the warnings report (specs: worms-records,
+worms-sync).
 
-Only these endpoints (plus saves, publishes and drift) call WoRMS, and only on a
-cache miss, except search, which always asks WoRMS and caches what it returns.
-They need a login, since a cache miss calls WoRMS, but no role on any tree.
-Every WoRMS-derived value carries the `fetched_at` of the cached row it came
-from, for citation ("WoRMS, accessed <fetched_at>").
+Only the lookups and WoRMS jobs call WoRMS. Lookups are served from the record
+cache and call WoRMS on a miss, except search, which always asks WoRMS and
+caches what it returns. They need a login, since a miss calls WoRMS, but no
+role. Every WoRMS-derived value carries the `fetched_at` of the cached row it
+came from, for citation ("WoRMS, accessed <fetched_at>").
+
+Jobs run in the background (worms.sync); clients poll their status.
 """
 
-from ninja import Router
+from ninja import Router, Schema
 
-from worms import records
+from accounts.models import Role
+from accounts.roles import require, require_superuser
+from worms import records, sync
 from worms.client import WormsError
-from worms.models import WormsRecord
+from worms.models import WormsRecord, current_warnings
 from worms.records import get_record, store_search_hit
 
-from .conventions import APIError, bad_parameter, not_found, respond
+from .conventions import APIError, bad_parameter, get_tree, not_found, paginate, respond
+from .trees import view_at
 
 router = Router(tags=["worms"])
+
+
+# --- Jobs ------------------------------------------------------------------------------------
+
+
+class JobIn(Schema):
+    kind: str
+    tree: str | None = None
+    aphia_ids: list[int] | None = None
+
+
+@router.post("/jobs")
+def start_job(request, body: JobIn):
+    """Start a WoRMS job: 202 with its status, or 409 if it overlaps an active sync."""
+    if body.kind not in sync.KINDS:
+        raise bad_parameter(f"kind must be one of {', '.join(sync.KINDS)}.")
+    if body.kind == "sync_all":
+        if body.tree is not None:
+            raise bad_parameter("sync_all takes no tree.")
+        require_superuser(request.user)
+    else:
+        if body.tree is None:
+            raise bad_parameter(f"{body.kind} needs a tree.")
+        require(request.user, get_tree(body.tree).id, Role.DRAFTER)
+    if body.kind == "fetch" and not body.aphia_ids:
+        raise bad_parameter("A fetch job needs aphia_ids.")
+    try:
+        status = sync.start_job(
+            body.kind, tree=body.tree, started_by=request.user.get_username(),
+            aphia_ids=body.aphia_ids,
+        )  # fmt: skip
+    except sync.SyncBusy as exc:
+        raise APIError(409, "sync_in_progress", str(exc)) from None
+    response = respond(request, status)
+    response.status_code = 202
+    return response
+
+
+@router.get("/jobs")
+def list_syncs(request, tree: str | None = None):
+    """The tree's active and last sync, or, without a tree, the active and last sync_all."""
+    if tree is not None:
+        require(request.user, get_tree(tree).id, Role.READER)
+    return respond(request, sync.get_syncs(tree))
+
+
+@router.get("/jobs/{job_id}")
+def job_status(request, job_id: str):
+    status = sync.get_job(job_id)
+    if status is None:
+        raise not_found(f"No WoRMS job {job_id} is known; status is kept for 7 days.")
+    if status["tree"] is not None:
+        require(request.user, status["tree"], Role.READER)
+    return respond(request, status)
+
+
+# --- Warnings report -------------------------------------------------------------------------
+
+
+@router.get("/warnings", auth=None)
+def warnings_report(request, tree: str = "", limit: int | None = None, offset: int = 0):
+    """Nodes in the tree's latest revision that currently have WoRMS warnings."""
+    if not tree:
+        raise bad_parameter("`tree` is required.")
+    view, header_rev = view_at(tree, None)
+    warnings = {ref: ws for ref, ws in current_warnings(view.state.nodes).items() if ws}
+    page, count = paginate(sorted(warnings), limit, offset)
+    data = {
+        "tree": view.tree.id,
+        "rev": view.rev,
+        "count": count,
+        "nodes": [
+            {
+                "id": ref,
+                "label": view.state.nodes[ref].label,
+                "version": view.state.nodes[ref].version,
+                "aphia_id": view.state.nodes[ref].aphia_id,
+                "worms_warnings": warnings[ref],
+            }
+            for ref in page
+        ],
+    }
+    return respond(request, data, rev=header_rev)
+
+
+# --- Lookups ---------------------------------------------------------------------------------
 
 
 def unavailable(exc: WormsError) -> APIError:

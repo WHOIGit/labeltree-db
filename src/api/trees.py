@@ -7,16 +7,11 @@ from django.db import connection
 from django.db.models import Count
 from ninja import Router
 
-from accounts.models import Role
-from accounts.roles import require
 from core.changesets import latest_rev
 from core.models import Change, Node, NodeAlias, NodeVersion, Tree, TreeRevision
-from worms import drift
-from worms.models import current_warnings
 from worms.records import newest_rows
 
 from .conventions import (
-    APIError,
     bad_parameter,
     get_tree,
     not_found,
@@ -451,54 +446,5 @@ def search(
         "rev": view.rev,
         "q": q,
         "results": [result(ref, best[ref][3]) for ref in ranked[:limit]],
-    }
-    return respond(request, data, rev=header_rev)
-
-
-# --- Drift ---------------------------------------------------------------------------------
-
-
-@router.post("/{tree_id}/drift")
-def start_drift(request, tree_id: str):
-    """Start a drift run in the background: 202, or 409 if one is active."""
-    tree = get_tree(tree_id)
-    require(request.user, tree.id, Role.DRAFTER)
-    try:
-        drift.start_drift(tree.id, request.user.get_username())
-    except drift.DriftBusy as exc:
-        raise APIError(409, "drift_in_progress", str(exc)) from None
-    response = respond(request, drift.get_status(tree.id))
-    response.status_code = 202
-    return response
-
-
-@router.get("/{tree_id}/drift/status")
-def drift_status(request, tree_id: str):
-    tree = get_tree(tree_id)
-    require(request.user, tree.id, Role.READER)
-    drift.clear_status(tree.id)  # a run whose process died isn't active
-    return respond(request, drift.get_status(tree.id))
-
-
-@router.get("/{tree_id}/drift", auth=None)
-def drift_report(request, tree_id: str, limit: int | None = None, offset: int = 0):
-    """Nodes in the latest revision that currently have WoRMS warnings."""
-    view, header_rev = view_at(tree_id, None)
-    warnings = {ref: ws for ref, ws in current_warnings(view.state.nodes).items() if ws}
-    page, count = paginate(sorted(warnings), limit, offset)
-    data = {
-        "tree": view.tree.id,
-        "rev": view.rev,
-        "count": count,
-        "nodes": [
-            {
-                "id": ref,
-                "label": view.state.nodes[ref].label,
-                "version": view.state.nodes[ref].version,
-                "aphia_id": view.state.nodes[ref].aphia_id,
-                "worms_warnings": warnings[ref],
-            }
-            for ref in page
-        ],
     }
     return respond(request, data, rev=header_rev)

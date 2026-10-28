@@ -8,7 +8,7 @@ from django.test import Client
 from accounts.models import ApiToken, Organization, OrgMember, Role
 from api.api import api
 from core.tests.helpers import add, publish_new_tree
-from worms import drift
+from worms import sync
 
 from .conftest import call, logged_in, make_user
 
@@ -36,12 +36,13 @@ ANONYMOUS_ROUTES = {
     "GET /trees/{tree_id}/nodes/{label}",
     "GET /trees/{tree_id}/nodes",
     "GET /trees/{tree_id}/search",
-    "GET /trees/{tree_id}/drift",
+    "GET /worms/warnings",
 }
 
 SAMPLE_PARAMS = {
     "tree_id": "taxonomy", "node_id": "1", "version": "1", "rev": "1", "label": "other",
-    "username": "someone", "org_id": "amplify", "aphia_id": "148985", "a": "148985", "b": "149122",
+    "username": "someone", "org_id": "amplify", "job_id": "j1", "aphia_id": "148985",
+    "a": "148985", "b": "149122",
 }  # fmt: skip
 
 
@@ -144,6 +145,24 @@ def test_session_writes_are_csrf_checked(taxonomy):
 
 # --- Role matrix -----------------------------------------------------------------------
 
+
+@pytest.fixture
+def fake_jobs(monkeypatch):
+    """Jobs don't run; returns who started them. Job j1 is a sync on taxonomy."""
+    started = []
+
+    def start_job(kind, *, tree=None, started_by, aphia_ids=None):
+        started.append(started_by)
+        return {"kind": kind, "tree": tree}
+
+    monkeypatch.setattr(sync, "start_job", start_job)
+    monkeypatch.setattr(
+        sync, "get_job",
+        lambda job_id: job_id and {"id": job_id, "tree": "taxonomy", "state": "finished"},
+    )  # fmt: skip
+    return started
+
+
 LADDER = ["none", "reader", "drafter", "approver", "owner", "superuser"]
 
 # (method, path, body, minimum role). Later endpoints add rows here.
@@ -151,8 +170,13 @@ MATRIX = [
     ("get", "/orgs/amplify/members", None, "reader"),
     ("put", "/orgs/amplify/members/target", {"role": "reader"}, "owner"),
     ("delete", "/orgs/amplify/members/target", None, "owner"),
-    ("get", "/trees/taxonomy/drift/status", None, "reader"),
-    ("post", "/trees/taxonomy/drift", None, "drafter"),
+    ("get", "/worms/jobs?tree=taxonomy", None, "reader"),
+    ("get", "/worms/jobs/j1", None, "reader"),
+    ("post", "/worms/jobs", {"kind": "fetch", "tree": "taxonomy", "aphia_ids": [1]}, "drafter"),
+    ("post", "/worms/jobs", {"kind": "sync_new", "tree": "taxonomy"}, "drafter"),
+    ("post", "/worms/jobs", {"kind": "sync_tree", "tree": "taxonomy"}, "drafter"),
+    ("post", "/worms/jobs", {"kind": "sync_all"}, "superuser"),
+    ("get", "/worms/jobs", None, "none"),
     ("get", "/worms/148985", None, "none"),
     ("get", "/worms/148985/lineage", None, "none"),
 ]
@@ -166,8 +190,7 @@ def user_with(level: str, org_id="amplify"):
 
 @pytest.mark.parametrize("level", LADDER)
 @pytest.mark.parametrize("method,path,body,minimum", MATRIX)
-def test_role_matrix(level, method, path, body, minimum, taxonomy, monkeypatch):
-    monkeypatch.setattr(drift, "start_drift", lambda tree, user: None)
+def test_role_matrix(level, method, path, body, minimum, taxonomy, fake_jobs):
     make_user("target", roles={"amplify": "reader"})
     make_user("other_owner", roles={"amplify": "owner"})
     client = logged_in(user_with(level))
@@ -177,19 +200,21 @@ def test_role_matrix(level, method, path, body, minimum, taxonomy, monkeypatch):
     assert status != 401
 
 
-def test_member_of_another_organization(taxonomy, monkeypatch):
-    monkeypatch.setattr(drift, "start_drift", lambda tree, user: None)
+def sync_tree(tree):
+    return {"kind": "sync_tree", "tree": tree}
+
+
+def test_member_of_another_organization(taxonomy, fake_jobs):
     publish_new_tree("lab_tree", add("new:1", "a"), org_id="lab_a")
     client = logged_in(make_user("actor", roles={"lab_a": "drafter"}))
-    assert call(client, "post", "/trees/taxonomy/drift")[0] == 403
-    assert call(client, "post", "/trees/lab_tree/drift")[0] == 202
+    assert call(client, "post", "/worms/jobs", sync_tree("taxonomy"))[0] == 403
+    assert call(client, "post", "/worms/jobs", sync_tree("lab_tree"))[0] == 202
 
 
-def test_new_tree_in_the_organization(taxonomy, monkeypatch):
-    monkeypatch.setattr(drift, "start_drift", lambda tree, user: None)
+def test_new_tree_in_the_organization(taxonomy, fake_jobs):
     client = logged_in(make_user("actor", roles={"amplify": "drafter"}))
     publish_new_tree("NES2022_tags", add("new:1", "a"))  # published after they joined
-    assert call(client, "post", "/trees/NES2022_tags/drift")[0] == 202
+    assert call(client, "post", "/worms/jobs", sync_tree("NES2022_tags"))[0] == 202
 
 
 # --- Organizations and members ------------------------------------------------------------------
@@ -310,9 +335,7 @@ def test_new_tree_belongs_to_its_organization():
 # --- Recorded identities --------------------------------------------------------------------
 
 
-def test_drift_started_by_token_user(taxonomy, token_for, monkeypatch):
-    started = []
-    monkeypatch.setattr(drift, "start_drift", lambda tree, user: started.append(user))
+def test_job_started_by_token_user(taxonomy, token_for, fake_jobs):
     key = token_for(make_user("script1", roles={"amplify": "drafter"}))
-    assert token_client(key)("post", "/trees/taxonomy/drift")[0] == 202
-    assert started == ["script1"]
+    assert token_client(key)("post", "/worms/jobs", sync_tree("taxonomy"))[0] == 202
+    assert fake_jobs == ["script1"]

@@ -1,15 +1,25 @@
 """HTTP client for the WoRMS REST API (https://www.marinespecies.org/rest).
 
 Every WoRMS call in the service goes through `WormsClient`. It has a 10 s
-timeout and retries transient failures, waiting `backoff` seconds before each
-retry: twice and briefly (BACKOFF) when a user is waiting on the answer, four
-times and up to 2 minutes (DRIFT_BACKOFF) for background drift runs, which can
-afford to ride out a WoRMS outage of a few minutes. A failure that persists is
-raised as `WormsError` with a classified `reason`:
+timeout and retries transient failures (timeouts, connection errors, 5xx),
+waiting `backoff` seconds before each retry:
+
+- BACKOFF (1, 2 s) for the lookup endpoints, where a user waits on the answer;
+- JOB_BACKOFF (1, 2, 5, 12 s) for WoRMS jobs started through the API;
+- SCHEDULED_BACKOFF (10 s to 2 min) for jobs started by the management command,
+  which can ride out a WoRMS outage of a few minutes.
+
+`on_wait(aphia_id, attempt, retries, seconds)` is called before each wait, so a
+job can show its retries. A failure that persists is raised as `WormsError`
+with a classified `reason`:
 
 - `worms_unreachable`: timeout or connection error
-- `worms_rate_limited`: HTTP 429 (after waiting out `Retry-After`, default 30 s)
+- `worms_rate_limited`: HTTP 429
 - `worms_error`: any other error response
+
+On HTTP 429 the client waits out `Retry-After` (default 30 s) and retries, or,
+with `raise_rate_limited`, raises `RateLimited` at once, so a job can pause as a
+whole instead of one request at a time.
 
 WoRMS answers `204 No Content` for an unknown AphiaID or a name with no match;
 the client returns None (or []) for those.
@@ -23,7 +33,8 @@ BASE_URL = "https://www.marinespecies.org/rest"
 TIMEOUT = 10.0
 # Seconds to wait before each retry; the number of retries is their count.
 BACKOFF = (1.0, 2.0)
-DRIFT_BACKOFF = (10.0, 30.0, 60.0, 120.0)
+JOB_BACKOFF = (1.0, 2.0, 5.0, 12.0)
+SCHEDULED_BACKOFF = (10.0, 30.0, 60.0, 120.0)
 RETRIES = len(BACKOFF)
 RETRY_AFTER_DEFAULT = 30.0
 # AphiaRecordsByName returns at most this many records per page.
@@ -41,6 +52,14 @@ class WormsError(Exception):
         super().__init__(f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
+
+
+class RateLimited(WormsError):
+    """HTTP 429, raised at once when the client is told to (`raise_rate_limited`)."""
+
+    def __init__(self, detail: str, retry_after: float):
+        super().__init__("worms_rate_limited", detail)
+        self.retry_after = retry_after
 
 
 def normalise_record(raw: dict) -> dict:
@@ -64,6 +83,8 @@ class WormsClient:
         transport: httpx.BaseTransport | None = None,
         sleep=time.sleep,
         backoff: tuple[float, ...] = BACKOFF,
+        on_wait=None,
+        raise_rate_limited: bool = False,
     ):
         self._http = httpx.Client(
             base_url=BASE_URL,
@@ -73,12 +94,15 @@ class WormsClient:
         )
         self._sleep = sleep
         self._backoff = backoff
+        self._on_wait = on_wait
+        self._raise_rate_limited = raise_rate_limited
 
     def close(self):
         self._http.close()
 
-    def _get(self, path: str, params: dict | None = None):
-        """GET a WoRMS path; returns the decoded JSON, or None for 204."""
+    def _get(self, path: str, params: dict | None = None, aphia_id: int | None = None):
+        """GET a WoRMS path; returns the decoded JSON, or None for 204. `aphia_id` is
+        passed to `on_wait`."""
         retries = len(self._backoff)
         for attempt in range(retries + 1):
             last = attempt == retries
@@ -97,7 +121,10 @@ class WormsClient:
                 if response.is_success:
                     return response.json()
                 if response.status_code == 429:
-                    error = WormsError("worms_rate_limited", f"HTTP 429 requesting {path}.")
+                    detail = f"HTTP 429 requesting {path}."
+                    if self._raise_rate_limited:
+                        raise RateLimited(detail, _retry_after(response))
+                    error = WormsError("worms_rate_limited", detail)
                     wait = _retry_after(response)
                 elif response.status_code >= 500:
                     error = WormsError(
@@ -110,15 +137,17 @@ class WormsClient:
                     )
             if last:
                 raise error
+            if self._on_wait:
+                self._on_wait(aphia_id, attempt + 1, retries, wait)
             self._sleep(wait)
         raise AssertionError("unreachable")
 
     def record(self, aphia_id: int) -> dict | None:
-        raw = self._get(f"/AphiaRecordByAphiaID/{aphia_id}")
+        raw = self._get(f"/AphiaRecordByAphiaID/{aphia_id}", aphia_id=aphia_id)
         return normalise_record(raw) if raw else None
 
     def lineage(self, aphia_id: int) -> list[dict] | None:
-        nested = self._get(f"/AphiaClassificationByAphiaID/{aphia_id}")
+        nested = self._get(f"/AphiaClassificationByAphiaID/{aphia_id}", aphia_id=aphia_id)
         return normalise_lineage(nested) if nested else None
 
     def full_record(self, aphia_id: int) -> dict | None:

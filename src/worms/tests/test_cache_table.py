@@ -1,4 +1,4 @@
-"""The database cache is shared between server processes (drift status relies on it)."""
+"""The database cache is shared between server processes (WoRMS job status relies on it)."""
 
 import os
 import subprocess
@@ -24,15 +24,15 @@ def run_in_other_process(code: str) -> str:
 
 @pytest.mark.django_db(transaction=True)
 def test_value_written_here_is_read_in_another_process():
-    cache.set("drift:probe", {"active": True, "done": 120, "total": 175})
+    cache.set("worms-job:probe", {"active": True, "done": 120, "total": 175})
     out = run_in_other_process(
-        "from django.core.cache import cache; print(cache.get('drift:probe')['done'])"
+        "from django.core.cache import cache; print(cache.get('worms-job:probe')['done'])"
     )
     assert out == "120"
 
 
 @pytest.mark.django_db(transaction=True)
 def test_value_written_in_another_process_is_read_here():
-    run_in_other_process("from django.core.cache import cache; cache.set('drift:probe', 'x')")
-    assert cache.get("drift:probe") == "x"
-    cache.delete("drift:probe")
+    run_in_other_process("from django.core.cache import cache; cache.set('worms-job:probe', 'x')")
+    assert cache.get("worms-job:probe") == "x"
+    cache.delete("worms-job:probe")

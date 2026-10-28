@@ -9,6 +9,8 @@ from core.changesets import ChangesetError, NewTree, create_changeset, publish_c
 from core.engine import TreeState, check_changes, specs_from_dicts
 from core.importer import ImportFormatError, expand_import
 from core.models import Tree
+from worms import records
+from worms.client import SCHEDULED_BACKOFF
 
 
 class Command(BaseCommand):
@@ -55,6 +57,17 @@ class Command(BaseCommand):
             raise CommandError(
                 f"Import aborted with {len(result.errors)} structural error(s); nothing was stored."
             )
+
+        # Publishing reads cached WoRMS records only, so fetch the file's first, as
+        # the web app's fetch step does. Failures leave those checks unavailable.
+        aphia_ids = {n.aphia_id for n in result.state.nodes.values() if n.aphia_id is not None}
+        client = records.default_client(backoff=SCHEDULED_BACKOFF)
+        try:
+            failed = records.get_records(aphia_ids, client=client).failed
+        finally:
+            client.close()
+        for aphia_id, error in sorted(failed.items()):
+            self.stderr.write(f"  WoRMS record {aphia_id} not fetched: {error}")
 
         changeset = create_changeset(
             author=user,

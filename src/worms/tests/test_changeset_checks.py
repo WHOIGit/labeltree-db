@@ -1,12 +1,13 @@
-"""Checks on save and publish, and warning history (spec: worms-placement-checks)."""
+"""Checks on save and publish, and warning history (spec: worms-placement-checks).
 
-from datetime import timedelta
+Saves and publishes read cached records only; the helpers' `publish` caches the
+AphiaIDs its changes set first, as the web app's fetch step does."""
 
 import httpx
 import pytest
 
 from core import changesets
-from core.changesets import create_changeset, latest_rev, publish_changeset
+from core.changesets import create_changeset, latest_rev, publish_changeset, update_changeset
 from core.models import Change, NodeVersion, Tree
 from core.tests.helpers import add, edit, ids_by_label, move, publish, publish_new_tree
 from worms.models import NodeWarnings, WormsRecord, current_warnings
@@ -65,8 +66,8 @@ def test_saved_draft_with_a_duplicate_aphia_id(diatoms):
     ]
 
 
-def test_save_while_worms_is_down(diatoms, worms_http):
-    worms_http.override({"/AphiaRecordByAphiaID/110153": down})
+def test_save_never_calls_worms(diatoms, worms_http):
+    worms_http.calls.clear()
     cs = create_changeset(
         author="a", tree=diatoms, base_rev=1,
         changes=[add("new:1", "Heterocapsa_triquetra", parent=ids()["Dinophyceae"],
@@ -74,8 +75,10 @@ def test_save_while_worms_is_down(diatoms, worms_http):
                  edit(ids()["Chaetoceros_didymus"], label="Cd")],
     )  # fmt: skip
     first, second = cs.changes.order_by("seq")
-    assert first.checks == "unavailable"
+    assert first.checks == "unavailable"  # 110153 isn't cached
     assert second.checks == []
+    update_changeset(cs, notes="again")
+    assert worms_http.calls == []
 
 
 def test_update_refreshes_checks(diatoms):
@@ -137,42 +140,32 @@ def test_placeholders_are_rewritten_in_published_checks(diatoms):
     assert warnings_of("C_didymus_2") == warnings_of("Chaetoceros_didymus") == ["duplicate_aphia"]
 
 
-def test_worms_is_fetched_before_the_publish_lock(diatoms, worms_http, monkeypatch):
-    events = []
-    take_lock = changesets._take_publish_lock
-    monkeypatch.setattr(
-        changesets, "_take_publish_lock", lambda key: (events.append("lock"), take_lock(key))
-    )
-    recorded = worms_http.transport.responses["/AphiaRecordByAphiaID/149120"]
-    worms_http.override(
-        {"/AphiaRecordByAphiaID/149120": lambda r: (
-            events.append("fetch"), httpx.Response(200, json=recorded["body"]))[1]}
-    )  # fmt: skip
-    publish(diatoms, add("new:1", "Chaetoceros_danicus", parent=ids()["Chaetoceros"],
-                         aphia_id=149120))  # fmt: skip
-    assert events.index("lock") > events.index("fetch")
-    assert events.count("lock") == 1
-
-
-def test_publish_refetches_changed_aphia_ids_unless_recent(diatoms, worms_http):
+def test_publish_without_worms(diatoms, worms_http):
+    """WoRMS is unreachable, and the draft's AphiaIDs are all cached."""
+    worms_http.transport.responses = {}
+    worms_http.strict()
+    worms_http.calls.clear()
     cs = create_changeset(
         author="a", tree=diatoms, base_rev=1,
-        changes=[edit(ids()["Chaetoceros_didymus"], aphia_id=149120)],
+        changes=[move(ids()["Chaetoceros"], ids()["Chaetocerotaceae"], ids()["Dinophyceae"]),
+                 add("new:1", "dup", parent=ids()["Chromista"], aphia_id=149122)],
     )  # fmt: skip
-    worms_http.calls.clear()
-    publish_changeset(cs, published_by="b")
-    assert worms_http.calls == []  # fetched on save, under 10 minutes ago
+    revision = publish_changeset(cs, published_by="b")
+    assert revision.number == 2 and worms_http.calls == []
+    assert warnings_of("Chaetoceros") == ["out_of_lineage"]
+    assert warnings_of("dup") == ["duplicate_aphia"]
 
+
+def test_publish_uses_the_cached_record(diatoms, worms_http):
+    """No re-fetch at publish: a record is as fresh as the last fetch or sync."""
+    old = WormsRecord.objects.get(aphia_id=149122)
     cs = create_changeset(
-        author="a", tree=diatoms, base_rev=2, changes=[edit(ids()["Chaetoceros"], aphia_id=149122)]
-    )
-    WormsRecord.objects.filter(aphia_id=149122).update(
-        fetched_at=WormsRecord.objects.get(aphia_id=149122).fetched_at - timedelta(hours=1)
+        author="a", tree=diatoms, base_rev=1, changes=[edit(ids()["Chaetoceros"], label="C")]
     )
     worms_http.calls.clear()
     publish_changeset(cs, published_by="b")
-    assert "/AphiaRecordByAphiaID/149122" in worms_http.calls
-    assert "/AphiaRecordByAphiaID/148985" not in worms_http.calls  # unchanged: cache first
+    assert worms_http.calls == []
+    assert WormsRecord.objects.get(aphia_id=149122).fetched_at == old.fetched_at
 
 
 def test_warnings_never_block_publishing(diatoms):
@@ -185,10 +178,11 @@ def test_warnings_never_block_publishing(diatoms):
     assert latest_rev("diatoms") == before + 1
 
 
-# --- 3.3 WoRMS down -------------------------------------------------------------------------
+# --- Records not cached ----------------------------------------------------------------------
 
 
 def test_publish_during_an_outage(diatoms, worms_http):
+    """The fetch step fails (see helpers.publish), so 110153 is never cached."""
     worms_http.override(
         {"/AphiaRecordByAphiaID/110153": down, "/AphiaClassificationByAphiaID/110153": down}
     )

@@ -1,7 +1,7 @@
 """Placement checks against WoRMS (spec: worms-placement-checks).
 
-Pure functions of a TreeState plus cached records, so save, publish and drift
-compute warnings identically. `records` maps an AphiaID to its cached record
+Pure functions of a TreeState plus cached records, so validate, save, publish
+and syncs compute warnings identically. `records` maps an AphiaID to its cached record
 (with `lineage`), or to None if WoRMS has no record for it. An AphiaID missing
 from `records` is unavailable: a node whose checks need it gets None instead of
 a warning list.

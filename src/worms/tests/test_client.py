@@ -3,7 +3,15 @@
 import httpx
 import pytest
 
-from worms.client import DRIFT_BACKOFF, RETRIES, WormsClient, WormsError
+from worms.client import (
+    BACKOFF,
+    JOB_BACKOFF,
+    RETRIES,
+    SCHEDULED_BACKOFF,
+    RateLimited,
+    WormsClient,
+    WormsError,
+)
 
 from .fixtures import FixtureTransport
 
@@ -156,10 +164,49 @@ def test_backoff_waits():
     assert waits == [1.0, 2.0]
 
 
-def test_long_backoff_for_drift():
-    transport = FixtureTransport(failing(httpx.ConnectTimeout("slow")))
+def test_retry_schedules():
+    """Lookups 1, 2 s; API-started jobs 1, 2, 5, 12 s; scheduled jobs 10 s to 2 min."""
+    assert (BACKOFF, JOB_BACKOFF) == ((1.0, 2.0), (1.0, 2.0, 5.0, 12.0))
+    for backoff in (JOB_BACKOFF, SCHEDULED_BACKOFF):
+        transport = FixtureTransport(failing(httpx.ConnectTimeout("slow")))
+        waits = []
+        c = WormsClient(transport=transport, sleep=waits.append, backoff=backoff)
+        with pytest.raises(WormsError):
+            c.record(149122)
+        assert waits == list(backoff) and len(transport.calls) == 5
+    assert waits == [10.0, 30.0, 60.0, 120.0]
+
+
+def test_recovered_on_the_third_attempt():
+    attempts, waits, seen = [], [], []
+
+    def flaky(request):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise httpx.ReadTimeout("slow")
+        return httpx.Response(200, json={"AphiaID": 149122, "scientificname": "x"})
+
+    c = WormsClient(
+        transport=FixtureTransport({"/AphiaRecordByAphiaID/149122": flaky}),
+        sleep=waits.append, backoff=JOB_BACKOFF,
+        on_wait=lambda *args: seen.append(args),
+    )  # fmt: skip
+    assert c.record(149122)["AphiaID"] == 149122
+    assert waits == [1.0, 2.0]
+    assert seen == [(149122, 1, 4, 1.0), (149122, 2, 4, 2.0)]
+
+
+def test_rate_limit_raised_for_jobs():
+    transport = FixtureTransport(
+        {
+            "/AphiaRecordByAphiaID/149122": lambda r: httpx.Response(
+                429, headers={"Retry-After": "7"}
+            )
+        }
+    )
     waits = []
-    c = WormsClient(transport=transport, sleep=waits.append, backoff=DRIFT_BACKOFF)
-    with pytest.raises(WormsError):
+    c = WormsClient(transport=transport, sleep=waits.append, raise_rate_limited=True)
+    with pytest.raises(RateLimited) as info:
         c.record(149122)
-    assert waits == [10.0, 30.0, 60.0, 120.0] and len(transport.calls) == 5
+    assert (info.value.reason, info.value.retry_after) == ("worms_rate_limited", 7.0)
+    assert waits == [] and len(transport.calls) == 1

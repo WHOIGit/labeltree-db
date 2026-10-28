@@ -64,9 +64,10 @@ to; it must exist. Other options: `--description`, `--notes` (revision notes,
 default `Import of <file>`) and `--user` (author and publisher, default the
 current OS user).
 
-Importing a tree with AphiaIDs fetches their WoRMS records, so it needs access
-to marinespecies.org. If WoRMS can't be reached, the import still succeeds and
-the next drift run fills in the warnings.
+Importing a tree with AphiaIDs fetches their WoRMS records before publishing,
+so it needs access to marinespecies.org. If WoRMS can't be reached, the import
+still succeeds, lists the AphiaIDs it couldn't fetch, and the next sync fills
+in their warnings.
 
 ## Users, organizations and tokens
 
@@ -106,28 +107,34 @@ Scripts that write authenticate with an API token:
 The token acts with its user's roles. To revoke it, select it in **Api
 tokens** and run **Revoke selected tokens**.
 
-## WoRMS drift runs
+## WoRMS syncs
 
-A [drift run](design/worms.md#worms-jobs-and-syncs) re-fetches every AphiaID in a
-tree's latest revision from WoRMS and updates its nodes' WoRMS warnings. It
+A [sync](design/worms.md#worms-jobs-and-syncs) re-fetches a tree's AphiaIDs
+from WoRMS into the record cache and updates its nodes' WoRMS warnings. It
 never edits the tree. Run it from `src/`:
 
 ```sh
-python manage.py run_drift NES2022_taxonomy --user cron
+python manage.py worms_sync NES2022_taxonomy --user cron   # every AphiaID in the tree
+python manage.py worms_sync NES2022_taxonomy --new         # only those not cached yet
+python manage.py worms_sync --all                          # every tree and cached record
 ```
 
-It runs in the foreground and exits non-zero if WoRMS keeps failing or another
-run on the tree is active. `--user` is recorded as who started the run (default
-the current OS user). `POST /api/v1/trees/{tree}/drift` starts the same run in
-the background; `GET /api/v1/trees/{tree}/drift/status` shows its progress and
-`GET /api/v1/trees/{tree}/drift` lists the nodes with warnings.
+It runs in the foreground, retrying WoRMS for up to a few minutes. An AphiaID
+that still fails is skipped; the sync writes the warnings it can, lists the
+failures and exits non-zero, so cron mail reports them. It also exits non-zero
+if another sync on the tree (or a `--all` sync) is active. `--user` is recorded
+as who started it (default the current OS user).
+
+In the API, `POST /api/v1/worms/jobs` starts the same syncs in the background,
+`GET /api/v1/worms/jobs?tree=` and `GET /api/v1/worms/jobs/{job}` show their
+progress, and `GET /api/v1/worms/warnings?tree=` lists the nodes with warnings.
 
 To run it nightly on the production host, add a crontab entry there, using the
 deploy directory and image from `deploy.sh`:
 
 ```
 # m h dom mon dow  command
-30 3 * * *  cd /srv/labeltree-db && IMAGE=registry.example.org/amplify/labeltree-db:latest docker compose exec -T web python manage.py run_drift NES2022_taxonomy --user cron
+30 3 * * *  cd /srv/labeltree-db && IMAGE=registry.example.org/amplify/labeltree-db:latest docker compose exec -T web python manage.py worms_sync NES2022_taxonomy --user cron
 ```
 
 ## Design documents
@@ -135,7 +142,7 @@ deploy directory and image from `deploy.sh`:
 - [Backend](design/backend.md): data model, versioning rules, atomic changes
 - [API](design/api.md): read and write endpoints, auth and roles, consumer guide
 - [Web app](design/webapp.md): changeset workflow, merge and split, import
-- [WoRMS](design/worms.md): placement checks, drift reports, WoRMS caching
+- [WoRMS](design/worms.md): placement checks, syncs and the warnings report, WoRMS caching
 - [Roadmap](design/roadmap.md): open questions and future work
 
 Diagram sources and rendering instructions are in

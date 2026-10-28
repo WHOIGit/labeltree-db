@@ -1,18 +1,17 @@
 """The WoRMS record cache: every WoRMS read in the service goes through here.
 
-`get_records(aphia_ids, max_age)` returns the newest cached row per AphiaID if
-it is complete and fetched within `max_age`, and fetches the rest. HTTP runs on
-a small thread pool; rows are written on the calling thread, so they belong to
-its transaction.
-
-`max_age`: None = any cached row will do (lookups, saves); PUBLISH_MAX_AGE for
-the AphiaIDs a publish adds or alters; timedelta(0) = always re-fetch (drift).
+`cached_records(aphia_ids)` reads the cache only; validate, saves and publishes
+use it, so they never wait on WoRMS. `get_records(aphia_ids)` returns the
+newest complete cached row per AphiaID and fetches the rest; the lookup
+endpoints and `import_tree` use it, and WoRMS jobs (worms.sync) fetch through
+the same `store`. HTTP runs on a small thread pool; rows are written on the
+calling thread, so they belong to its transaction.
 """
 
 import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -20,7 +19,6 @@ from django.utils import timezone
 from .client import WormsClient, WormsError
 from .models import WormsRecord
 
-PUBLISH_MAX_AGE = timedelta(minutes=10)
 POOL_SIZE = 4
 
 
@@ -46,6 +44,12 @@ def newest_rows(aphia_ids) -> dict[int, WormsRecord]:
         .distinct("aphia_id")
     )
     return {row.aphia_id: row for row in rows}
+
+
+def cached_records(aphia_ids) -> dict:
+    """{aphia_id: record or None} from complete cached rows, for checks. AphiaIDs
+    without one are absent, which makes the checks that need them unavailable."""
+    return {a: row.record for a, row in newest_rows(aphia_ids).items() if row.complete}
 
 
 def store(aphia_id: int, record: dict | None, now=None) -> WormsRecord:
@@ -98,12 +102,6 @@ def store_search_hit(record: dict, now=None) -> WormsRecord:
     return store(aphia_id, {**record, "lineage": None}, now)
 
 
-def _fresh(row: WormsRecord | None, max_age: timedelta | None, now) -> bool:
-    if row is None or not row.complete:
-        return False
-    return max_age is None or row.fetched_at > now - max_age
-
-
 class FetchResult:
     def __init__(self):
         self.rows: dict[int, WormsRecord] = {}
@@ -114,34 +112,22 @@ class FetchResult:
         return {a: row.record for a, row in self.rows.items()}
 
 
-def get_records(
-    aphia_ids,
-    max_age: timedelta | None = None,
-    *,
-    client: WormsClient | None = None,
-    progress=None,
-    stop_on_error: bool = False,
-) -> FetchResult:
-    """Cached rows for `aphia_ids`, fetching those missing, incomplete or stale.
+def get_records(aphia_ids, *, client: WormsClient | None = None) -> FetchResult:
+    """Cached rows for `aphia_ids`, fetching those missing or incomplete.
 
-    A fetch that fails after retries is reported in `failed` and leaves the
-    cache as it was. `progress(done, total)` is called after each AphiaID.
-    With `stop_on_error`, the first failure stops further fetches and the
-    remaining AphiaIDs are reported as failing with the same error.
+    A fetch that fails after retries is reported in `failed`, leaves the cache
+    as it was, and doesn't stop the others.
     """
-    now = timezone.now()
     ids = list(dict.fromkeys(aphia_ids))
     result = FetchResult()
     cached = newest_rows(ids)
     stale = []
     for aphia_id in ids:
-        if _fresh(cached.get(aphia_id), max_age, now):
-            result.rows[aphia_id] = cached[aphia_id]
+        row = cached.get(aphia_id)
+        if row is not None and row.complete:
+            result.rows[aphia_id] = row
         else:
             stale.append(aphia_id)
-    done = len(ids) - len(stale)
-    if progress:
-        progress(done, len(ids))
     if not stale:
         return result
 
@@ -151,28 +137,21 @@ def get_records(
         with ThreadPoolExecutor(POOL_SIZE) as pool:
             futures = [(a, pool.submit(client.full_record, a)) for a in stale]
             for aphia_id, future in futures:
-                if stop_on_error and result.failed:
-                    future.cancel()
-                    result.failed[aphia_id] = next(iter(result.failed.values()))
-                    continue
                 try:
                     record = future.result()
                 except WormsError as exc:
                     result.failed[aphia_id] = exc
                     continue
                 result.rows[aphia_id] = store(aphia_id, record)
-                done += 1
-                if progress:
-                    progress(done, len(ids))
     finally:
         if own_client:
             client.close()
     return result
 
 
-def get_record(aphia_id: int, max_age: timedelta | None = None, **kwargs) -> WormsRecord:
+def get_record(aphia_id: int, **kwargs) -> WormsRecord:
     """One record; raises WormsError if it can't be fetched."""
-    result = get_records([aphia_id], max_age, **kwargs)
+    result = get_records([aphia_id], **kwargs)
     if aphia_id in result.failed:
         raise result.failed[aphia_id]
     return result.rows[aphia_id]

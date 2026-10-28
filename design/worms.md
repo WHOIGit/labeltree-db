@@ -139,8 +139,12 @@ enforced by PostgreSQL advisory locks that are released when the sync ends or
 its process dies. Fetch jobs exclude nothing. Job status (progress, AphiaIDs
 being retried, a rate-limit pause, failures, and who started it when) is held
 in Django's database cache, so that every server process sees it without an
-extra service such as Redis. It is lost on restart, and startup clears status
-left by an interrupted job.
+extra service such as Redis. It is kept for 7 days, and a job whose process
+died, for example in a restart, is shown as `interrupted`.
+
+Cron runs syncs with the `worms_sync` management command (`worms_sync <tree>`,
+`--new` or `--all`), which runs in the foreground and exits non-zero if any
+AphiaID failed.
 
 WoRMS is fetched without locking the tree. A sync then re-checks and writes
 its warnings in one short transaction under the tree's publish lock, against

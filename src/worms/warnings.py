@@ -1,5 +1,5 @@
 """Writing nodes' current WoRMS warnings (spec: worms-placement-checks, "Warning
-history storage"). Used by publish and drift, inside their transactions."""
+history storage"). Used by publish and syncs, inside their transactions."""
 
 from django.utils import timezone
 

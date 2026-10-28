@@ -104,12 +104,15 @@ DATABASES = {
 
 # Cache
 # Django's database cache: a table in PostgreSQL (created by a worms migration),
-# shared by every server process. Holds drift-run status.
+# shared by every server process. Holds WoRMS job status.
 
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.db.DatabaseCache",
         "LOCATION": "django_cache",
+        # Past MAX_ENTRIES the cache deletes a third of its entries, running jobs'
+        # status included. Each Validate adds a fetch job's status, kept 7 days.
+        "OPTIONS": {"MAX_ENTRIES": 100_000},
     }
 }
 
@@ -181,7 +184,7 @@ LOGGING = {
     "root": {"handlers": ["console"], "level": "INFO"},
     "loggers": {
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        # httpx logs every WoRMS request at INFO; a drift run makes hundreds.
+        # httpx logs every WoRMS request at INFO; a sync makes hundreds.
         "httpx": {"level": "WARNING"},
     },
 }
