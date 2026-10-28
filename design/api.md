@@ -5,7 +5,7 @@ the service pushes no notifications or events.
 
 - [Authentication and roles](#authentication-and-roles)
 - [Read endpoints](#read-endpoints): [nodes](#nodes), [trees](#trees)
-- [Write endpoints](#write-endpoints)
+- [Write endpoints](#write-endpoints): [WoRMS jobs and warnings](#worms-jobs-and-warnings)
 - [Caching](#caching)
 - [Errors and status codes](#errors-and-status-codes)
 - [Pagination and limits](#pagination-and-limits)
@@ -25,9 +25,12 @@ Roles are assigned per tree and can be combined:
 | Role | Can |
 |---|---|
 | `reader` | Read published revisions. Most downstream apps have this role. |
-| `drafter` | Create, update and discard any draft, and run checks and drift reports. Add and remove aliases. |
-| `approver` | Publish drafts and run drift reports. Holding both `drafter` and `approver` lets a user publish their own drafts. |
-| `admin` | Manage tree settings and assign roles. Run drift reports. |
+| `drafter` | Create, update and discard any draft, run checks and fetch jobs, and sync the tree's WoRMS data. Add and remove aliases, set descriptions. |
+| `approver` | Publish drafts and sync the tree's WoRMS data. Holding both `drafter` and `approver` lets a user publish their own drafts. |
+| `admin` | Manage tree settings and assign roles. Sync the tree's WoRMS data. |
+
+A full cache sync (`sync_all`), which spans every tree, needs a Django
+superuser.
 
 New trees need the global **tree-creation permission** (Django's
 `core.add_tree`), not a per-tree role: it allows creating, seeing and
@@ -379,9 +382,10 @@ edited directly, outside changesets.
 
 ```
 # Checking (no side effects)
-POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, WoRMS warnings,
-                                        version bumps, warning changes, conflicts,
-                                        reduced changes
+POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, conflicts, reduced
+                                        changes with sources, version bumps, net changes
+                                        per node, WoRMS warnings and warning changes from
+                                        cached records, AphiaIDs missing from the cache
 
 # Changesets
 GET    /trees/{tree}/changesets?state=  list changesets, e.g. drafts awaiting approval
@@ -402,12 +406,6 @@ GET    /worms/{a}/between/{b}           all records on the lineage path between 
 GET    /worms/{a}/common_ancestor/{b}   the nearest common WoRMS ancestor of a and b, inclusive:
                                         if a is an ancestor of b, a is returned, and vice versa
 
-# Drift
-POST   /trees/{tree}/drift              start a run (drafter, approver, admin): refreshes worms_warnings.
-                                        Asynchronous: returns 202 Accepted; 409 if a run is active
-GET    /trees/{tree}/drift/status       the active run's progress, and the last finished run if known
-GET    /trees/{tree}/drift              nodes that currently have WoRMS warnings
-
 # Aliases (direct, no changeset)
 GET    /nodes/{id}/aliases?history=     current aliases; history=true includes removed ones,
                                         each with added_by/at and removed_by/at
@@ -422,12 +420,48 @@ PUT    /nodes/{id}/description {description}
                                         Earlier entries are kept
 ```
 
+WoRMS jobs and the warnings report are [under `/worms`](#worms-jobs-and-warnings).
+
 `changes[]` holds [change records](backend.md#change-records). Merge, split,
 import and "Add from WoRMS" have no endpoints of their own: the browser expands
 them into groups of atomic changes ([webapp.md](webapp.md#merge-and-split)).
 
 Alias ids for `DELETE` come from a detailed node's `aliases` or from
 `GET /nodes/{id}/aliases`.
+
+### WoRMS jobs and warnings
+
+Anything that fetches from WoRMS in bulk is an asynchronous
+[job](worms.md#worms-jobs-and-syncs). Jobs aren't tree content, and a full
+cache sync spans every tree, so they live under `/worms` with the tree as a
+parameter.
+
+```
+POST   /worms/jobs                      start a job; 202 Accepted with its status
+         {kind: "fetch", tree, aphia_ids[]}       cache the given AphiaIDs not yet cached (drafter)
+         {kind: "sync_new" | "sync_tree", tree, aphia_ids?}
+                                                  sync the tree (drafter, approver, admin);
+                                                  409 sync_in_progress if one overlaps
+         {kind: "sync_all", aphia_ids?}           sync every tree (superuser)
+GET    /worms/jobs/{job}                a job's status
+GET    /worms/jobs?tree=                the tree's active sync, if any, and its last finished one;
+                                        without tree, the active and last sync_all
+GET    /worms/warnings?tree=            nodes in the latest revision that currently have WoRMS warnings
+```
+
+`aphia_ids` on a sync restricts its fetching to those AphiaIDs, to try failed
+ones again; the whole tree is still re-checked. A job's status:
+
+```
+{id: "8b0f...", kind: "sync_tree", tree: "NES2022_taxonomy",
+ started_by: "curator1", started_at: "...", finished_at: null,
+ state: "running",                       # running | finished | interrupted
+ total: 175, done: 120,
+ retrying: [{aphia_id: 149122, attempt: 2, retries: 4, wait_until: "..."}],
+ paused: null,                           # or {reason: "worms_rate_limited", until: "..."}
+ failed: [{aphia_id: 148985, reason: "worms_unreachable", detail: "..."}],
+ rows_added: null}                       # warning-history rows written, once finished
+```
 
 ### Draft edits and publishing
 
@@ -449,7 +483,7 @@ publish on a tree is running, other publishes on that tree get `409`
 ### Example: validate
 
 `validate` checks a change list against the latest revision without saving
-anything. A blocked `publish` returns the same body ([Errors](#errors-and-status-codes)).
+anything and without calling WoRMS. A blocked `publish` returns the same body ([Errors](#errors-and-status-codes)).
 
 ```
 POST /trees/taxonomy/validate
@@ -485,7 +519,15 @@ POST /trees/taxonomy/validate
    {node: 431, from: 3, to: 4}, {node: 433, from: 1, to: 2},
    {node: 30, from: 9, to: 10}
  ],
- reduced_changes: [...],
+ reduced_changes: [
+   {seq: 1, op: "add", node: "new:1", ..., sources: [1]}, ...
+ ],
+ node_changes: [
+   {node: 431, from: 3, to: 4, fields: {label: ["Chaetoceros_didymus", "Chaetoceros_didymus_sl"]},
+    children_gained: [], children_lost: [433], seqs: [2, 3], groups: []}, ...
+ ],
+ unchecked: [],
+ worms_missing: [],
  worms: "ok"}
 ```
 
@@ -499,15 +541,25 @@ POST /trees/taxonomy/validate
   touched nodes that later revisions changed, to help with the rebase. Here 402
   gains a child (change 1) but changed after revision 37.
 - `reduced_changes` is the change list as saving would store it, after
-  [reduction](backend.md#reduction-on-save).
+  [reduction](backend.md#reduction-on-save). Each carries `sources`, the
+  positions in the submitted `changes` it was built from, so a client can show
+  errors and groups against the list the user composed. Errors' `seq` refer to
+  `reduced_changes`.
+- `node_changes` is the net change of each affected node, from the base
+  revision to the result: changed `fields` as `[old, new]`, children gained and
+  lost, `successors` if deprecated, the `seqs` that touch it and the `groups`
+  of their sources. It doesn't depend on the order of the changes.
 - `warnings` are the [WoRMS warnings](worms.md#the-warnings) the changes would
   cause. `warning_changes` covers existing nodes whose current warnings would
   change, here 431, which now shares its AphiaID.
 - `version_changes` has the same meaning as in a
   [revision's changes](#history). 431 is renamed and loses its child, and
   increases once.
-- `worms` is `unavailable` if WoRMS couldn't be reached. The WoRMS checks are
-  then skipped, and publishing is still allowed.
+- WoRMS checks use cached records only. `worms_missing` lists AphiaIDs the
+  checks need that aren't cached, and `unchecked` the changes whose checks
+  couldn't run because of them; `worms` is then `unavailable`. A
+  [fetch job](#worms-jobs-and-warnings) for `worms_missing` followed by another
+  `validate` fills them in. Publishing is allowed either way.
 
 ## Caching
 
@@ -539,14 +591,14 @@ Errors have one body shape:
 |---|---|
 | `200` | Success. A deprecated node requested at a later revision is a `200` with its [deprecation record](#deprecated-nodes), not an error. Also: description set. |
 | `201` | Created: new draft, published revision, added alias. |
-| `202` | Accepted: drift run started. |
+| `202` | Accepted: WoRMS job started. |
 | `204` | No content: draft discarded, alias removed. |
 | `304` | Not modified, after `If-None-Match` ([Caching](#caching)). |
 | `400` | Bad parameter, e.g. `?rev` outside a version's range on `/versions/{v}`, or `between` on records where neither is an ancestor of the other. |
 | `401` | Not authenticated. |
-| `403` | Authenticated, but missing the role for this tree. |
+| `403` | Authenticated, but missing the role for this tree, or not a superuser for `sync_all`. |
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
-| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a drift run while one is active. |
+| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`). |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
 | `422` | Request body invalid, or publish blocked by structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |
@@ -569,7 +621,7 @@ and add `count` (the total) to the response.
 | `GET /nodes/{id}/warning_history` | paginated; default `limit` 100 |
 | `GET /nodes/{id}/aliases?history=true` | paginated; default `limit` 100 |
 | `GET /nodes/{id}/description?history=true` | paginated; default `limit` 100 |
-| `GET /trees/{tree}/drift` | paginated; default `limit` 100 |
+| `GET /worms/warnings?tree=` | paginated; default `limit` 100 |
 | `GET /worms/search` | `limit`, default 20, max 100 |
 | Everything else | whole response. Use `?depth=` to limit `descendants` and `nodes_as_tree`. |
 

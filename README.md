@@ -68,7 +68,7 @@ the next drift run fills in the warnings.
 
 ## WoRMS drift runs
 
-A [drift run](design/worms.md#drift-reports) re-fetches every AphiaID in a
+A [drift run](design/worms.md#worms-jobs-and-syncs) re-fetches every AphiaID in a
 tree's latest revision from WoRMS and updates its nodes' WoRMS warnings. It
 never edits the tree. Run it from `src/`:
 

@@ -49,7 +49,8 @@ admin, not through the API.
 
 ### Requirement: Reader permissions
 Any role on a tree SHALL allow reading that tree's published revisions, nodes
-and WoRMS-derived data, and calling the WoRMS lookup endpoints.
+and WoRMS-derived data, reading the status of its WoRMS jobs, and calling the
+WoRMS lookup endpoints.
 
 #### Scenario: Drafter reads
 - **WHEN** a user with only `drafter` on a tree reads one of its nodes
@@ -57,9 +58,8 @@ and WoRMS-derived data, and calling the WoRMS lookup endpoints.
 
 ### Requirement: Drafter permissions
 `drafter` SHALL allow creating, updating and discarding any draft on the tree,
-not only one's own, running `validate`, adding and removing aliases, setting
-descriptions, and
-starting drift runs. Drafts SHALL be visible only to drafters, approvers and
+not only one's own, running `validate`, starting WoRMS fetch jobs, adding and
+removing aliases, setting descriptions, and starting tree sync jobs. Drafts SHALL be visible only to drafters, approvers and
 admins of the tree.
 
 #### Scenario: Editing another drafter's draft
@@ -71,7 +71,7 @@ admins of the tree.
 - **THEN** the API returns `403`
 
 ### Requirement: Approver permissions
-`approver` SHALL allow publishing drafts and starting drift runs. A user SHALL
+`approver` SHALL allow publishing drafts and starting tree sync jobs. A user SHALL
 be able to publish their own draft only when holding both `drafter` and
 `approver`.
 
@@ -81,11 +81,24 @@ be able to publish their own draft only when holding both `drafter` and
 
 ### Requirement: Admin permissions
 `admin` SHALL allow managing the tree's settings and role assignments in Django
-admin and starting drift runs.
+admin and starting tree sync jobs.
 
-#### Scenario: Admin starts drift
-- **WHEN** a tree admin calls `POST /trees/{tree}/drift`
-- **THEN** the run starts
+#### Scenario: Admin syncs a tree
+- **WHEN** a tree admin starts a `sync_tree` job on the tree
+- **THEN** the job starts
+
+#### Scenario: Reader cannot sync
+- **WHEN** a user with only `reader` starts a `sync_new` job on the tree
+- **THEN** the API returns `403`
+
+### Requirement: Full cache sync
+Starting a full cache sync (`sync_all`), which spans every tree, SHALL require
+a Django superuser. Any other user SHALL get `403`. Any authenticated user SHALL
+be able to read a full cache sync's status.
+
+#### Scenario: Tree admin starts a full sync
+- **WHEN** a user who is `admin` on every tree but not a superuser starts a `sync_all` job
+- **THEN** the API returns `403`
 
 ### Requirement: Creating new trees
 Creating, updating, publishing and seeing new-tree changesets (`base_rev:
@@ -102,7 +115,7 @@ give the publishing user `admin` on the new tree.
 
 ### Requirement: Recorded identities
 `author`, `published_by`, alias `added_by` and `removed_by`, description
-`added_by`, and drift-run
+`added_by`, and WoRMS job
 `started_by` SHALL record the authenticated username, or the service account's
 name for token requests.
 

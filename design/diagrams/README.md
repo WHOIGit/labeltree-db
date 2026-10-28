@@ -10,7 +10,7 @@ it is used:
 | `03-changeset-lifecycle.mmd` | [webapp.md](../webapp.md#changesets-and-concurrency) |
 | `04-node-merge-and-split-options/04a–d` | [webapp.md](../webapp.md#merge-and-split) |
 | `05-consumer-lookups.mmd` | [api.md](../api.md#consumer-guide) |
-| `06-worms-drift-report.mmd` | [worms.md](../worms.md#drift-reports) |
+| `06-worms-sync.mmd` | [worms.md](../worms.md#worms-jobs-and-syncs) |
 
 Colour key used throughout: **green** = new node, **yellow** = node version
 increased or warning raised, **grey dashed** = deprecated node, **blue** =

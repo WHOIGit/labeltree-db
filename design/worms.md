@@ -12,7 +12,8 @@ also used to:
 
 - **Import from WoRMS:** create a node or subtree from an AphiaID, pulling in
   name and lineage.
-- **Report drift:** compare our anchored nodes with the current WoRMS hierarchy.
+- **Sync:** re-fetch our AphiaIDs and re-check our anchored nodes against the
+  current WoRMS hierarchy.
 
 We chose this over a WoRMS portal with an overlay of our own labels because:
 
@@ -25,13 +26,14 @@ We chose this over a WoRMS portal with an overlay of our own labels because:
   morphotypes and "X_or_Y" mixes are ordinary nodes, not exceptions to WoRMS.
 - **Multiple trees.** The same machinery serves taxonomy, parasites, morphology
   and lab-specific trees, including flat ones.
-- **No runtime dependency.** Reads never touch marinespecies.org. WoRMS is
-  needed only while editing, publishing and running drift reports.
+- **No runtime dependency.** Reads, saves and publishes never touch
+  marinespecies.org. WoRMS is needed only by the lookup endpoints and by
+  [WoRMS jobs](#worms-jobs-and-syncs) that refresh the cache.
 - **Simpler versioning.** We version our own data. WoRMS has no releases, so a
   portal would have to snapshot WoRMS and the overlay together.
 
 The cost is maintaining the tree ourselves. Import from WoRMS, placement checks
-and drift reports keep that cost low.
+and syncs keep that cost low.
 
 ## Placement checks
 
@@ -61,8 +63,11 @@ is compared instead; otherwise every descendant of a synonym would get an
 ### When checks run
 
 Checks run on `validate`, when saving a draft, and again on publish
-([webapp.md](webapp.md#changesets-and-concurrency)). A
-[drift report](#drift-reports) reruns them for the whole tree.
+([webapp.md](webapp.md#changesets-and-concurrency)), always against cached
+records: none of them calls WoRMS. The web app's Validate button first runs a
+fetch job for the AphiaIDs the draft needs that aren't cached
+([webapp.md](webapp.md#validating-a-draft)). A
+[sync](#worms-jobs-and-syncs) reruns the checks for the whole tree.
 
 Moving or re-anchoring one node can change warnings on nearby nodes, so an edit
 rechecks:
@@ -75,17 +80,20 @@ rechecks:
 
 Ancestors don't need rechecking.
 
-If WoRMS can't be reached, the affected changes record "checks unavailable" and
-publishing is still allowed. The next drift report fills the warnings in.
+If a record the checks need isn't cached (never fetched, or every fetch
+failed), the affected changes record "checks unavailable" and publishing is
+still allowed. The next fetch or sync fills the warnings in.
 
 ### How warnings are stored and shown
 
-- `NODE_WARNINGS` keeps each node's warnings over time. Publishing and drift
-  reports add a row only when a node's warnings differ from its newest row,
+- `NODE_WARNINGS` keeps each node's warnings over time. Publishing and syncs
+  add a row only when a node's warnings differ from its newest row,
   including an empty list when its warnings clear. The newest row is the
   node's **current** set, which is all the API shows by default
   (history: `GET /nodes/{id}/warning_history`).
 - Each row records when it was computed (`computed_at`).
+- A node whose warnings can't be computed, because a record they need isn't
+  cached or failed to refresh in that sync, gets no row.
 - Warnings never bump node versions and never block publishing.
 - The API returns them on every detailed node as `worms_warnings`, a list that
   is empty when there are none:
@@ -97,42 +105,65 @@ publishing is still allowed. The next drift report fills the warnings in.
   ]
   ```
 
-## Drift reports
+## WoRMS jobs and syncs
 
-![WoRMS drift report](diagrams/06-worms-drift-report.png)
+![WoRMS sync](diagrams/06-worms-sync.png)
 
-Run by a drafter, approver or admin, or on a schedule. `POST
-/trees/{tree}/drift` starts the run and returns `202 Accepted`, because
-fetching every AphiaID from WoRMS takes minutes:
+Everything that fetches from WoRMS in bulk is a **job** that runs in the
+background, because fetching hundreds of AphiaIDs takes minutes. Starting one
+returns `202 Accepted`, and its status, with progress, is polled
+([api.md](api.md#worms-jobs-and-warnings)).
 
-1. Collect every AphiaID used in the latest revision.
-2. Re-fetch each record and its lineage from WoRMS. `AphiaRecordsByDate` isn't
+| Kind | Started by | Fetches | Then |
+|---|---|---|---|
+| `fetch` | the web app's Validate button (drafter) | the given AphiaIDs that aren't cached | nothing: it only fills the cache |
+| `sync_new` | drafter, approver, admin | the tree's AphiaIDs that aren't cached | re-checks the tree |
+| `sync_tree` | drafter, approver, admin, or cron | every AphiaID in the tree | re-checks the tree |
+| `sync_all` | superuser, or cron | every cached AphiaID and every tree's AphiaIDs | re-checks every tree |
+
+The three sync kinds re-check warnings after fetching:
+
+1. Collect the AphiaIDs to fetch from the latest revision.
+2. Fetch each record and its lineage from WoRMS. `AphiaRecordsByDate` isn't
    enough on its own: if WoRMS moves a family our tree doesn't hold, only the
    family's record changes, not those of our genera below it. A tree uses a few
-   hundred AphiaIDs, so a full run takes minutes.
+   hundred AphiaIDs, so a full sync takes minutes.
 3. Re-run the placement checks for the whole tree, and add a `NODE_WARNINGS`
-   row for each node whose warnings changed. A quiet run writes almost nothing.
-4. `GET /trees/{tree}/drift` reports the nodes that currently have warnings.
+   row for each node whose warnings changed. A quiet sync writes almost nothing.
+4. `GET /worms/warnings?tree=` reports the nodes that currently have
+   warnings; the web app shows it as the warnings panel.
 
-Runs themselves aren't stored in the tree's tables. One run per tree can be
-active at a time, enforced by a PostgreSQL advisory lock that is released when
-the run ends or its process dies. `GET /trees/{tree}/drift/status` reports the
-active run's progress and the last finished run (who started it, when, and
-whether it succeeded), held in Django's database cache so that every server
-process sees it without an extra service such as Redis. The last run's status
-is lost on restart, and startup clears status left by an interrupted run.
+Jobs themselves aren't stored in the tree's tables. One sync per tree can be
+active at a time, and a `sync_all` sync excludes every other sync,
+enforced by PostgreSQL advisory locks that are released when the sync ends or
+its process dies. Fetch jobs exclude nothing. Job status (progress, AphiaIDs
+being retried, a rate-limit pause, failures, and who started it when) is held
+in Django's database cache, so that every server process sees it without an
+extra service such as Redis. It is lost on restart, and startup clears status
+left by an interrupted job.
 
-WoRMS is fetched without locking the tree. The run then re-checks and writes its
-warnings in one short transaction under the tree's publish lock, against the
-latest revision at that moment, so a revision published mid-run is never
+WoRMS is fetched without locking the tree. A sync then re-checks and writes
+its warnings in one short transaction under the tree's publish lock, against
+the latest revision at that moment, so a revision published mid-run is never
 overwritten with warnings from an older one.
 
-If WoRMS keeps failing after retries, the run stops, keeps the warning rows it
-already wrote, and its status records the reason: `worms_unreachable` (timeout
-or connection error), `worms_rate_limited` (HTTP 429, after waiting out
-`Retry-After`) or `worms_error` (any other error response).
+### Failures and retries
 
-Drift reports never propose or make changes to the tree, and never modify
+- A timeout, connection error or `5xx` is retried: after 1, 2, 5 and 12 s for
+  jobs started through the API, and after 10 s, 30 s, 1 min and 2 min for
+  scheduled syncs, which have nobody waiting. Lookups retry after 1 and 2 s.
+- An AphiaID that still fails is recorded with its reason
+  (`worms_unreachable`, `worms_rate_limited` or `worms_error`), its cache rows
+  are left alone, and the job carries on with the next one. A sync writes
+  no warning row for nodes needing a failed record. The web app offers to try
+  the failed AphiaIDs again; a scheduled sync leaves them to the next one.
+- `429 Too Many Requests` limits all our requests, not one AphiaID, so it
+  pauses the whole job for the response's `Retry-After` (30 s if absent). A job
+  started through the API stops if it is rate limited again after resuming,
+  listing the AphiaIDs it didn't fetch as failed; a scheduled sync pauses up
+  to 4 times.
+
+Syncs never propose or make changes to the tree, and never modify
 published node versions. Any fix is made by a drafter in an ordinary draft.
 
 ## What we store

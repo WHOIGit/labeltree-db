@@ -12,18 +12,23 @@ An interactive mockup of the tree browser and draft editor is in
 
 ## Pages
 
-- **Tree browser:** search, warning badges, and a revision picker to view past
-  revisions (including nodes deprecated since).
-- **Node page:** current state, version history, WoRMS card, successors if
-  deprecated.
-- **Draft editor:** compose an ordered list of atomic changes, with check
-  results shown inline. Merge, split and import are wizards that expand into
-  atomic changes, which can be edited before saving.
-- **Draft list and review:** the ordered change list grouped by macro, the
-  affected nodes with their old → new versions, and a diff view. Approvers
-  publish from here, with notes.
+- **Tree browser:** search, [AphiaID pills](#aphiaid-pills), a revision picker
+  to view past revisions (including nodes deprecated since), a hideable
+  warnings panel listing the nodes with WoRMS warnings, and a
+  [sync menu](#keeping-worms-data-current).
+- **Node page:** current state, version history, WoRMS card with warning
+  history, aliases, successors if deprecated.
+- **Draft editor:** compose an ordered list of atomic changes, then
+  [validate](#validating-a-draft) to see the results. Merge, split and import
+  are wizards that expand into atomic changes, which can be edited before
+  saving.
+- **Draft list and review:** the net changes per node with their old → new
+  versions, the ordered change list grouped by macro, and the warnings that
+  will change. Approvers publish from here, with notes.
 - **Add from WoRMS:** search by name, pick a record, and accept the suggested
-  parent from its lineage.
+  parent from its lineage. The label is the scientific name with spaces turned
+  into `_` and characters that aren't machine-safe dropped
+  (`Chaetoceros (Hyalochaete) debilis` → `Chaetoceros_Hyalochaete_debilis`).
 
 Roles are described in [api.md](api.md#authentication-and-roles).
 
@@ -40,15 +45,20 @@ a new tree: it carries the tree's id, title and description, and publishing it
 creates the tree together with its revision 1 ([New trees](#new-trees)).
 
 - **Composing happens in the browser.** The user builds the change list
-  locally, including merge and split presets. The browser calls `validate` as
-  the list changes, so check results appear as the user works.
-- **Saving a draft** sends the whole list to the server. Creating a draft
+  locally, including merge and split presets, without calling the server. The
+  list is checked when the user presses Validate
+  ([Validating a draft](#validating-a-draft)).
+- **Saving a draft** sends the whole list to the server, and is possible once
+  the current list has been validated. A draft with structural errors can be
+  saved after a confirmation; it can't be published until they are fixed. Creating a draft
   records its `base_rev`; updating it replaces its changes, notes and
-  `base_rev`. Saving [reduces](backend.md#reduction-on-save) the change list.
+  `base_rev`. Saving [reduces](backend.md#reduction-on-save) the change list, and only the
+  reduced list is stored: reopening a draft starts from it.
   Drafts are visible to the tree's drafters, approvers and admins.
   Any drafter may update or discard any draft, not only their own.
 - **Publishing** is done by an approver. `base_rev` must equal the latest
-  revision `r`, and all checks run again. While one publish on a tree is in
+  revision `r`, and all checks run again, the WoRMS checks against cached
+  records (publishing never calls WoRMS). While one publish on a tree is in
   progress, any other publish on that tree is refused at once
   (`publish_in_progress`). If the checks pass, publishing atomically creates revision
   `r+1`, closes the old node versions (`valid_to_rev = r+1`), opens the new
@@ -87,11 +97,81 @@ The draft preview lists "warnings that will change" separately from "nodes
 whose version will increase". The two don't always overlap: warnings aren't
 versioned, and reflect the most recently fetched WoRMS data.
 
+## Validating a draft
+
+```
+ [Validate] -> validate (cache only)
+                 |
+        AphiaIDs missing from the cache? --no--> show results, enable Save
+                 | yes
+                 v
+          fetch job for them, with progress bars
+                 |
+           some failed? --yes--> [Try again] | [Proceed anyway]
+                 | no                               |
+                 v                                  v
+          validate again ------------------> show results, enable Save
+```
+
+- Any edit after validating disables Save, greys the results as out of date,
+  and enables Validate again.
+- [Job progress](#keeping-worms-data-current) shows while AphiaIDs are fetched.
+  "Proceed anyway" leaves the checks of the changes needing a failed AphiaID
+  unavailable; the next sync fills them in.
+- Results appear in the changes panel's tabs:
+
+| Tab | Shows |
+|---|---|
+| As edited | the list as composed, editable, with each error under the change it comes from |
+| As reduced | the list as saving would store it |
+| By node | the net change of each affected node: version, changed fields, children gained and lost, successors, tagged with its groups |
+| Summary | counts of changes, affected nodes, errors and warnings; whether the draft is up to date |
+| WoRMS warnings | the warnings each change causes, and nodes whose current warnings will change |
+| Errors | structural errors and conflicts |
+
+- A tab whose content changed since it was last viewed shows an unread dot;
+  Errors and WoRMS warnings show their counts.
+- Hovering an entry in any tab highlights its node in the tree; clicking it
+  expands the node's ancestors and scrolls to it.
+- By node compares the base revision with the result, so it doesn't depend on
+  the order of the changes: temporary labels used to swap two labels, or a move
+  undone by hand, don't show. Its group tags come from every change a reduced
+  change was built from, so a split stays tagged `split#1` even after one of
+  its new nodes was renamed by hand.
+
+## AphiaID pills
+
+A node with an AphiaID shows a round 🪱 pill; a node without one shows none.
+
+| Colour | When |
+|---|---|
+| grey | the AphiaID's record has never been fetched |
+| green | no current warnings |
+| orange | any [warning](worms.md#the-warnings) |
+| red | `unknown_aphia`, whatever its other warnings |
+
+The tooltip shows the AphiaID and every current warning. Clicking the pill opens
+its WoRMS page in a new tab.
+
+## Keeping WoRMS data current
+
+The sync menu starts a [WoRMS job](worms.md#worms-jobs-and-syncs) on the
+tree: **Sync new AphiaIDs** (never fetched), **Sync this tree** (re-fetch
+all), and for superusers **Full cache sync** (every tree). It also shows a sync
+already running, e.g. a scheduled one. When it finishes, the pills and
+warnings panel refresh.
+
+While a job runs, one bar shows AphiaIDs done out of the total. Each AphiaID
+being retried gets its own bar through its retry waits (1, 2, 5 and 12 s), and
+a rate-limit pause from WoRMS replaces them with one pause bar. AphiaIDs that
+still fail are listed at the end with **Try again** (those AphiaIDs only) or
+**Proceed anyway**.
+
 ## Merge and split
 
 Merge and split are presets that expand into ordered atomic changes sharing a
-`group` id (e.g. `merge#1`). Reviewers see the expanded list and every node it
-touches.
+`group` id (e.g. `merge#1`). Reviewers see the expanded list and, in By node,
+every node it touches.
 
 **With replacement** means the original node(s) are deprecated, with the new
 node(s) as [successors](backend.md#deprecation-and-successors). **Without

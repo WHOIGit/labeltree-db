@@ -222,4 +222,4 @@ show the touched node's current warnings.
 - A visual diff of draft against base revision, beyond the draft markings.
 - Reordering changes by drag and drop.
 - Import from file and **Add from WoRMS**.
-- The node page, draft list and review pages, and drift reports.
+- The node page, draft list and review pages, and WoRMS syncs and the warnings report.

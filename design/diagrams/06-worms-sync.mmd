@@ -1,0 +1,37 @@
+---
+title: "WoRMS sync"
+---
+sequenceDiagram
+    autonumber
+    actor U as user (sync menu)
+    participant LT as labeltree-db
+    participant W as WoRMS API
+
+    alt from the web app
+        U->>LT: POST /worms/jobs {kind: sync_tree, tree: taxonomy}
+        LT-->>U: 202 Accepted, job status
+    else scheduled
+        Note over LT: cron runs manage.py worms_sync taxonomy<br>(retries after 10 s, 30 s, 1 min, 2 min)
+    end
+    LT->>LT: list the AphiaIDs in the latest revision
+    par fetch, 4 at a time
+        loop each AphiaID
+            LT->>W: AphiaRecordByAphiaID +<br>AphiaClassificationByAphiaID
+            alt answered
+                W-->>LT: record, valid_AphiaID, lineage
+                LT->>LT: new WORMS_RECORD row if changed,<br>else refresh fetched_at
+            else timeout, connection error or 5xx
+                LT->>LT: retry after 1, 2, 5, 12 s<br>still failing: add to failed, skip
+            else HTTP 429
+                LT->>LT: pause the whole job for Retry-After
+            end
+        end
+    and poll
+        loop about every second until finished
+            U->>LT: GET /worms/jobs/{job}
+            LT-->>U: progress, retrying, paused, failed
+        end
+    end
+    LT->>LT: under the tree's publish lock: re-check the latest revision,<br>add a NODE_WARNINGS row for each node whose warnings changed<br>(none for nodes needing a failed record)
+    U->>LT: GET /worms/warnings?tree=taxonomy
+    LT-->>U: nodes with current warnings

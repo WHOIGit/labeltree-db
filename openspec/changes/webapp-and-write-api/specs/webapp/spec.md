@@ -3,8 +3,8 @@
 ## Purpose
 
 Gives curators a browser interface to browse trees at any revision, compose
-changesets with immediate feedback, review and publish them, and manage aliases,
-all through the same write endpoints that scripts use.
+changesets and check them on demand, review and publish them, keep WoRMS data
+current, and manage aliases, all through the same endpoints that scripts use.
 
 ## ADDED Requirements
 
@@ -32,14 +32,65 @@ publish date and author.
 - **WHEN** a user types `didymus` in the filter
 - **THEN** the matching nodes are shown with their ancestors expanded
 
-### Requirement: Node badges
-Each node SHALL show a WoRMS badge with its AphiaID linking to its WoRMS page
-when it has an `aphia_id`, and a warning badge with the count of its current
-WoRMS warnings, listing them in a tooltip, when it has any.
+### Requirement: AphiaID pill
+A node with an `aphia_id` SHALL show a round pill containing a worm emoji
+(🪱), coloured by its WoRMS state: green with no current warnings, orange with
+any warning, red with `unknown_aphia` (whatever its other warnings), and grey
+when its record has never been fetched. Its tooltip SHALL show the AphiaID and
+every current warning. Clicking it SHALL open the AphiaID's WoRMS page in a new
+tab, also for `unknown_aphia`. A node without an `aphia_id` SHALL show no pill.
 
 #### Scenario: Node with warnings
-- **WHEN** a node has two current warnings
-- **THEN** it shows a warning badge with count 2 whose tooltip lists both details
+- **WHEN** a node has `out_of_lineage` and `duplicate_aphia`
+- **THEN** its pill is orange and its tooltip shows its AphiaID and both warnings
+
+#### Scenario: Unknown and duplicated
+- **WHEN** a node has `unknown_aphia` and `duplicate_aphia`
+- **THEN** its pill is red and its tooltip lists both warnings
+
+#### Scenario: Never fetched
+- **WHEN** a node's AphiaID has no cached record
+- **THEN** its pill is grey
+
+### Requirement: Warnings panel
+The tree browser SHALL have a hideable panel listing the nodes of the latest
+revision that currently have WoRMS warnings, with their warnings. Selecting an
+entry SHALL jump to the node in the tree.
+
+#### Scenario: Open the warnings panel
+- **WHEN** a user opens the warnings panel on a tree where 13 nodes have warnings
+- **THEN** the panel lists those 13 nodes with their warnings
+
+### Requirement: WoRMS sync menu
+The tree browser SHALL offer a sync menu with Sync new AphiaIDs (`sync_new`),
+Sync this tree (`sync_tree`) and, for superusers only, Full cache sync
+(`sync_all`). A running sync, including one started by the schedule or another
+user, SHALL show its progress. When the sync finishes, the tree's pills and
+warnings panel SHALL refresh.
+
+#### Scenario: Sync in progress elsewhere
+- **WHEN** a scheduled sync is running on the tree and a drafter opens the sync menu
+- **THEN** the menu shows the running sync's progress and does not offer to start another
+
+### Requirement: WoRMS job progress
+While a WoRMS job runs, the web app SHALL show one progress bar for the job's
+AphiaIDs done out of its total. For each AphiaID being retried, it SHALL show an
+additional bar advancing through that AphiaID's retry waits, removed when the
+AphiaID succeeds or fails. While the job is paused by WoRMS rate limiting, it
+SHALL show one bar for the pause instead.
+
+#### Scenario: One AphiaID retrying
+- **WHEN** a job has fetched 40 of 60 AphiaIDs and AphiaID 149122 is waiting for its second retry
+- **THEN** the job bar shows 40 of 60 and a second bar for 149122 shows its progress through its retry waits
+
+### Requirement: Failed AphiaIDs after a job
+When a WoRMS job started from the web app finishes with failed AphiaIDs, the web
+app SHALL list them with their reasons and offer Try again, which starts the same
+kind of job for the failed AphiaIDs only, or Proceed anyway.
+
+#### Scenario: Proceed anyway
+- **WHEN** a fetch job started by Validate finishes with AphiaID 149122 failed and the user chooses Proceed anyway
+- **THEN** the validation result is shown with the changes needing 149122 marked as unchecked, and Save is enabled
 
 ### Requirement: Revision changes in static mode
 When browsing a published revision, the changes panel SHALL show the changeset
@@ -51,22 +102,27 @@ that produced it, frozen, grouped by macro.
 
 ### Requirement: Node page
 The node page SHALL show a node's current state, its version history with
-revision ranges, its WoRMS card with `worms_data` and warnings, its aliases,
-and its successors if deprecated.
+revision ranges, its WoRMS card with `worms_data` and current warnings, its
+warning history, its aliases, and its successors if deprecated.
 
 #### Scenario: Deprecated node
 - **WHEN** a user opens the page of a deprecated node
 - **THEN** it shows the revision it was deprecated in and links to its successors
 
+#### Scenario: Warning history
+- **WHEN** a node gained `unaccepted_aphia` in a sync and lost it in a later publish
+- **THEN** its page lists both warning-history rows, newest first
+
 ### Requirement: Edit mode
 Edit mode SHALL compose a changeset against a fixed `base_rev`, starting from a
-new draft at the latest revision or an open draft chosen from the Edit menu.
-The top bar SHALL show the draft number and status (`None`, `Draft (unsaved)`,
-`Draft (saved)`). Leaving with unsaved changes SHALL ask for confirmation.
+new draft at the latest revision or an open draft chosen from the Edit menu. An
+opened draft SHALL start from its stored, reduced changes. The top bar SHALL
+show the draft number and status (`None`, `Draft (unsaved)`, `Draft (saved)`).
+Leaving with unsaved changes SHALL ask for confirmation.
 
 #### Scenario: Open an existing draft
 - **WHEN** a drafter chooses draft #6 from the Edit menu
-- **THEN** edit mode opens on draft #6's `base_rev` with its changes listed
+- **THEN** edit mode opens on draft #6's `base_rev` with its stored changes listed
 
 #### Scenario: Leave with unsaved changes
 - **WHEN** a user exits edit mode with unsaved changes
@@ -74,10 +130,10 @@ The top bar SHALL show the draft number and status (`None`, `Draft (unsaved)`,
 
 ### Requirement: Composing atomic changes
 In edit mode, each node's menu SHALL offer Edit, New child, Move to, Split,
-Merge and Deprecate, and the tree SHALL offer New node. Each dialog SHALL check
-label safety and uniqueness as the user types. Move to SHALL NOT allow picking
-the node or its descendants. Deprecate SHALL be blocked with an explanation if
-the node has children.
+Merge and Deprecate, and the tree SHALL offer New node. Move to SHALL NOT allow
+picking the node or its descendants. Deprecate SHALL be blocked with an
+explanation if the node has children. Composing SHALL NOT call the server;
+changes are checked when the user validates.
 
 #### Scenario: Move to a descendant
 - **WHEN** a user moves node A and hovers one of A's descendants as the new parent
@@ -87,15 +143,49 @@ the node has children.
 - **WHEN** a user chooses Deprecate on a node with children
 - **THEN** the dialog explains that the children must be moved, merged or split first
 
-### Requirement: Live checks in the changes panel
-The changes panel SHALL list the changes in order, groups collapsible, and SHALL
-call `validate` as the list changes, showing structural errors in red and WoRMS
-warnings in yellow under the change that caused them, plus a summary line of
-counts.
+### Requirement: Validate before save
+Edit mode SHALL have a Validate button. Validating SHALL first run a WoRMS fetch
+job for the AphiaIDs the changes need that are not cached, showing its progress,
+and then show the `validate` result. Save SHALL be enabled only once the
+current change list has been validated. Any further edit SHALL disable Save,
+mark the validation results as out of date and enable Validate again.
+
+#### Scenario: Edit after validating
+- **WHEN** a user validates, then adds another change
+- **THEN** Save is disabled, the result tabs are marked out of date, and Validate is enabled
+
+#### Scenario: New AphiaID
+- **WHEN** a user adds a node with an uncached AphiaID and presses Validate
+- **THEN** a fetch job for that AphiaID runs with a progress bar, and the result then shows the node's WoRMS warnings
+
+### Requirement: Changes panel tabs
+The changes panel SHALL have tabs: As edited (the editable list, in order,
+groups collapsible), As reduced, By node, Summary, WoRMS warnings and Errors.
+All but As edited SHALL show the last validation result. As edited SHALL show
+each error under the change it comes from, through `sources`. By node SHALL
+show `node_changes`, each node tagged with its groups.
 
 #### Scenario: Label clash appears
-- **WHEN** a user adds a node with a label already in use
-- **THEN** a red `label_in_use` error appears under that change and Publish is disabled
+- **WHEN** a user adds a node with a label already in use and validates
+- **THEN** a red `label_in_use` error appears under that change in As edited, and Publish is disabled
+
+### Requirement: Tab notifications
+A changes-panel tab whose content changed since the user last viewed it SHALL
+show an unread marker. The Errors and WoRMS warnings tabs SHALL show their
+counts.
+
+#### Scenario: New error while on another tab
+- **WHEN** a user on the By node tab validates a list with one new error
+- **THEN** the Errors tab shows a count of 1 and an unread marker until the user opens it
+
+### Requirement: Jump to node
+Hovering an entry in any changes-panel tab or the warnings panel SHALL highlight
+its node in the tree. Clicking it SHALL expand the node's ancestors, scroll the
+tree to the node and highlight it.
+
+#### Scenario: Jump to a collapsed node
+- **WHEN** a user clicks a By node entry for a node inside a collapsed branch
+- **THEN** the branch expands and the tree scrolls to the highlighted node
 
 ### Requirement: Draft markings in the tree
 In edit mode, the tree SHALL mark added nodes green, nodes whose version will
@@ -108,19 +198,24 @@ and struck through, left in place until publish.
 
 ### Requirement: Removing changes safely
 Each change and each group SHALL be removable in edit mode. Removing a change
-that later changes depend on SHALL mark those later changes as errors rather than
-removing them.
+that later changes depend on SHALL keep those later changes, and validating SHALL
+then show them as errors.
 
 #### Scenario: Remove an add with dependants
-- **WHEN** a user removes the `add` of `new:1` while a later `move` uses `new:1` as parent
+- **WHEN** a user removes the `add` of `new:1` while a later `move` uses `new:1` as parent, and validates
 - **THEN** the `move` stays in the list and shows an error
 
 ### Requirement: Saving, rebasing, publishing and discarding
-Save Draft SHALL send the whole list and show the reduced result. A stale draft
-SHALL show a conflict with a Rebase button that sets `base_rev` to the latest
-revision. Publish SHALL be enabled for approvers on a saved, error-free,
-up-to-date draft, ask for notes, and show the new revision. Discard SHALL keep
-the draft as read-only.
+Save Draft SHALL send the whole list and show the stored, reduced result. Saving
+a draft with structural errors SHALL first ask for confirmation, saying the
+draft will not be publishable as it is. A stale draft SHALL show a conflict with
+a Rebase button that sets `base_rev` to the latest revision. Publish SHALL be
+enabled for approvers on a saved, error-free, up-to-date draft, ask for notes,
+and show the new revision. Discard SHALL keep the draft as read-only.
+
+#### Scenario: Save with errors
+- **WHEN** a drafter saves a validated draft that has a `cycle` error
+- **THEN** a confirmation says the draft will not be publishable as it is, and confirming saves it
 
 #### Scenario: Rebase then publish
 - **WHEN** an approver opens a draft based on revision 2 while the latest is 3 and clicks Rebase
@@ -129,12 +224,13 @@ the draft as read-only.
 ### Requirement: Draft list and review
 The draft list SHALL show each open draft of a tree with its `base_rev`, author
 and change count, with discarded drafts in a separate read-only section.
-Reviewing a draft SHALL show its changes grouped by macro, the affected nodes
-with old and new versions, and warnings that will change.
+Reviewing a draft SHALL show its net changes per node (`node_changes`) with old
+and new versions and group tags, its ordered changes grouped by macro, and the
+warnings that will change.
 
 #### Scenario: Review a draft
 - **WHEN** an approver opens draft #6 for review
-- **THEN** they see its grouped changes, each affected node's `from -> to` version, and the warning changes
+- **THEN** they see each affected node's `from -> to` version and net changes, its grouped changes, and the warning changes
 
 ### Requirement: Merge wizard
 Merge from node A SHALL let the user choose nodes to merge (siblings first),
@@ -184,13 +280,18 @@ user edit the changes before saving.
 
 ### Requirement: Add from WoRMS
 Add from WoRMS SHALL search WoRMS by name through the lookup endpoints, let the
-user pick a record, and propose an `add` with that AphiaID and its scientific
-name as label, under the nearest node in the tree whose AphiaID is in the
-record's lineage, which the user may change.
+user pick a record, and propose an `add` with that AphiaID, under the nearest
+node in the tree whose AphiaID is in the record's lineage, which the user may
+change. The proposed label SHALL be the record's scientific name with spaces
+replaced by underscores and characters that are not machine-safe dropped.
 
 #### Scenario: Suggested parent
 - **WHEN** a user picks `Chaetoceros debilis` and the tree has `Chaetoceros` anchored
 - **THEN** the proposed `add` has parent `Chaetoceros` and label `Chaetoceros_debilis`
+
+#### Scenario: Unsafe characters
+- **WHEN** a user picks a record named `Chaetoceros (Hyalochaete) debilis`
+- **THEN** the proposed label is `Chaetoceros_Hyalochaete_debilis`
 
 ### Requirement: Alias editing
 Drafters SHALL be able to edit a node's aliases from its menu in any mode. The
