@@ -2,8 +2,7 @@
 .claude/
 
 # Environments
-.env
-.envprod
+.env*
 .venv/
 
 # Local data

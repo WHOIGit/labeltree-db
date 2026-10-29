@@ -1,15 +1,15 @@
 services:
 
   web:
-    image: ${IMAGE:?set IMAGE, e.g. registry.example.org/amplify/labeltree-db:latest}
+    image: harbor-registry.whoi.edu/amplify/labeltree-db:latest
     # Behind Apache (config/apache2/): reachable from the host only, so every
     # request passes the proxy, which sets X-Forwarded-For and -Proto.
     command: ./start-django
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8010:8000"
     volumes:
       # collectstatic writes here on start; Apache serves it as /static/.
-      - /opt/labeltree/static:/app/staticfiles
+      - ./static:/app/staticfiles
     env_file:
       - .env
     environment:

@@ -1,4 +1,4 @@
-# Template for .env (local development) and .envprod (production).
+# Template for .env
 
 DJANGO_SETTINGS_MODULE=config.settings
 DJANGO_SECRET_KEY=  # YOUR SECRET KEY

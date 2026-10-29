@@ -4,17 +4,17 @@
 
 set -euxo pipefail
 
-REGISTRY=registry.example.org/amplify   # TODO
-REMOTE=user@host.example.org            # TODO
-ROOT=/srv/labeltree-db                  # TODO
+REGISTRY=harbor-registry.whoi.edu/amplify
+REMOTE=sbatchelder@littlerock.whoi.edu
+ROOT=/opt/labeltree
 
 IMAGE=$REGISTRY/labeltree-db:latest
 
 docker build . --file Dockerfile -t "$IMAGE"
 docker push "$IMAGE"
 
-ssh "$REMOTE" "mkdir -p $ROOT"
-rsync compose-prod.yaml "$REMOTE:$ROOT/compose.yaml"
-rsync .envprod "$REMOTE:$ROOT/.env"
+#ssh "$REMOTE" "mkdir -p $ROOT"
+rsync --chmod 660 compose-staging.yaml "$REMOTE:$ROOT/compose.yaml"
+rsync --chmod 660 .env-staging "$REMOTE:$ROOT/.env"
 
-ssh "$REMOTE" "cd $ROOT && IMAGE=$IMAGE docker compose pull && IMAGE=$IMAGE docker compose up -d --force-recreate"
+ssh "$REMOTE" "cd $ROOT && docker compose pull && docker compose up -d --force-recreate"
