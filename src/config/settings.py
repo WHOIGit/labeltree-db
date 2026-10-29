@@ -28,13 +28,16 @@ SECRET_KEY = env("DJANGO_SECRET_KEY")
 DEBUG = env.bool("DJANGO_DEBUG", default=False)
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 CSRF_TRUSTED_ORIGINS = env.list("DJANGO_CSRF_TRUSTED_ORIGINS", default=[])
+# The CSRF secret lives in the session, not a csrftoken cookie: pages carry the
+# token in <meta name="csrf-token"> for the scripts (base.html, api.js). So no
+# cookie a browser blocks, or another *.whoi.edu site sets, can get in the way.
+CSRF_USE_SESSIONS = True
 
 # Behind Apache (config/apache2/), which terminates TLS and sets
 # X-Forwarded-Proto. Off for local development over plain HTTP.
 if env.bool("DJANGO_BEHIND_TLS_PROXY", default=False):
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
 
 
 # Application definition

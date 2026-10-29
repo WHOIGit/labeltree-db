@@ -45,10 +45,28 @@ relationships.
 
 ![System overview](design/diagrams/01-system-overview.png)
 
+## Setting up a new instance
+
+On first start, the superuser from `DJANGO_SUPERUSER_USERNAME` and
+`DJANGO_SUPERUSER_PASSWORD` is the only account. Log in as them at `/login/`:
+while there are no trees, the web app opens its
+[setup wizard](design/webapp.md#setting-up-a-new-instance), which
+
+1. creates the first organization,
+2. adds its users, creating accounts with an initial password the users then
+   change on their account page, and
+3. imports its first trees from label files, pasted or loaded from disk,
+   fetching their WoRMS records and publishing each as revision 1.
+
+Each step can also be done by hand: organizations and users in Django admin
+or through the API (see [below](#users-organizations-and-tokens)), and trees
+with `import_tree`.
+
 ## Loading a tree
 
 A label file (see [import format](design/webapp.md#import-format)) is loaded as
-a new tree with the `import_tree` management command. It checks the whole
+a new tree with the `import_tree` management command, the shell alternative to
+the setup wizard's Trees step. It checks the whole
 import first and stores nothing if any label is a duplicate or not
 machine-safe; otherwise it publishes the file as the tree's revision 1.
 
@@ -91,6 +109,20 @@ To set up an organization and its first owner, in Django admin:
 Owners then add and promote the other members on the organization's page, and
 create new trees in it. To move a tree to another organization, change its
 organization on the tree's admin page.
+
+A site admin's script can do the same through the API, with a token of the
+site admin (see below):
+
+```sh
+curl -H "Authorization: Token <key>" -H "Content-Type: application/json" \
+     -d '{"id": "lab_a", "name": "Lab A"}' https://labeltree.example.org/api/v1/orgs
+curl -H "Authorization: Token <key>" -H "Content-Type: application/json" \
+     -d '{"username": "curator1", "password": "<initial password>"}' https://labeltree.example.org/api/v1/users
+curl -X PUT -H "Authorization: Token <key>" -H "Content-Type: application/json" \
+     -d '{"role": "owner"}' https://labeltree.example.org/api/v1/orgs/lab_a/members/curator1
+```
+
+Users change their own password on their account page (`/me/`).
 
 Scripts that write authenticate with an API token:
 

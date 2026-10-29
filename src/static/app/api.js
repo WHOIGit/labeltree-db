@@ -1,8 +1,9 @@
-// Calls to /api/v1 with the session. Writes send Django's CSRF token.
+// Calls to /api/v1 with the session. Writes send Django's CSRF token, which
+// every page carries in <meta name="csrf-token"> (base.html); there is no
+// CSRF cookie (CSRF_USE_SESSIONS).
 
 function csrfToken() {
-  const m = document.cookie.match(/(?:^|; )csrftoken=([^;]*)/);
-  return m ? decodeURIComponent(m[1]) : '';
+  return document.querySelector('meta[name="csrf-token"]')?.content || '';
 }
 
 /** Returns {status, ok, data, etag}; never throws for HTTP errors. */

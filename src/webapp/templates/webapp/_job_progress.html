@@ -1,0 +1,19 @@
+{% comment %}
+A WoRMS job's progress: the job bar, one bar per AphiaID being retried, and the
+pause bar while WoRMS rate limiting holds it (jobs.js fetchStep). Parameters:
+job, the Alpine expression for the job status (or null); dom_id; title.
+{% endcomment %}
+<template x-for="j in ({{ job }} ? [{{ job }}] : [])" :key="j.id">
+  <div class="job" id="{{ dom_id }}">
+    <div><span>{{ title }}: </span><span x-text="jobText(j)"></span></div>
+    <div class="progress"><div class="progress-bar" :style="jobBar(j)"></div></div>
+    <template x-for="b in retries(j)" :key="b.aphia_id">
+      <div class="retry-bar"><span x-text="'Retrying AphiaID ' + b.aphia_id + ' (attempt ' + b.attempt + ' of ' + b.retries + ')'"></span>
+        <div class="progress"><div class="progress-bar bg-warning" :style="width(b.percent)"></div></div></div>
+    </template>
+    <template x-for="p in (pause(j) ? [pause(j)] : [])" :key="'pause'">
+      <div class="pause-bar"><span x-text="'Paused by WoRMS rate limiting, ' + p.seconds + ' s left'"></span>
+        <div class="progress"><div class="progress-bar bg-secondary" :style="width(p.percent)"></div></div></div>
+    </template>
+  </div>
+</template>

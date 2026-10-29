@@ -6,6 +6,9 @@
   {% if user.is_superuser %}
     <p class="text-muted">Site admin: owner in every organization.</p>
   {% endif %}
+  {% if offer_setup %}
+    <p><a class="btn btn-sm btn-primary" href="{% url 'setup' %}" id="setup-link">Set up this instance</a></p>
+  {% endif %}
   <h2 class="h6 mt-3">Organizations and roles</h2>
   <table class="table table-sm" id="my-roles">
     <thead><tr><th>Organization</th><th>Role</th></tr></thead>
@@ -22,5 +25,6 @@
     <ul>{% for o in all_orgs %}<li><a href="{% url 'org' o.id %}">{{ o.name }}</a></li>{% endfor %}</ul>
   {% endif %}
   <p class="form-text">Each role includes the ones below it (reader &lt; drafter &lt; approver &lt; owner) and applies to every tree of the organization.</p>
+  <p><a href="{% url 'password_change' %}" id="change-password">Change password</a></p>
 </main>
 {% endblock %}

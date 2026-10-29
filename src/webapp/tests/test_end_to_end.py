@@ -1,4 +1,5 @@
-"""End to end (task 8.1): two drafters and an approver on NES2022_taxonomy."""
+"""End to end: two drafters and an approver on NES2022_taxonomy, and setting up a new
+instance from an empty database."""
 
 from io import StringIO
 
@@ -9,7 +10,7 @@ from playwright.sync_api import expect
 
 from api.tests.conftest import make_user
 from core.models import Changeset, Tree
-from core.tests.helpers import LABELDATA, edit, ids_by_label, org, publish
+from core.tests.helpers import LABELDATA, TAGS, edit, ids_by_label, org, publish
 from worms.models import WormsRecord
 from worms.tests.fixtures import load
 
@@ -151,3 +152,52 @@ def test_split_validate_concurrent_edit_rebase_publish(site, browser, live_serve
     assert (
         site.console.errors == [] and other.console.errors == [] and reviewer.console.errors == []
     )
+
+
+def log_in(site, username, password):
+    page = site.page
+    page.goto(site.url + "/login/")
+    page.fill("#id_username", username)
+    page.fill("#id_password", password)
+    page.click("button:text-is('Log in')")
+    page.wait_for_load_state("networkidle")
+    return page
+
+
+def test_new_instance_setup(site, browser, live_server):
+    """From an empty database: the superuser sets up an organization, its owner and a tree."""
+    admin = make_user("admin", superuser=True)
+    admin.set_password("site-admin-pw-1987")
+    admin.save()
+    page = log_in(site, "admin", "site-admin-pw-1987")
+    page.goto(site.url + "/")
+    page.wait_for_url("**/setup/")
+
+    page.fill("#org-id", "lab_a")
+    page.fill("#org-name", "Lab A")
+    page.click("#org-create")
+    page.fill("#user-name", "curator1")
+    page.click("#user-add")
+    page.fill("#user-password", "curator-pw-1987")
+    page.fill("#user-password2", "curator-pw-1987")
+    page.click("#user-add")
+    expect(page.locator('#setup-members [data-member="curator1"]')).to_contain_text("owner")
+    page.click("#users-continue")
+    page.set_input_files("#tree-file", str(TAGS))
+    expect(page.locator("#tree-id")).to_have_value("NES2022_tags")
+    page.fill("#tree-title", "NES2022 tags")
+    page.click("#tree-import")
+    expect(page.locator('#imported-trees [data-tree="NES2022_tags"]')).to_be_visible(timeout=20000)
+    page.click("#setup-done")
+    page.wait_for_url("**/trees/NES2022_tags/")
+    expect(page.locator('.trow[data-label="interaction"]')).to_be_visible()
+    assert Tree.objects.get().org_id == "lab_a"
+    assert site.console.errors == []
+
+    owner = second_site(browser, live_server.url)
+    page = log_in(owner, "curator1", "curator-pw-1987")
+    assert page.url.endswith("/trees/NES2022_tags/")  # home shows the first tree
+    expect(page.locator("#edit-button")).to_be_enabled()
+    page.goto(owner.url + "/me/")
+    assert "Lab A" in page.inner_text("#my-roles") and "owner" in page.inner_text("#my-roles")
+    assert owner.console.errors == []

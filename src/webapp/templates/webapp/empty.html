@@ -2,6 +2,9 @@
 {% block content %}
 <main class="container narrow py-4">
   <h1 class="h4">No trees yet</h1>
-  <p>Load one with <code>manage.py import_tree</code>, or clone one once it exists.</p>
+  <p>This instance has no trees yet. A site admin sets it up: they log in and follow the setup wizard, which creates an organization, adds its users and imports the first trees.</p>
+  {% if not user.is_authenticated %}
+    <p><a class="btn btn-sm btn-outline-primary" href="{% url 'login' %}">Log in</a></p>
+  {% endif %}
 </main>
 {% endblock %}

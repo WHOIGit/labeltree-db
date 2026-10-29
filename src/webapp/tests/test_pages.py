@@ -145,3 +145,101 @@ def test_my_page():
     user = make_user("curator1", roles={"amplify": "drafter", "lab_a": "owner"})
     page = logged_in(user).get("/me/").content.decode()
     assert "AMPLIfy" in page and "drafter" in page and "lab_a" in page and "owner" in page
+
+
+# --- Password change -------------------------------------------------------------------------
+
+OLD, NEW = "old-plankton-1987", "new-plankton-2026"
+
+
+def logs_in(username, password):
+    return Client().post("/login/", {"username": username, "password": password}).status_code == 302
+
+
+@pytest.fixture
+def curator():
+    user = make_user("curator1")
+    user.set_password(OLD)
+    user.save()
+    return user
+
+
+def test_account_page_links_to_password_change(curator):
+    assert b'href="/me/password/"' in logged_in(curator).get("/me/").content
+
+
+def test_changing_a_password(curator):
+    client = logged_in(curator)
+    page = client.get("/me/password/")
+    assert page.status_code == 200 and "<script>" not in page.content.decode()
+    response = client.post(
+        "/me/password/", {"old_password": OLD, "new_password1": NEW, "new_password2": NEW}
+    )
+    assert response["Location"] == "/me/password/done/"
+    assert client.get("/me/").status_code == 200  # still logged in
+    assert logs_in("curator1", NEW) and not logs_in("curator1", OLD)
+
+
+def test_wrong_current_password(curator):
+    response = logged_in(curator).post(
+        "/me/password/", {"old_password": "wrong", "new_password1": NEW, "new_password2": NEW}
+    )
+    assert response.status_code == 200 and b'id="password-errors"' in response.content
+    assert logs_in("curator1", OLD)
+
+
+def test_password_change_needs_a_login():
+    assert Client().get("/me/password/")["Location"].startswith("/login/?next=")
+
+
+# --- Setup wizard (spec: instance-setup) ------------------------------------------------------
+
+
+def test_site_admin_on_a_new_instance_is_sent_to_setup():
+    admin = logged_in(make_user("admin", superuser=True))
+    assert admin.get("/")["Location"] == "/setup/"
+    page = admin.get("/setup/")
+    assert page.status_code == 200 and b'x-data="setup"' in page.content
+
+
+def test_another_user_on_a_new_instance():
+    page = logged_in(make_user("curator1")).get("/")
+    assert page.status_code == 200
+    assert b"No trees yet" in page.content and b"A site admin sets it up" in page.content
+    anonymous = Client().get("/")
+    assert b"No trees yet" in anonymous.content and b'href="/login/"' in anonymous.content
+
+
+def test_setup_after_the_first_tree(tree):
+    admin = logged_in(make_user("admin", superuser=True))
+    assert admin.get("/setup/")["Location"] == "/"
+    assert admin.get("/")["Location"] == "/trees/taxonomy/"
+
+
+def test_anonymous_setup():
+    assert Client().get("/setup/")["Location"].startswith("/login/?next=/setup/")
+
+
+def test_owner_opens_setup():
+    owner = logged_in(make_user("owner1", roles={"lab_a": "owner"}))
+    page = owner.get("/setup/")
+    assert page.status_code == 403 and b"Only site admins set up the instance" in page.content
+
+
+def test_setup_link_on_the_account_page_of_a_new_instance():
+    admin = make_user("admin", superuser=True)
+    assert b'id="setup-link"' in logged_in(admin).get("/me/").content
+    assert b'id="setup-link"' not in logged_in(make_user("curator1")).get("/me/").content
+
+
+def test_no_setup_link_once_a_tree_exists(tree):
+    admin = make_user("admin", superuser=True)
+    assert b'id="setup-link"' not in logged_in(admin).get("/me/").content
+
+
+def test_csrf_token_is_in_the_page_not_a_cookie(tree):
+    """CSRF_USE_SESSIONS: browsers that block or mix up cookies still get the token."""
+    client = logged_in(make_user("curator1"))
+    response = client.get("/trees/taxonomy/")
+    assert b'<meta name="csrf-token" content="' in response.content
+    assert "csrftoken" not in response.cookies and "csrftoken" not in client.cookies

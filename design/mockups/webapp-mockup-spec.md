@@ -243,6 +243,28 @@ show the touched node's current warnings.
 **AMPLIfy members** opens the organization's members with their roles. Owners
 change roles there; demoting the last owner is refused with an explanation.
 
+## Setup wizard
+
+**New-instance setup** opens what a site admin sees on an instance with no
+trees (see [Setting up a new instance](../webapp.md#setting-up-a-new-instance)),
+as a dialog with the three steps marked at the top:
+
+1. **Organization:** an id (a slug) and a name. `amplify` is refused as taken.
+   Skip is disabled until there is an organization.
+2. **Users:** a username and a role. A username that isn't a member of the
+   mock's organization gets two password fields and **Create account and
+   add**; a password under 8 characters or a mismatch is refused. The first
+   user defaults to `owner`, later ones to `drafter`. Continue or Skip with a
+   username typed but not added asks whether to discard it.
+3. **Trees:** a tree id, a title and the import JSON in a text box. Malformed
+   JSON, a node without a `label`, a label used twice and a taken tree id are
+   reported; otherwise the tree is listed as published at revision 1. The
+   mock doesn't fetch WoRMS records or add the tree to the tree picker.
+
+**Done** and **Skip** on the last step close the dialog with a toast naming
+where the web app goes: the first tree, or the organization's page. With a
+tree id or JSON typed but not imported, they ask whether to discard it first.
+
 ## Out of scope for now
 
 The web app itself (`src/webapp`, `src/static/app`) implements everything

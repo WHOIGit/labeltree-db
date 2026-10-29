@@ -240,6 +240,7 @@
                 :title="!has('owner') ? 'Needs owner role' : (latest === 0 ? 'Tree has no revisions' : 'Start a new tree from revision ' + viewRev)">
           Clone as new tree…</button>
         <button class="btn btn-sm btn-link" @click="openOrg()">AMPLIfy members</button>
+        <button class="btn btn-sm btn-link" @click="openSetup()" title="What a site admin sees on a new instance">New-instance setup</button>
       </div>
     </template>
 
@@ -978,6 +979,76 @@
   </div>
 </template>
 
+<!-- Setup wizard: what a site admin sees on an instance with no trees -->
+<template x-if="modal === 'setup'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Set up this instance</h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <p class="small text-muted">On a new instance the home page sends the site admin here (<code>/setup/</code>) until the first tree exists.</p>
+        <div class="mb-3">
+          <template x-for="(s, i) in ['Organization', 'Users', 'Trees']" :key="s">
+            <span class="badge me-1" :class="i + 1 === f.step ? 'text-bg-primary' : (i + 1 < f.step ? 'text-bg-success' : 'text-bg-light border')" x-text="s"></span>
+          </template>
+        </div>
+        <template x-if="f.step === 1">
+          <div>
+            <p class="form-text">Trees belong to an organization, and users hold their roles there.</p>
+            <div class="row g-2">
+              <div class="col-4"><label class="form-label small">Id</label><input class="form-control form-control-sm" x-model="f.orgId" placeholder="lab_a"></div>
+              <div class="col-8"><label class="form-label small">Name</label><input class="form-control form-control-sm" x-model="f.orgName" placeholder="Lab A"></div>
+            </div>
+          </div>
+        </template>
+        <template x-if="f.step === 2">
+          <div>
+            <p class="form-text">Users of <span x-text="f.org.name"></span>. Give it at least one owner, who manages its members afterwards.</p>
+            <table class="table table-sm">
+              <template x-for="u in f.users" :key="u.user"><tr><td x-text="u.user"></td><td x-text="u.role"></td><td class="small text-muted" x-text="u.created ? 'account created' : ''"></td></tr></template>
+              <template x-if="!f.users.length"><tr><td class="text-muted">No members yet.</td></tr></template>
+            </table>
+            <div class="row g-2">
+              <div class="col-6"><label class="form-label small">Username</label><input class="form-control form-control-sm" x-model="f.username" @input="f.needsPw = false" placeholder="curator1"></div>
+              <div class="col-3"><label class="form-label small">Role</label>
+                <select class="form-select form-select-sm" x-model="f.role">
+                  <template x-for="r in ['reader', 'drafter', 'approver', 'owner']" :key="r"><option :value="r" :selected="r === f.role" x-text="r"></option></template>
+                </select></div>
+            </div>
+            <template x-if="f.needsPw">
+              <div class="row g-2 mt-1">
+                <div class="col-12 small"><span x-text="f.username"></span> has no account yet: give an initial password to create it. They can change it on their account page.</div>
+                <div class="col-6"><input class="form-control form-control-sm" type="password" x-model="f.pw" placeholder="Initial password"></div>
+                <div class="col-6"><input class="form-control form-control-sm" type="password" x-model="f.pw2" placeholder="Again"></div>
+              </div>
+            </template>
+            <button class="btn btn-sm btn-outline-primary mt-2" :disabled="!f.username.trim()" @click="setupAddUser()" x-text="f.needsPw ? 'Create account and add' : 'Add'"></button>
+          </div>
+        </template>
+        <template x-if="f.step === 3">
+          <div>
+            <ul x-show="f.trees.length"><template x-for="t in f.trees" :key="t.id"><li><strong x-text="t.id"></strong> <span x-text="t.title + ' · revision 1 · ' + t.nodes + ' nodes'"></span></li></template></ul>
+            <p class="form-text">Each import is checked, its WoRMS records are fetched (with the usual job progress), and it is published as the tree's revision 1.</p>
+            <div class="row g-2">
+              <div class="col-4"><label class="form-label small">Tree id</label><input class="form-control form-control-sm" x-model="f.treeId"></div>
+              <div class="col-8"><label class="form-label small">Title</label><input class="form-control form-control-sm" x-model="f.treeTitle"></div>
+            </div>
+            <input class="form-control form-control-sm my-2" type="file" accept=".json" disabled title="Loads the file into the box below">
+            <textarea class="form-control form-control-sm font-monospace" rows="6" x-model="f.text" placeholder="…or paste the file here"></textarea>
+            <button class="btn btn-sm btn-outline-primary mt-2" :disabled="!f.treeId.trim() || !f.text.trim()" @click="setupImport()">Import</button>
+          </div>
+        </template>
+        <div class="text-danger small mt-2" x-text="f.error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" :disabled="f.step === 1 && !f.org" @click="setupSkip()">Skip</button>
+        <template x-if="f.step === 1"><button class="btn btn-primary" :disabled="!f.orgId.trim() || !f.orgName.trim()" @click="setupOrg()">Create and continue</button></template>
+        <template x-if="f.step === 2"><button class="btn btn-primary" @click="setupLeaveUsers()">Continue</button></template>
+        <template x-if="f.step === 3 && f.trees.length"><button class="btn btn-primary" @click="setupDone()">Done</button></template>
+      </div>
+    </div></div>
+  </div>
+</template>
+
 <!-- Confirm -->
 <template x-if="conf">
   <div class="modal d-block" tabindex="-1" style="z-index: 1080">
@@ -1245,7 +1316,7 @@ function importChanges(nodes, group) {
     const raw = JSON.parse(document.getElementById('data-' + id).textContent);
     DB.trees[id] = { id, title: id.replace('_', ' '), revs: [] };
     publish(newCs(id, null, importChanges(raw.nodes, 'import#1'),
-      { author: 'sbatchelder', notes: `Initial import from labeldata/${id}.json` }), '2026-08-04');
+      { author: 'curator1', notes: `Initial import from labeldata/${id}.json` }), '2026-08-04');
   }
 
   const T = 'NES2022_taxonomy', L = l => byLabel(T, l);
@@ -1309,7 +1380,7 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
   validatedKey: null,
   job: null,
   sync: null,
-  members: [{ user: 'sbatchelder', role: 'owner' }, { user: 'jdoe', role: 'approver' }, { user: 'asmith', role: 'drafter' },
+  members: [{ user: 'curator1', role: 'owner' }, { user: 'jdoe', role: 'approver' }, { user: 'asmith', role: 'drafter' },
             { user: 'guest', role: 'reader' }],
   treeId: 'NES2022_taxonomy',
   viewRev: 0,
@@ -1786,6 +1857,71 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     for (const c of cs.changes) if (c.parent == null) this.exp[id][keyOf(c.node)] = true;
     this.refresh();
     this.toast(`Created ${id} and draft #${cs.id}`);
+  },
+
+  // ---- setup wizard (a new instance; site admins only) -------------------
+  openSetup() {
+    this.f = { step: 1, orgId: '', orgName: '', org: null, users: [], username: '', role: 'owner', needsPw: false,
+               pw: '', pw2: '', treeId: '', treeTitle: '', text: '', trees: [], error: '' };
+    this.modal = 'setup';
+  },
+  setupOrg() {
+    const f = this.f;
+    if (!/^[-A-Za-z0-9_]+$/.test(f.orgId)) { f.error = 'The id must be a slug: letters, digits, _ and -'; return; }
+    if (f.orgId === 'amplify') { f.error = 'Organization amplify already exists.'; return; }
+    f.org = { id: f.orgId, name: f.orgName.trim() };
+    f.step = 2;
+    f.error = '';
+  },
+  setupAddUser() {
+    const f = this.f, user = f.username.trim();
+    const known = this.members.some(m => m.user === user);
+    if (f.users.some(u => u.user === user)) { f.error = `${user} is already ${f.users.find(u => u.user === user).role}.`; return; }
+    if (!known && !f.needsPw) { f.needsPw = true; f.error = ''; return; }
+    if (f.needsPw && f.pw.length < 8) { f.error = 'This password is too short. It must contain at least 8 characters.'; return; }
+    if (f.needsPw && f.pw !== f.pw2) { f.error = "The passwords don't match"; return; }
+    f.users.push({ user, role: f.role, created: f.needsPw });
+    Object.assign(f, { username: '', needsPw: false, pw: '', pw2: '', error: '', role: 'drafter' });
+  },
+  setupImport() {
+    const f = this.f;
+    let data;
+    try { data = JSON.parse(f.text); } catch (e) { f.error = 'Not valid JSON: ' + e.message; return; }
+    const labels = [];
+    const walk = (nodes, path) => (nodes || []).forEach((n, i) => {
+      if (typeof n?.label !== 'string') throw new Error(`${path}[${i}]: node has no \`label\``);
+      labels.push(n.label);
+      walk(n.children, `${path}[${i}].children`);
+    });
+    try { walk(data.nodes, 'nodes'); } catch (e) { f.error = e.message; return; }
+    const dup = labels.find((l, i) => labels.indexOf(l) !== i);
+    if (dup) { f.error = `${dup}: label is used twice`; return; }
+    if (DB.trees[f.treeId] || f.trees.some(t => t.id === f.treeId)) { f.error = `Tree ${f.treeId} already exists.`; return; }
+    f.trees.push({ id: f.treeId, title: f.treeTitle || f.treeId, nodes: labels.length });
+    Object.assign(f, { treeId: '', treeTitle: '', text: '', error: '' });
+  },
+  /** Continue or Skip on Users: a username typed but not added would be lost, so ask. */
+  setupLeaveUsers() {
+    const f = this.f, name = f.username.trim();
+    const go = () => { Object.assign(f, { step: 3, username: '', needsPw: false, pw: '', pw2: '', error: '' }); };
+    if (!name) return go();
+    this.confirm('Discard this user?', `${name} hasn't been added to the organization. Continue without adding them?`,
+                 'Discard and continue', 'btn-warning', go);
+  },
+  setupSkip() {
+    const f = this.f;
+    if (f.step === 2) return this.setupLeaveUsers();
+    if (f.step < 3) { f.step++; f.error = ''; return; }
+    this.setupLeaveTrees(() => this.toast(`Skipping trees opens the organization page of ${f.org?.name ?? 'the organization'}`));
+  },
+  setupDone() { const first = this.f.trees[0].id; this.setupLeaveTrees(() => this.toast(`Done opens the first tree, ${first}`)); },
+  /** Skip or Done on Trees: a tree typed but not imported would be lost, so ask. */
+  setupLeaveTrees(then) {
+    const f = this.f;
+    const go = () => { this.closeModal(); then(); };
+    if (![f.treeId, f.treeTitle, f.text].some(v => v.trim())) return go();
+    this.confirm('Discard this tree?', `${f.treeId.trim() || 'This tree'} hasn't been imported. Leave without importing it?`,
+                 'Discard and leave', 'btn-warning', go);
   },
 
   // ---- dialogs -----------------------------------------------------------

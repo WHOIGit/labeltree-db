@@ -199,47 +199,10 @@
         <small class="text-muted" x-text="mode === 'static' ? revHead : (draft.id ? 'draft #' + draft.id : 'new draft')"></small>
       </div>
 
-      <!-- job progress: validate's fetch job -->
-      <template x-for="j in (job ? [job] : [])" :key="j.id">
-        <div class="job" id="fetch-job">
-          <div x-text="'Fetching WoRMS records: ' + jobText(j)"></div>
-          <div class="progress"><div class="progress-bar" :style="jobBar(j)"></div></div>
-          <template x-for="b in retries(j)" :key="b.aphia_id">
-            <div class="retry-bar"><span x-text="'Retrying AphiaID ' + b.aphia_id + ' (attempt ' + b.attempt + ' of ' + b.retries + ')'"></span>
-              <div class="progress"><div class="progress-bar bg-warning" :style="width(b.percent)"></div></div></div>
-          </template>
-          <template x-for="p in (pause(j) ? [pause(j)] : [])" :key="'pause'">
-            <div class="pause-bar"><span x-text="'WoRMS asked us to wait: paused, ' + p.seconds + ' s left'"></span>
-              <div class="progress"><div class="progress-bar bg-secondary" :style="width(p.percent)"></div></div></div>
-          </template>
-        </div>
-      </template>
-      <template x-if="jobFailed">
-        <div class="job" id="fetch-failed">
-          <div class="text-danger">Some WoRMS records couldn't be fetched:</div>
-          <template x-for="x in jobFailed" :key="x.aphia_id"><div x-text="x.aphia_id + ': ' + x.reason"></div></template>
-          <div class="d-flex gap-2 mt-1">
-            <button class="btn btn-sm btn-outline-primary" @click="tryAgain()">Try again</button>
-            <button class="btn btn-sm btn-outline-secondary" @click="proceedAnyway()">Proceed anyway</button>
-          </div>
-        </div>
-      </template>
-
-      <!-- sync progress -->
-      <template x-for="j in (syncJob ? [syncJob] : [])" :key="j.id">
-        <div class="job" id="sync-job">
-          <div x-text="'WoRMS sync: ' + jobText(j)"></div>
-          <div class="progress"><div class="progress-bar" :style="jobBar(j)"></div></div>
-          <template x-for="b in retries(j)" :key="b.aphia_id">
-            <div class="retry-bar"><span x-text="'Retrying AphiaID ' + b.aphia_id + ' (attempt ' + b.attempt + ' of ' + b.retries + ')'"></span>
-              <div class="progress"><div class="progress-bar bg-warning" :style="width(b.percent)"></div></div></div>
-          </template>
-          <template x-for="p in (pause(j) ? [pause(j)] : [])" :key="'pause'">
-            <div class="pause-bar"><span x-text="'Paused by WoRMS rate limiting, ' + p.seconds + ' s left'"></span>
-              <div class="progress"><div class="progress-bar bg-secondary" :style="width(p.percent)"></div></div></div>
-          </template>
-        </div>
-      </template>
+      <!-- job progress: validate's fetch job, and syncs -->
+      {% include "webapp/_job_progress.html" with job="job" dom_id="fetch-job" title="Fetching WoRMS records" %}
+      {% include "webapp/_fetch_failed.html" %}
+      {% include "webapp/_job_progress.html" with job="syncJob" dom_id="sync-job" title="WoRMS sync" %}
       <template x-if="syncFailed">
         <div class="job" id="sync-failed">
           <div class="text-danger" x-text="syncFailed.kind + ' finished with failures:'"></div>

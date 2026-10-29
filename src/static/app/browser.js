@@ -6,7 +6,7 @@
 
 import { api, pageData, problem, retrying } from './api.js';
 import * as X from './expanders.js';
-import { jobPercent, pauseBar, poll, pollJob, retryBars, startJob } from './jobs.js';
+import { fetchStep, poll, pollJob, startJob } from './jobs.js';
 import { applyLocal, childIndex, describe, fromExport, idOf, isPh, keyOf, nodePath, pill, touched, wormsUrl } from './model.js';
 import { atLeast, needs, roleIn } from './roles.js';
 
@@ -28,6 +28,7 @@ const TABS = [
 ];
 
 export default () => ({
+  ...fetchStep(),  // job, jobFailed, fetchMissing() and the job bars
   user: {}, trees: [], orgs: [], treeId: null, org: null, newTree: null,
   revisions: [], viewRev: null, latestRev: null,
   mode: 'static', draft: null, changes: [], dirty: false,
@@ -38,7 +39,6 @@ export default () => ({
   loadSeq: 0, wantedRev: null, watching: false,
   validation: null, validatedKey: null, validating: false, validations: 0,
   tab: 'edited', seen: {}, tabs: TABS,
-  job: null, jobFailed: null, jobResolve: null, pauseSeen: {}, now: Date.now(),
   syncOpen: false, syncs: null, syncJob: null, syncFailed: null, syncKind: null,
   warningsOpen: false, warningsList: [], editOpen: false, drafts: { open: [], discarded: [] },
   aliasFailures: [], aliasError: null,
@@ -755,13 +755,15 @@ export default () => ({
     this.validating = true;
     try {
       let v = await this.callValidate();
-      if (v.worms_missing.length && await this.fetchMissing(v.worms_missing)) v = await this.callValidate();
+      if (v.worms_missing.length) {
+        await this.fetchMissing(this.org, v.worms_missing);  // the fetch step (jobs.js)
+        v = await this.callValidate();
+      }
       if (this.changesKey === key) this.setValidation(v);
     } catch (e) {
       this.toast(e.message, 'text-bg-danger');
     } finally {
       this.validating = false;
-      this.job = null;
     }
   },
   setValidation(v) {
@@ -770,27 +772,6 @@ export default () => ({
     this.validations++;
     this.seen[this.tab] = this.tabHash(this.tab);
   },
-  /** Run fetch jobs until the AphiaIDs are cached or the user proceeds without them. */
-  async fetchMissing(ids) {
-    for (;;) {
-      const job = await startJob({ kind: 'fetch', org: this.org, aphia_ids: ids });
-      this.job = job;
-      const done = await pollJob(job.id, s => { this.job = s; });
-      if (!done.failed.length) return true;
-      this.jobFailed = done.failed;
-      const choice = await new Promise(resolve => { this.jobResolve = resolve; });
-      this.jobFailed = null;
-      if (choice !== 'retry') return true;
-      ids = done.failed.map(x => x.aphia_id);
-    }
-  },
-  tryAgain() { this.jobResolve?.('retry'); },
-  proceedAnyway() { this.jobResolve?.('proceed'); },
-  jobBar(j) { return `width:${jobPercent(j)}%`; },
-  jobText(j) { return `${j.kind} · ${j.done} of ${j.total} AphiaIDs` + (j.failed.length ? ` · ${j.failed.length} failed` : ''); },
-  retries(j) { this.now; return retryBars(j, this.now); },
-  pause(j) { this.now; return pauseBar(j, this.pauseSeen, this.now); },
-  width(p) { return `width:${p}%`; },
 
   // ---- changes panel tabs ---------------------------------------------------------------------
   tabHash(key) {

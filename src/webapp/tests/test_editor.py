@@ -308,3 +308,13 @@ def test_review_and_publish(site, taxonomy, approver):
     page.click(".modal button.btn-success")
     page.wait_for_url("**/trees/taxonomy/")
     assert latest_rev("taxonomy") == 2 and site.console.errors == []
+
+
+def test_writes_work_without_any_readable_cookie(site, taxonomy, drafter):
+    """The session cookie is HttpOnly and there is no CSRF cookie: the token comes from the page."""
+    page = new_draft(site, drafter)
+    assert page.evaluate("document.cookie") == ""
+    add_child(site, "other", "crate")
+    validate(page)
+    page.click("#save-button")
+    expect(page.locator("#status")).to_have_text("Draft (saved)")

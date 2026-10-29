@@ -43,7 +43,10 @@ interaction. See proposal.md for motivation.
   roi-db, datasetman and annotation tools keep reading as they do today.
 - **Sessions** via Django auth for the web app, with standard login and CSRF.
   django-ninja's `SessionAuth` (CSRF-checked) covers API calls the browser
-  makes.
+  makes. The CSRF secret is kept in the session (`CSRF_USE_SESSIONS`), and
+  each page carries the token in `<meta name="csrf-token">` for `api.js`, so
+  browsers that block cookies, or a `csrftoken` cookie from another site on
+  the domain, don't break writes.
 - **Tokens:** an `ApiToken` model (hashed key, owning user, name, created,
   `last_used_at`, revoked) checked by a django-ninja `APIKeyHeader`
   (`Authorization: Token <key>`). The admin add form shows the key once. A

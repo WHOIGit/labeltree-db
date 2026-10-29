@@ -63,3 +63,44 @@ export function jobPercent(status) {
   if (!status || !status.total) return status?.state === 'running' ? 0 : 100;
   return Math.round((100 * (status.done + status.failed.length)) / status.total);
 }
+
+/**
+ * The fetch step shared by the draft editor and the setup wizard: run `fetch`
+ * jobs for AphiaIDs whose WoRMS records aren't cached, with the job, retry and
+ * pause bars, until they are cached or the user proceeds without them.
+ * Components spread it into themselves (no getters: spreading would freeze
+ * them) and tick `now` while `job` is set, for the bars.
+ */
+export function fetchStep() {
+  return {
+    job: null, jobFailed: null, jobResolve: null, pauseSeen: {}, now: Date.now(),
+
+    /** Fetch `ids` for organization `org`. Returns the AphiaIDs still not
+     * fetched when the user proceeds without them ([] if all were). A job
+     * that can't be started or followed throws. */
+    async fetchMissing(org, ids) {
+      try {
+        for (;;) {
+          const job = await startJob({ kind: 'fetch', org, aphia_ids: ids });
+          this.job = job;
+          const done = await pollJob(job.id, s => { this.job = s; });
+          if (!done.failed.length) return [];
+          this.jobFailed = done.failed;
+          const choice = await new Promise(resolve => { this.jobResolve = resolve; });
+          this.jobFailed = null;
+          ids = done.failed.map(x => x.aphia_id);
+          if (choice !== 'retry') return ids;
+        }
+      } finally {
+        this.job = null;
+      }
+    },
+    tryAgain() { this.jobResolve?.('retry'); },
+    proceedAnyway() { this.jobResolve?.('proceed'); },
+    jobBar(j) { return `width:${jobPercent(j)}%`; },
+    jobText(j) { return `${j.kind} · ${j.done} of ${j.total} AphiaIDs` + (j.failed.length ? ` · ${j.failed.length} failed` : ''); },
+    retries(j) { this.now; return retryBars(j, this.now); },
+    pause(j) { this.now; return pauseBar(j, this.pauseSeen, this.now); },
+    width(p) { return `width:${p}%`; },
+  };
+}

@@ -1,0 +1,157 @@
+{% extends "webapp/base.html" %}
+{% block title %}Set up · labeltree{% endblock %}
+{% block content %}
+{{ page|json_script:"page-data" }}
+<main class="container narrow py-4" x-data="setup" x-cloak id="setup">
+  <h1 class="h4">Set up this instance</h1>
+  <p class="text-muted">Create an organization, add its users and import its first trees. You can come back here until the first tree exists.</p>
+
+  <ol class="list-inline mb-3" id="setup-steps">
+    <template x-for="s in steps" :key="s.key">
+      <li class="list-inline-item"><span class="badge" :class="stepClass(s.key)" :data-step="s.key" x-text="s.label"></span></li>
+    </template>
+  </ol>
+
+  <!-- 1. Organization -->
+  <template x-if="step === 'org'">
+    <section id="step-org">
+      <h2 class="h6">Organization</h2>
+      <p class="form-text">Trees belong to an organization, and users hold their roles there.</p>
+      <template x-if="orgs.length">
+        <div class="mb-3" id="existing-orgs">
+          <div class="small mb-1">Use an existing organization:</div>
+          <template x-for="o in orgs" :key="o.id">
+            <button class="btn btn-sm btn-outline-primary me-1" :data-org="o.id" @click="useOrg(o.id)" x-text="o.name"></button>
+          </template>
+          <div class="small mt-2">or create one:</div>
+        </div>
+      </template>
+      <div class="row g-2">
+        <div class="col-sm-4">
+          <label class="form-label" for="org-id">Id</label>
+          <input class="form-control" id="org-id" x-model="orgForm.id" placeholder="lab_a" autocomplete="off">
+        </div>
+        <div class="col-sm-8">
+          <label class="form-label" for="org-name">Name</label>
+          <input class="form-control" id="org-name" x-model="orgForm.name" placeholder="Lab A" autocomplete="off">
+        </div>
+      </div>
+      <div class="form-text">The id is a slug (letters, digits, <code>_</code> and <code>-</code>) used in URLs; it can't change later.</div>
+      <div class="text-danger small mt-2" id="org-error" x-text="orgError"></div>
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-primary" id="org-create" :disabled="!orgForm.id.trim() || !orgForm.name.trim()" @click="createOrg()">Create and continue</button>
+        <button class="btn btn-outline-secondary" id="setup-skip" :disabled="!!skipOrgHint" :title="skipOrgHint" @click="skip()">Skip</button>
+      </div>
+    </section>
+  </template>
+
+  <!-- 2. Users -->
+  <template x-if="step === 'users'">
+    <section id="step-users">
+      <h2 class="h6">Users of <span x-text="orgName"></span></h2>
+      <p class="form-text">Each role includes the ones below it, reader &lt; drafter &lt; approver &lt; owner, and applies to every tree of the organization. Give it at least one owner, who manages its members afterwards.</p>
+      <table class="table table-sm" id="setup-members">
+        <thead><tr><th>User</th><th>Role</th></tr></thead>
+        <tbody>
+          <template x-for="m in members" :key="m.username">
+            <tr :data-member="m.username"><td x-text="m.username"></td><td x-text="m.role"></td></tr>
+          </template>
+          <template x-if="!members.length"><tr><td colspan="2" class="text-muted">No members yet.</td></tr></template>
+        </tbody>
+      </table>
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-6">
+          <label class="form-label" for="user-name">Username</label>
+          <input class="form-control" id="user-name" x-model="userForm.username" @input="usernameChanged()" autocomplete="off">
+        </div>
+        <div class="col-sm-3">
+          <label class="form-label" for="user-role">Role</label>
+          <select class="form-select" id="user-role" x-model="userForm.role">
+            <template x-for="r in roles" :key="r"><option :value="r" :selected="r === userForm.role" x-text="r"></option></template>
+          </select>
+        </div>
+      </div>
+      <template x-if="needsPassword">
+        <div class="row g-2 mt-1" id="new-account">
+          <div class="col-12 small" x-text="userNote"></div>
+          <div class="col-sm-6">
+            <label class="form-label" for="user-password">Initial password</label>
+            <input class="form-control" id="user-password" type="password" autocomplete="new-password" x-model="userForm.password">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label" for="user-password2">Again</label>
+            <input class="form-control" id="user-password2" type="password" autocomplete="new-password" x-model="userForm.password2">
+          </div>
+        </div>
+      </template>
+      <div class="text-danger small mt-2" id="user-error" x-text="userError"></div>
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-outline-primary" id="user-add" :disabled="!!addHint || adding" :title="addHint" @click="addUser()" x-text="needsPassword ? 'Create account and add' : 'Add'"></button>
+        <span class="flex-grow-1"></span>
+        <button class="btn btn-outline-secondary" id="setup-skip" @click="skip()">Skip</button>
+        <button class="btn btn-primary" id="users-continue" @click="leaveUsers()">Continue</button>
+      </div>
+    </section>
+  </template>
+
+  <!-- Leaving a step with a user or tree typed but not added or imported -->
+  <template x-if="discard">
+    <div class="modal d-block" tabindex="-1" id="discard-dialog" style="background: rgba(0,0,0,.3)">
+      <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" x-text="discard.title"></h5></div>
+        <div class="modal-body"><strong x-text="discard.name"></strong> <span x-text="discard.text"></span></div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" id="discard-cancel" @click="cancelDiscard()">Go back</button>
+          <button class="btn btn-warning" id="discard-ok" @click="confirmDiscard()" x-text="discard.ok"></button>
+        </div>
+      </div></div>
+    </div>
+  </template>
+
+  <!-- 3. Trees -->
+  <template x-if="step === 'trees'">
+    <section id="step-trees">
+      <h2 class="h6">Trees of <span x-text="orgName"></span></h2>
+      <template x-if="imported.length">
+        <ul id="imported-trees">
+          <template x-for="t in imported" :key="t.id">
+            <li :data-tree="t.id"><a :href="'/trees/' + t.id + '/'" x-text="t.id"></a> <span x-text="t.title"></span> <small class="text-muted" x-text="'revision ' + t.rev"></small></li>
+          </template>
+        </ul>
+      </template>
+      <p class="form-text">An import file is <code>{"nodes": [{"label", "aphia_id", "description", "aliases", "children"}]}</code>; only <code>label</code> is required. It is checked, its WoRMS records are fetched, and it is published as the tree's revision 1.</p>
+      <div class="row g-2">
+        <div class="col-sm-4">
+          <label class="form-label" for="tree-id">Tree id</label>
+          <input class="form-control" id="tree-id" x-model="treeForm.id" @input="formChanged()" autocomplete="off">
+        </div>
+        <div class="col-sm-8">
+          <label class="form-label" for="tree-title">Title</label>
+          <input class="form-control" id="tree-title" x-model="treeForm.title" @input="formChanged()" autocomplete="off">
+        </div>
+      </div>
+      <label class="form-label mt-2" for="tree-description">Description (optional)</label>
+      <input class="form-control" id="tree-description" x-model="treeForm.description" @input="formChanged()" autocomplete="off">
+      <label class="form-label mt-2" for="tree-file">Import file</label>
+      <input class="form-control form-control-sm mb-2" id="tree-file" type="file" accept=".json,application/json" @change="readFile($event)">
+      <textarea class="form-control font-monospace" id="tree-text" rows="10" x-model="treeForm.text" @input="formChanged()" placeholder="…or paste the file here"></textarea>
+
+      {% include "webapp/_job_progress.html" with job="job" dom_id="fetch-job" title="Fetching WoRMS records" %}
+      {% include "webapp/_fetch_failed.html" %}
+
+      <template x-if="treeErrors.length">
+        <div class="alert alert-danger py-2 mt-2 small" id="tree-errors">
+          <template x-for="(e, i) in treeErrors" :key="i"><div x-text="e"></div></template>
+          <template x-if="draftLink"><a :href="draftLink">Open the draft in the editor</a></template>
+        </div>
+      </template>
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-outline-primary" id="tree-import" :disabled="!!importHint" :title="importHint" @click="importTree()" x-text="importLabel"></button>
+        <span class="flex-grow-1"></span>
+        <template x-if="!imported.length"><button class="btn btn-outline-secondary" id="setup-skip" @click="skip()">Skip</button></template>
+        <template x-if="imported.length"><button class="btn btn-primary" id="setup-done" @click="done()">Done</button></template>
+      </div>
+    </section>
+  </template>
+</main>
+{% endblock %}

@@ -5,7 +5,7 @@ from ninja.errors import AuthenticationError, HttpError, ValidationError
 
 from accounts.roles import Forbidden, NotAuthenticated
 
-from . import changesets, nodes, orgs, trees, worms
+from . import changesets, nodes, orgs, trees, users, worms
 from .auth import DEFAULT_AUTH
 from .conventions import APIError, bad_parameter, error_response, not_found
 
@@ -60,5 +60,6 @@ def health(request):
 api.add_router("/nodes", nodes.router)
 api.add_router("/trees", trees.router)
 api.add_router("/orgs", orgs.router)
+api.add_router("/users", users.router)
 api.add_router("/worms", worms.router)
 api.add_router("", changesets.router)

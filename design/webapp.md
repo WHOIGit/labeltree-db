@@ -33,12 +33,46 @@ An interactive mockup of the tree browser and draft editor is in
   and their roles. Owners add users, change roles and remove members here. A
   role applies to every tree of the organization. The tree picker groups
   trees by organization, and each user's own page lists their organizations
-  and roles.
+  and roles and links to changing their password.
+- **Setup wizard:** on a new instance, guides a site admin through its first
+  organization, users and trees; see
+  [Setting up a new instance](#setting-up-a-new-instance).
 
 Anyone can browse trees, revisions and node pages without logging in; the top
 bar then shows **Log in to edit** instead of the edit and sync controls. Roles
 are described in [api.md](api.md#authentication-and-roles). Controls a user's
 role doesn't allow are shown disabled, with the role needed as a tooltip.
+
+## Setting up a new instance
+
+A new instance has one superuser, created on start, and nothing else. While it
+has no trees, the home page sends a logged-in site admin to the setup wizard
+at `/setup/`; everyone else sees "No trees yet". Once a tree exists, `/setup/`
+redirects home. The wizard keeps no state of its own: it opens at the Users
+step when there is exactly one organization, and at the Organization step
+otherwise.
+
+1. **Organization:** create one from a slug id and a name, or pick an
+   existing one (`POST /orgs`).
+2. **Users:** add members by username and role. A username without an account
+   asks for an initial password first and creates the account (`POST
+   /users`), which then joins the organization. The user changes the
+   password on their account page. Continuing or skipping with a username
+   typed but not added asks before discarding it.
+3. **Trees:** a tree id, a title, an optional description, and an
+   [import file](#import-format) pasted into a text box or loaded from a file
+   into it. The import is checked like the editor's, its missing WoRMS records
+   are fetched with the usual [job progress](#keeping-worms-data-current), and
+   it is saved and published as a [new tree](#new-trees). Errors are listed
+   and nothing is stored. If publishing fails, the saved draft is kept and
+   **Publish again** retries it. Further trees can be imported the same way.
+
+Each step can be skipped, except the Organization step while no organization
+is picked. Leaving the Trees step with a tree typed but not imported, or saved
+as a draft that didn't publish, asks first. Skipping Trees opens the organization's page, and **Done** opens the
+first tree. Later organizations
+are created in Django admin or with `POST /orgs`, and later trees with the
+editor or `import_tree`.
 
 ## Changesets and concurrency
 
@@ -305,7 +339,7 @@ There are no empty trees: a tree exists only once it has a revision.
 
 So every revision, including revision 1, comes from a published changeset. The
 [example trees](backend.md#example-trees) are loaded this way, through the
-`import_tree` management command.
+`import_tree` management command or the [setup wizard](#setting-up-a-new-instance).
 
 ### Cloning a tree
 

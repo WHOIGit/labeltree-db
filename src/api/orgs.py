@@ -3,20 +3,28 @@
 Every tree belongs to one organization, and roles are held there. Anyone may
 list organizations and their trees; any member may list the members; only
 owners (and site admins) change them. An organization with an owner keeps at
-least one, except when a site admin acts.
+least one, except when a site admin acts. Only site admins create
+organizations.
 """
 
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_slug
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from ninja import Router, Schema
 
 from accounts.models import Organization, OrgMember, Role
-from accounts.roles import require_org
+from accounts.roles import require_org, require_superuser
 
 from .conventions import APIError, bad_parameter, not_found, respond
 
 router = Router(tags=["orgs"])
+
+
+class NewOrgIn(Schema):
+    id: str
+    name: str
 
 
 class MemberIn(Schema):
@@ -82,6 +90,29 @@ def _keep_an_owner(request, org_id: str, username: str, new_role: Role | None):
 def list_orgs(request):
     orgs = Organization.objects.prefetch_related("trees")
     return respond(request, {"orgs": [org_body(o) for o in orgs]})
+
+
+@router.post("")
+def create_org(request, body: NewOrgIn):
+    """Create an organization with no members (site admins only)."""
+    require_superuser(request.user)
+    try:
+        validate_slug(body.id)
+    except ValidationError:
+        raise bad_parameter("id must be a slug: letters, digits, `_` and `-`.") from None
+    name = body.name.strip()
+    if not name:
+        raise bad_parameter("name is required.")
+    if len(body.id) > 100 or len(name) > 200:
+        raise bad_parameter("id can have at most 100 characters, and name 200.")
+    try:
+        with transaction.atomic():
+            org = Organization.objects.create(id=body.id, name=name)
+    except IntegrityError:
+        raise APIError(409, "org_exists", f"Organization {body.id} already exists.") from None
+    response = respond(request, {"id": org.id, "name": org.name})
+    response.status_code = 201
+    return response
 
 
 @router.get("/{org_id}", auth=None)

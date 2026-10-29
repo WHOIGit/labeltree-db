@@ -44,8 +44,24 @@ def tree_list() -> list[dict]:
 def home(request):
     first = Tree.objects.order_by("org__name", "id").first()
     if first is None:
+        if request.user.is_superuser:
+            return redirect("setup")
         return render(request, "webapp/empty.html", {"user_info": user_info(request.user)})
     return redirect("tree", tree_id=first.id)
+
+
+@login_required
+def setup(request):
+    """The setup wizard for a new instance (spec: instance-setup), site admins only,
+    while there are no trees. What it shows follows from the database alone."""
+    if not request.user.is_superuser:
+        return forbidden(request, Forbidden("Only site admins set up the instance."))
+    if Tree.objects.exists():
+        return redirect("home")
+    orgs = [{"id": o.id, "name": o.name} for o in Organization.objects.order_by("name")]
+    page = {"orgs": orgs, "roles": [r.label for r in Role]}
+    context = {"page": page, "user_info": user_info(request.user)}
+    return render(request, "webapp/setup.html", context)
 
 
 def _browser(request, *, tree: Tree | None, draft: Changeset | None):
@@ -228,6 +244,7 @@ def me(request):
             {"org": m.org, "role": Role(m.role).label} for m in memberships.order_by("org__name")
         ],
         "all_orgs": Organization.objects.order_by("name") if request.user.is_superuser else [],
+        "offer_setup": request.user.is_superuser and not Tree.objects.exists(),
         "user_info": user_info(request.user),
     }
     return render(request, "webapp/me.html", context)

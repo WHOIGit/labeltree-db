@@ -18,7 +18,9 @@ organizations, alias and description history, the WoRMS warnings report and
 `/health` need no credentials, so consumers such as roi-db and datasetman read anonymously.
 Everything else needs a logged-in user and returns `401` without one:
 
-- Django users and sessions for the web app (CSRF-checked).
+- Django users and sessions for the web app (CSRF-checked). The CSRF secret is
+  kept in the session, not a cookie; pages carry the token for their scripts,
+  which send it as `X-CSRFToken`.
 - Per-user API tokens for scripts, sent as `Authorization: Token <key>`. A
   token acts as its user. Its key is shown once when a site admin creates it.
 
@@ -35,7 +37,10 @@ Roles form a ladder, and each includes everything below it:
 
 **Site admins** (Django superusers) manage users, tokens and organizations in
 Django admin, move trees between organizations, are `owner` in every
-organization, and alone can start a full cache sync (`sync_all`).
+organization, and alone can start a full cache sync (`sync_all`). They also
+create organizations and user accounts through the API (`POST /orgs`, `POST
+/users`), which the web app's [setup wizard](webapp.md#setting-up-a-new-instance)
+uses.
 
 ## Read endpoints
 
@@ -432,6 +437,13 @@ PUT    /nodes/{id}/description {description}
                                         set the description (drafter); "" clears it.
                                         Earlier entries are kept
 
+# Organizations and users (site admins)
+POST   /orgs {id, name}                 create an organization, with no members;
+                                        409 org_exists if the id is taken
+POST   /users {username, password}      create a user account in no organization;
+                                        the password must pass the site's password
+                                        rules (400 lists why not); 409 user_exists
+
 # Organization members
 GET    /orgs/{org}/members              members with their roles (reader)
 POST   /orgs/{org}/members {username, role}
@@ -622,9 +634,9 @@ Errors have one body shape:
 | `304` | Not modified, after `If-None-Match` ([Caching](#caching)). |
 | `400` | Bad parameter, e.g. `?rev` outside a version's range on `/versions/{v}`, or `between` on records where neither is an ancestor of the other. |
 | `401` | Not authenticated, on an endpoint that needs a login. |
-| `403` | Authenticated, but the user's role in the tree's organization is too low, or not a site admin for `sync_all`. |
+| `403` | Authenticated, but the user's role in the tree's organization is too low, or not a site admin for `sync_all`, `POST /orgs` or `POST /users`. |
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
-| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting an organization's last owner (`last_owner`), or adding an existing member (`already_member`). |
+| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting an organization's last owner (`last_owner`), or adding an existing member (`already_member`), or creating an organization or user that exists (`org_exists`, `user_exists`). |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
 | `422` | Request body invalid, or publish blocked by structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |

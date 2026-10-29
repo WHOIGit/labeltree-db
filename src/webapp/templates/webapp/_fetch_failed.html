@@ -1,0 +1,11 @@
+{% comment %}The fetch step's failures, with Try again and Proceed anyway (jobs.js fetchStep).{% endcomment %}
+<template x-if="jobFailed">
+  <div class="job" id="fetch-failed">
+    <div class="text-danger">Some WoRMS records couldn't be fetched:</div>
+    <template x-for="x in jobFailed" :key="x.aphia_id"><div x-text="x.aphia_id + ': ' + x.reason"></div></template>
+    <div class="d-flex gap-2 mt-1">
+      <button class="btn btn-sm btn-outline-primary" @click="tryAgain()">Try again</button>
+      <button class="btn btn-sm btn-outline-secondary" @click="proceedAnyway()">Proceed anyway</button>
+    </div>
+  </div>
+</template>

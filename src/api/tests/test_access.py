@@ -3,6 +3,7 @@
 import re
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.test import Client
 
 from accounts.models import ApiToken, Organization, OrgMember, Role
@@ -170,7 +171,11 @@ def fake_jobs(monkeypatch):
 LADDER = ["none", "reader", "drafter", "approver", "owner", "superuser"]
 
 # (method, path, body, minimum role). Later endpoints add rows here.
+STRONG = "plankton-net-1987"  # passes the site's password rules
+
 MATRIX = [
+    ("post", "/orgs", {"id": "lab_x", "name": "Lab X"}, "superuser"),
+    ("post", "/users", {"username": "newbie", "password": STRONG}, "superuser"),
     ("get", "/orgs/amplify/members", None, "reader"),
     ("put", "/orgs/amplify/members/target", {"role": "reader"}, "owner"),
     ("post", "/orgs/amplify/members", {"username": "target", "role": "drafter"}, "owner"),
@@ -403,3 +408,97 @@ def test_add_member_errors(owner):
     make_user("newcomer")
     body = {"username": "newcomer", "role": "admin"}
     assert call(client, "post", "/orgs/amplify/members", body)[0] == 400
+
+
+# --- Creating organizations and users (site admins) ------------------------------------------
+
+
+def logs_in(username, password):
+    """Whether the login page accepts these credentials."""
+    response = Client().post("/login/", {"username": username, "password": password})
+    return response.status_code == 302
+
+
+def test_site_admin_creates_an_organization(taxonomy):
+    admin = logged_in(make_user("admin", superuser=True))
+    status, body = call(admin, "post", "/orgs", {"id": "lab_a", "name": " Lab A "})
+    assert (status, body) == (201, {"id": "lab_a", "name": "Lab A"})
+    orgs = call(Client(), "get", "/orgs")[1]["orgs"]
+    assert {"id": "lab_a", "name": "Lab A", "trees": []} in orgs
+    assert not OrgMember.objects.filter(org_id="lab_a").exists()
+
+
+def test_owner_cannot_create_an_organization(owner):
+    status, _ = call(logged_in(owner), "post", "/orgs", {"id": "lab_a", "name": "Lab A"})
+    assert status == 403 and not Organization.objects.filter(id="lab_a").exists()
+
+
+def test_organization_id_taken(taxonomy):
+    admin = logged_in(make_user("admin", superuser=True))
+    status, body = call(admin, "post", "/orgs", {"id": "amplify", "name": "Other"})
+    assert (status, body["error"]) == (409, "org_exists")
+    assert Organization.objects.get(id="amplify").name == "AMPLIfy"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"id": "lab a", "name": "Lab A"},
+        {"id": "lab_a", "name": "  "},
+        {"id": "x" * 101, "name": "X"},
+    ],
+)
+def test_organization_errors(body):
+    admin = logged_in(make_user("admin", superuser=True))
+    status, answer = call(admin, "post", "/orgs", body)
+    assert (status, answer["error"]) == (400, "bad_parameter")
+    assert not Organization.objects.exists()
+
+
+def test_site_admin_creates_a_user():
+    admin = logged_in(make_user("admin", superuser=True))
+    status, body = call(admin, "post", "/users", {"username": "curator1", "password": STRONG})
+    assert (status, body) == (201, {"username": "curator1"})
+    assert STRONG not in str(body)
+    user = get_user_model().objects.get(username="curator1")
+    assert not user.is_superuser and not OrgMember.objects.filter(user=user).exists()
+    assert logs_in("curator1", STRONG)
+
+
+def test_username_taken():
+    existing = make_user("curator1")
+    existing.set_password("old-password-1987")
+    existing.save()
+    admin = logged_in(make_user("admin", superuser=True))
+    status, body = call(admin, "post", "/users", {"username": "curator1", "password": STRONG})
+    assert (status, body["error"]) == (409, "user_exists")
+    existing.refresh_from_db()
+    assert existing.check_password("old-password-1987")
+
+
+def test_weak_password():
+    admin = logged_in(make_user("admin", superuser=True))
+    status, body = call(admin, "post", "/users", {"username": "curator1", "password": "1234"})
+    assert (status, body["error"]) == (400, "bad_parameter")
+    assert "too short" in body["detail"] and "entirely numeric" in body["detail"]
+    assert not get_user_model().objects.filter(username="curator1").exists()
+
+
+def test_bad_username():
+    admin = logged_in(make_user("admin", superuser=True))
+    status, body = call(admin, "post", "/users", {"username": "cu rator", "password": STRONG})
+    assert (status, body["error"]) == (400, "bad_parameter")
+
+
+def test_drafter_cannot_create_a_user(taxonomy):
+    drafter = logged_in(make_user("drafter1", roles={"amplify": "drafter"}))
+    assert call(drafter, "post", "/users", {"username": "x1", "password": STRONG})[0] == 403
+
+
+def test_readme_setup_through_the_api(token_for):
+    """The README's curl sequence: organization, user, owner, with a site admin's token."""
+    script = token_client(token_for(make_user("admin", superuser=True)))
+    assert script("post", "/orgs", {"id": "lab_a", "name": "Lab A"})[0] == 201
+    assert script("post", "/users", {"username": "curator1", "password": STRONG})[0] == 201
+    assert script("put", "/orgs/lab_a/members/curator1", {"role": "owner"})[0] == 200
+    assert role_on("curator1", "lab_a") == "owner"
