@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from .models import ApiToken, Organization, OrgMember, Role, User, new_key
 
-admin.site.register(User, UserAdmin)
+admin.site.register(User, UserAdmin)  # its search on username backs the user pickers below
 
 
 @admin.register(ApiToken)
@@ -15,6 +15,7 @@ class ApiTokenAdmin(admin.ModelAdmin):
     list_filter = ["revoked_at"]
     search_fields = ["name", "user__username"]
     readonly_fields = ["created_at", "last_used_at"]
+    autocomplete_fields = ["user"]
     actions = ["revoke"]
 
     def get_fields(self, request, obj=None):
@@ -43,7 +44,7 @@ class ApiTokenAdmin(admin.ModelAdmin):
 
 class OrgMemberInline(admin.TabularInline):
     model = OrgMember
-    raw_id_fields = ["user"]
+    autocomplete_fields = ["user"]  # pick users by username
     extra = 0
 
 
@@ -65,7 +66,7 @@ class OrgMemberAdmin(admin.ModelAdmin):
     list_display = ["org", "user", "role_name"]
     list_filter = ["org", "role"]
     search_fields = ["user__username"]
-    raw_id_fields = ["user"]
+    autocomplete_fields = ["user"]
 
     @admin.display(description="role", ordering="role")
     def role_name(self, obj):

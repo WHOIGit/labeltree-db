@@ -100,7 +100,9 @@ of scope: nothing here needs expiry flows or third-party login.
 - **Members:** `GET /orgs/{org}/members`, `POST /orgs/{org}/members
   {username, role}` (add only: `409 already_member` for a member, so a stale
   member list can't turn an add into a role change), `PUT
-  /orgs/{org}/members/{username} {role}` and `DELETE
+  /orgs/{org}/members/{username} {role}` (sets the role, adding the user if
+  they aren't a member: usernames are unique site-wide, and the role only
+  applies within the organization) and `DELETE
   /orgs/{org}/members/{username}`. Changing or removing an
   owner locks the organization's member rows (`SELECT ... FOR UPDATE`) and
   refuses with `409 last_owner` if no owner would remain, unless a superuser
@@ -295,9 +297,10 @@ from that view would act on a list the user can't see in order.
   client expander. The server re-validates everything on save.
 - **Labels from WoRMS names:** spaces become `_`, then characters outside
   `[A-Za-z0-9_.-]` are dropped, as is leading punctuation.
-- Aliases after a merge: after a successful publish response, the client issues
-  `POST /nodes/{id}/aliases` for each missing label and alias. A failure is
-  shown to the user with a retry. It is not transactional with the publish,
+- Aliases after a merge: after a successful publish response, the client reads
+  the published changeset back (for the new node's id) and issues `POST
+  /nodes/{id}/aliases` for each missing label and alias. A failure of either
+  is shown to the user with a retry. It is not transactional with the publish,
   which matches the spec, since aliases sit outside changesets.
 
 Alternative: an HTMX-style fully server-rendered editor. Rejected, because the

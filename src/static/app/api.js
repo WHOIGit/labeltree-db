@@ -23,6 +23,31 @@ export async function api(method, path, body, headers = {}) {
   };
 }
 
+export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Waits before retrying a call that failed on the way: a transient proxy error
+// or dropped connection shouldn't lose a job or a published changeset.
+const RETRY_WAITS = [1000, 2000, 4000];
+
+/**
+ * Run `call()` (an api() call), retrying after 1, 2 and 4 s if the network
+ * fails or the server answers 429 or 5xx; other errors won't get better.
+ * Returns the last result, with status 0 for a network error.
+ */
+export async function retrying(call, waits = RETRY_WAITS) {
+  for (let i = 0; ; i++) {
+    let r;
+    try {
+      r = await call();
+    } catch (e) {
+      r = { status: 0, ok: false, data: { detail: `Network error: ${e.message}` }, etag: null };
+    }
+    const transient = r.status === 0 || r.status === 429 || r.status >= 500;
+    if (r.ok || !transient || i === waits.length) return r;
+    await sleep(waits[i]);
+  }
+}
+
 /** The error text of a failed call. */
 export function problem(result) {
   return result.data?.detail || `Request failed (HTTP ${result.status}).`;

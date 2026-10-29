@@ -84,10 +84,21 @@ test('suggested parent is the deepest anchored lineage node', () => {
 });
 
 test('label checks', () => {
-  const s = state();
+  const s = X.labelIndex(state());
   assert.match(X.labelProblem('x', s), /Already used/);
   assert.equal(X.labelProblem('x', s, 4), '');
   assert.match(X.labelProblem('a b', s), /machine-safe/);
+  assert.match(X.labelProblem('w', s, null, ['w']), /Used twice here/);
+});
+
+test('the label index skips deprecated nodes and keeps duplicates', () => {
+  const s = state();
+  s.get(6).dep = true;
+  s.get(5).label = 'x';  // two live nodes labelled x, as in a draft with errors
+  const labels = X.labelIndex(s);
+  assert.equal(labels.has(s.get(6).label), false);
+  assert.deepEqual(labels.get('x').map(n => n.id).sort(), [4, 5]);
+  assert.match(X.labelProblem('x', labels, 4), /Already used by x \(5\)/);
 });
 
 test('next group and placeholders', () => {
@@ -108,7 +119,7 @@ test('clone data skips deprecated nodes and keeps aliases', () => {
 });
 
 test('labels a macro deprecates stay taken until publish', () => {
-  const s = state();
+  const s = X.labelIndex(state());
   assert.match(X.labelProblem('A', s, null, [], new Set([1])), /stays taken until this draft is published/);
   assert.match(X.labelProblem('A', s), /Already used/);
 });

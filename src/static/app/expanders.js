@@ -23,17 +23,31 @@ export function nextGroup(prefix, changes) {
   return `${prefix}#${n + 1}`;
 }
 
+/** The live nodes of a tree state by label, for labelProblem. A draft with
+ * errors can have two live nodes with one label, so each label maps to a list. */
+export function labelIndex(state) {
+  const index = new Map();
+  for (const n of state.values()) {
+    if (n.dep) continue;
+    const list = index.get(n.label);
+    if (list) list.push(n);
+    else index.set(n.label, [n]);
+  }
+  return index;
+}
+
 /**
  * Why a label can't be used, or '' (machine-safe and unused by another live
- * node). `reserved` are nodes the same macro deprecates: their labels stay
- * taken until the draft is published, since changes apply in order and a node
- * is deprecated only after its children move to the new node.
+ * node). `labels` is the tree's labelIndex. `reserved` are nodes the same
+ * macro deprecates: their labels stay taken until the draft is published,
+ * since changes apply in order and a node is deprecated only after its
+ * children move to the new node.
  */
-export function labelProblem(label, state, self = null, others = [], reserved = new Set()) {
+export function labelProblem(label, labels, self = null, others = [], reserved = new Set()) {
   if (!label) return 'Label is required';
   if (!LABEL_RE.test(label)) return 'Not machine-safe: letters, digits and _ . - only, starting with a letter or digit';
-  for (const n of state.values()) {
-    if (n.dep || n.label !== label || n.id === self) continue;
+  for (const n of labels.get(label) || []) {
+    if (n.id === self) continue;
     if (reserved.has(n.id)) return `${label} stays taken until this draft is published: choose another label`;
     return `Already used by ${n.label} (${n.id})`;
   }

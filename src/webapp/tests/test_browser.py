@@ -227,6 +227,46 @@ def test_renames_show_their_old_name(site, taxonomy):
     assert "box: label → crate" in page.inner_text("#revision-changes")
 
 
+def test_a_revision_that_only_adds_needs_no_old_labels(site, taxonomy):
+    ids = ids_by_label("taxonomy")
+    publish(taxonomy, add("new:1", "crate", parent=ids["other"]))
+    lookups = []
+    site.page.on("request", lambda r: "/nodes?ids=" in r.url and lookups.append(r.url))
+    page = site.open("/trees/taxonomy/")
+    expect(page.locator("#revision-changes")).to_contain_text("crate under other")
+    assert lookups == []
+
+
+def test_a_failed_revision_load_keeps_the_picker(site, taxonomy):
+    ids = ids_by_label("taxonomy")
+    publish(taxonomy, add("new:1", "crate", parent=ids["other"]))
+    page = site.open("/trees/taxonomy/")
+    page.wait_for_load_state("networkidle")
+    page.route("**/export?rev=1", lambda route: route.fulfill(status=500, json={"detail": "boom"}))
+    page.select_option("#rev-picker", "1")
+    expect(page.locator(".toast")).to_contain_text("Couldn't load the tree: boom")
+    expect(page.locator("#rev-picker")).to_have_value("2")
+    page.click("text=Expand all")
+    expect(site.row("crate")).to_be_visible()  # still revision 2
+
+
+def test_new_draft_starts_although_a_sync_reload_overtakes_it(site, taxonomy, drafter):
+    ids = ids_by_label("taxonomy")
+    publish(taxonomy, add("new:1", "crate", parent=ids["other"]))
+    site.login(drafter)
+    page = site.open("/trees/taxonomy/")
+    page.select_option("#rev-picker", "1")
+    page.wait_for_load_state("networkidle")
+    started = page.evaluate("""async () => {
+        const c = Alpine.$data(document.querySelector('.shell'));
+        const draft = c.startNewDraft();  // loads revision 2 first
+        await c.afterSync(null);           // a sync ends meanwhile and reloads it
+        await draft;
+        return [c.mode, c.viewRev];
+    }""")
+    assert started == ["edit", 2]
+
+
 def test_picker_shows_the_requested_revision_after_a_sync(site, taxonomy, drafter):
     ids = ids_by_label("taxonomy")
     publish(taxonomy, add("new:1", "crate", parent=ids["other"]))

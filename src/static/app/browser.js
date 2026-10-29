@@ -4,17 +4,19 @@
 // stores it. All logic lives in this module: attributes only call its methods
 // and read its properties (Alpine CSP build).
 
-import { api, pageData, problem } from './api.js';
+import { api, pageData, problem, retrying } from './api.js';
 import * as X from './expanders.js';
-import { jobPercent, pauseBar, pollJob, retryBars, startJob } from './jobs.js';
+import { jobPercent, pauseBar, poll, pollJob, retryBars, startJob } from './jobs.js';
 import { applyLocal, childIndex, describe, fromExport, idOf, isPh, keyOf, nodePath, pill, touched, wormsUrl } from './model.js';
 import { atLeast, needs, roleIn } from './roles.js';
 
 // Not reactive on purpose: large, and replaced wholesale.
 let BASE = new Map(); // the tree at the viewed revision, or a draft's base revision
-let CUR = { state: new Map(), kids: new Map(), local: null };
-let PARTS = { key: null, errors: [] }; // the wizard's part errors, for its current input
+let CUR = { state: new Map(), kids: new Map(), labels: new Map(), local: null };
 let PREV = new Map(); // labels, as of the revision before the viewed one, of the nodes it changed
+// Bumped by each choice of what to show (picking a revision, starting or
+// opening a draft), but not by the reload after a sync: see loadFor.
+let CHOICE = 0;
 
 const TABS = [
   { key: 'edited', label: 'As edited' },
@@ -39,7 +41,7 @@ export default () => ({
   job: null, jobFailed: null, jobResolve: null, pauseSeen: {}, now: Date.now(),
   syncOpen: false, syncs: null, syncJob: null, syncFailed: null, syncKind: null,
   warningsOpen: false, warningsList: [], editOpen: false, drafts: { open: [], discarded: [] },
-  aliasFailures: [],
+  aliasFailures: [], aliasError: null,
 
   async init() {
     const page = pageData();
@@ -91,22 +93,31 @@ export default () => ({
   async loadState(rev) {
     if (!this.treeId || rev == null) return new Map();
     const r = await api('GET', `/trees/${this.treeId}/export?rev=${rev}`);
+    if (!r.ok) throw new Error(problem(r));
     return fromExport(r.data.nodes);
   },
   /**
    * Show revision `rev`. Every write of the displayed tree (here, and opening,
    * saving or rebasing a draft) bumps `loadSeq`, so a load that is overtaken
-   * while it waits is dropped. Returns whether this load was applied.
+   * while it waits is dropped. Returns true once applied, false if
+   * overtaken, and null if it failed (see loadFailed).
    */
   async loadRev(rev) {
     rev = Number(rev);
     this.wantedRev = rev;
     const seq = ++this.loadSeq;
-    const [state, changes] = await Promise.all([
-      this.loadState(rev), api('GET', `/trees/${this.treeId}/revisions/${rev}/changes`),
-    ]);
-    const revChanges = changes.ok ? changes.data : null;
-    const prev = await this.previousLabels(revChanges, rev);
+    let state, revChanges, prev;
+    try {
+      const [s, changes] = await Promise.all([
+        this.loadState(rev), api('GET', `/trees/${this.treeId}/revisions/${rev}/changes`),
+      ]);
+      if (seq !== this.loadSeq) return false;
+      state = s;
+      revChanges = changes.ok ? changes.data : null;
+      prev = await this.previousLabels(revChanges, rev, state);
+    } catch (e) {
+      return this.loadFailed(seq, e);
+    }
     if (seq !== this.loadSeq) return false;
     BASE = state;
     PREV = prev;
@@ -117,30 +128,66 @@ export default () => ({
     this.refresh();
     return true;
   },
-  /** Labels, as of the revision before, of the existing nodes a revision's
-   * changes name: renamed nodes' old names and deprecated nodes' labels. */
-  async previousLabels(revChanges, rev) {
-    const ids = [...new Set((revChanges?.changes || []).flatMap(touched).filter(id => typeof id === 'number'))];
-    if (!ids.length || rev <= 1) return new Map();
-    const labels = new Map();
-    for (let i = 0; i < ids.length; i += 200) {  // short URLs, however big the revision
-      const r = await api('GET', `/trees/${this.treeId}/nodes?ids=${ids.slice(i, i + 200).join(',')}&rev=${rev - 1}`);
-      for (const n of r.data?.nodes || []) if (n.label) labels.set(n.id, { label: n.label });
+  /**
+   * Labels, as of the revision before, of the nodes a revision's changes name
+   * that its own `state` can't: renamed nodes' old names, and nodes no longer
+   * there. Nodes the revision adds didn't exist before, so aren't asked for.
+   */
+  async previousLabels(revChanges, rev, state) {
+    const changes = revChanges?.changes || [];
+    if (rev <= 1 || !changes.length) return new Map();
+    const added = new Set(changes.filter(c => c.op === 'add').map(c => c.node));
+    const ids = new Set();
+    for (const c of changes) {
+      if (c.op === 'edit' && 'label' in c) ids.add(c.node);
+      for (const id of touched(c)) if (!state.has(id)) ids.add(id);
     }
+    const wanted = [...ids].filter(id => typeof id === 'number' && !added.has(id));
+    const batches = [];
+    for (let i = 0; i < wanted.length; i += 200) batches.push(wanted.slice(i, i + 200));  // short URLs
+    const answers = await Promise.all(batches.map(b =>
+      api('GET', `/trees/${this.treeId}/nodes?ids=${b.join(',')}&rev=${rev - 1}`)));
+    const labels = new Map();
+    for (const r of answers) for (const n of r.data?.nodes || []) if (n.label) labels.set(n.id, { label: n.label });
     return labels;
   },
-  /** Load a draft's base revision as the displayed tree, unless overtaken. */
+  /** Load a draft's base revision as the displayed tree. Returns as loadRev does. */
   async loadBase(rev) {
     const seq = ++this.loadSeq;
-    const state = await this.loadState(rev);
+    let state;
+    try {
+      state = await this.loadState(rev);
+    } catch (e) {
+      return this.loadFailed(seq, e);
+    }
     if (seq !== this.loadSeq) return false;
     BASE = state;
     this.viewRev = rev;
     this.wantedRev = rev;
     return true;
   },
+  /** A load failed: the shown tree stays, and so does the picker. Says why,
+   * unless the load was overtaken anyway. */
+  loadFailed(seq, e) {
+    if (seq !== this.loadSeq) return false;
+    this.wantedRev = this.viewRev;
+    this.toast(`Couldn't load the tree: ${e.message}`, 'text-bg-danger');
+    return null;
+  },
+  /**
+   * Run `load` (a loadRev or loadBase) for the user's choice `choice`. The
+   * reload after a sync can overtake it; then it runs again. A later choice
+   * wins, and so does a failure: then it returns false.
+   */
+  async loadFor(choice, load) {
+    for (let i = 0; i < 5; i++) {
+      const applied = await load();
+      if (applied !== false || choice !== CHOICE) return applied === true;
+    }
+    return false;
+  },
   async selectTree(id) { window.location.href = `/trees/${id}/`; },
-  async selectRev(rev) { await this.loadRev(rev); },
+  async selectRev(rev) { CHOICE++; await this.loadRev(rev); },
   isWantedRev(rev) { return rev === this.wantedRev; },
 
   // ---- the tree -------------------------------------------------------------------------
@@ -151,7 +198,7 @@ export default () => ({
       state = local.state;
     }
     const kids = childIndex(state, true);
-    CUR = { state, kids, local };
+    CUR = { state, kids, labels: X.labelIndex(state), local };
     const q = this.filter.trim().toLowerCase();
     let match = null;
     if (q) {
@@ -287,21 +334,23 @@ export default () => ({
   draftText(d) { return `base ${d.base_rev ?? 'none'} · ${d.author} · ${d.num_changes} changes`; },
   async startNewDraft() {
     this.editOpen = false;
+    const choice = ++CHOICE;
     // Start only if the latest revision is what's shown: a draft builds on it.
     if (this.viewRev === this.latestRev) { this.loadSeq++; this.wantedRev = this.latestRev; }  // drop pending picks
-    else if (!(await this.loadRev(this.latestRev))) return;
+    else if (!(await this.loadFor(choice, () => this.loadRev(this.latestRev)))) return;
     this.draft = { id: null, base_rev: this.latestRev, state: 'draft', notes: '', etag: null, author: this.user.username };
     this.enterEdit([]);
   },
   async openDraftFromMenu(id) { this.editOpen = false; await this.openDraft(id); },
   async openDraft(id) {
+    const choice = ++CHOICE;
     const r = await api('GET', `/changesets/${id}`);
     if (!r.ok) { this.toast(problem(r), 'text-bg-danger'); return; }
     const cs = r.data;
     if (cs.tree) {
       this.treeId = cs.tree;
       if (!this.revisions.length) await this.loadRevisions();
-      if (!(await this.loadBase(cs.base_rev))) return;
+      if (!(await this.loadFor(choice, () => this.loadBase(cs.base_rev)))) return;
     } else {
       this.loadSeq++;
       BASE = new Map();
@@ -384,7 +433,7 @@ export default () => ({
     };
     actions[m.action]();
   },
-  labelError(label, self, others = []) { return X.labelProblem(label, CUR.state, self, others); },
+  labelError(label, self, others = [], reserved = undefined) { return X.labelProblem(label, CUR.labels, self, others, reserved); },
   aphiaError(a) { return a === '' || a == null || /^\d+$/.test(String(a)) ? '' : 'AphiaID must be a number'; },
   aphiaVal(a) { return a === '' || a == null ? null : Number(a); },
 
@@ -558,17 +607,12 @@ export default () => ({
     if (f.wizard === 'merge') return f.repl ? this.mergeIds() : this.mergeIds().filter(id => id !== this.survivor());
     return f.repl ? [f.a] : [];
   },
-  /** The parts' label and AphiaID errors, computed once per input. */
+  /** The parts' label and AphiaID errors. */
   partErrors() {
-    const f = this.f;
-    const key = JSON.stringify([f.wizard, f.a, f.parts, f.repl, f.survivorKey, f.sel]);
-    if (PARTS.key === key) return PARTS.errors;
-    const labels = f.parts.map(p => p.label);
+    const labels = this.f.parts.map(p => p.label);
     const reserved = new Set(this.wizardDeprecates());
-    const errors = f.parts.map((p, i) =>
-      X.labelProblem(p.label, CUR.state, null, labels.filter((_, j) => j !== i), reserved) || this.aphiaError(p.aphia));
-    PARTS = { key, errors };
-    return errors;
+    return this.f.parts.map((p, i) =>
+      this.labelError(p.label, null, labels.filter((_, j) => j !== i), reserved) || this.aphiaError(p.aphia));
   },
   partError(i) { return this.f.parts[i].label ? this.partErrors()[i] : ''; },
   get wizError() {
@@ -872,13 +916,18 @@ export default () => ({
     if (r.status === 412) return this.changedElsewhere();
     if (!r.ok) { this.toast(problem(r), 'text-bg-danger'); return false; }
     await this.stored(r);
-    this.toast(`Draft #${this.draft.id} saved`);
+    this.toast(`Draft #${r.data.id} saved`);
     return true;
   },
+  /** Show a saved draft. If loading its new base revision is overtaken, the
+   * user has opened something else, so it's left alone. If the load fails,
+   * the old base stays; the next save loads the new one again. */
   async stored(r) {
     const cs = r.data;
-    if (cs.base_rev !== this.draft.base_rev) await this.loadBase(cs.base_rev);
-    this.draft = { ...this.draft, id: cs.id, base_rev: cs.base_rev, etag: r.etag, state: cs.state, notes: cs.notes };
+    const loaded = cs.base_rev === this.draft.base_rev || await this.loadBase(cs.base_rev);
+    if (loaded === false) return;
+    const base_rev = loaded ? cs.base_rev : this.draft.base_rev;
+    this.draft = { ...this.draft, id: cs.id, base_rev, etag: r.etag, state: cs.state, notes: cs.notes };
     this.changes = cs.changes.map(({ seq, ...c }) => c);
     this.dirty = false;
     this.setValidation(cs.validation);
@@ -913,16 +962,19 @@ export default () => ({
     this.closeModal();
     this.draft.state = 'published';  // frozen from here on, even if copying aliases fails
     this.dirty = false;
-    const merged = this.changes.some(c => c.group?.startsWith('merge#'));
-    const aliases = merged ? await this.copyMergeAliases() : true;
     this.toast(`Published revision ${r.data.rev}`);
-    if (this.newTree) { window.location.href = `/trees/${this.newTree.id}/`; return; }
-    if (aliases) { this.mode = 'static'; this.draft = null; this.changes = []; await this.loadRevisions(); await this.loadRev(this.latestRev); }
+    const merged = this.changes.some(c => c.group?.startsWith('merge#'));
+    if (merged && !(await this.copyMergeAliases())) return;  // the dialog offers Retry and Skip
+    await this.exitAfterPublish();
   },
   /** After a merge publishes: each deprecated node's label and aliases become
-   * aliases of its successor, skipping ones it has. Not part of the publish. */
+   * aliases of its successor, skipping ones it has. Not part of the publish.
+   * The published changeset names the successors' ids; if it can't be read,
+   * the dialog says so. */
   async copyMergeAliases() {
-    const cs = await api('GET', `/changesets/${this.draft.id}`);
+    const cs = await retrying(() => api('GET', `/changesets/${this.draft.id}`));
+    this.aliasError = cs.ok ? null : problem(cs);
+    if (!cs.ok) { this.aliasFailures = []; this.modal = 'aliasFailures'; return false; }
     const wanted = [];
     for (const c of cs.data.changes) {
       if (c.op !== 'deprecate' || !c.group?.startsWith('merge#') || c.successors.length !== 1) continue;
@@ -949,8 +1001,17 @@ export default () => ({
     if (failed.length) this.modal = 'aliasFailures';
     return !failed.length;
   },
-  async retryAliases() { const list = this.aliasFailures; this.closeModal(); if (await this.addAliases(list)) await this.exitAfterPublish(); },
-  async exitAfterPublish() { this.mode = 'static'; this.draft = null; this.changes = []; await this.loadRevisions(); await this.loadRev(this.latestRev); },
+  async retryAliases() {
+    const [list, reread] = [this.aliasFailures, this.aliasError];
+    this.closeModal();
+    if (await (reread ? this.copyMergeAliases() : this.addAliases(list))) await this.exitAfterPublish();
+  },
+  async exitAfterPublish() {
+    if (this.newTree) { window.location.href = `/trees/${this.newTree.id}/`; return; }
+    this.mode = 'static'; this.draft = null; this.changes = [];
+    await this.loadRevisions();
+    await this.loadRev(this.latestRev);
+  },
   discardDraft() {
     this.confirm(`Discard draft #${this.draft.id}?`, 'It is kept for the record, read-only, and can no longer be published.', 'Discard', 'btn-danger', async () => {
       const r = await api('DELETE', `/changesets/${this.draft.id}`);
@@ -970,14 +1031,18 @@ export default () => ({
     if (this.watching) return;  // one loop, however often the menu opens
     this.watching = true;
     try {
-      while (this.syncOpen || this.syncs?.active) {
-        const r = await api('GET', `/worms/jobs?tree=${this.treeId}`);
-        if (!r.ok) return;
-        const wasActive = this.syncs?.active;
-        this.syncs = r.data;
-        if (wasActive && !r.data.active) await this.afterSync(r.data.last);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      await poll(() => api('GET', `/worms/jobs?tree=${this.treeId}`), {
+        active: () => this.syncOpen || this.syncs?.active,
+        onUpdate: async data => {
+          const wasActive = this.syncs?.active;
+          this.syncs = data;
+          if (wasActive && !data.active) await this.afterSync(data.last);
+        },
+      });
+    } catch (e) {
+      // Only worth saying if a running sync drops out of view.
+      if (this.syncs?.active) this.toast(`Lost track of the running sync: ${e.message}`, 'text-bg-danger');
+      this.syncs = null;
     } finally {
       this.watching = false;
     }

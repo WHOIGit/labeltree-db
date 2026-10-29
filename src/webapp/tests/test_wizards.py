@@ -329,6 +329,61 @@ def test_merge_alias_failure_leaves_the_editor_frozen(site, taxonomy):
     )
 
 
+def test_merge_aliases_wait_for_the_published_changeset(site, taxonomy):
+    """If the published changeset can't be read back, the dialog says so; Retry reads it again."""
+    page = new_draft(site, make_user("approver1", roles={"amplify": "approver"}))
+    menu(site, "Chaetoceros_didymus", "merge")
+    page.fill("#merge-find", "box")
+    page.click('#merge-candidates [data-label="box"] input')
+    wizard_next(page)
+    wizard_next(page)
+    page.fill("#merge-label", "C_merged")
+    wizard_next(page)
+    page.click("#wizard-add")
+    page.click("#validate-button")
+    expect(page.locator("#save-button")).to_be_enabled()
+    page.click("#save-button")
+    expect(page.locator("#publish-button")).to_be_enabled()
+
+    def unreadable(route):
+        if route.request.method == "GET":
+            route.fulfill(status=502, json={"detail": "bad gateway"})
+        else:
+            route.continue_()
+
+    page.route("**/api/v1/changesets/*", unreadable)
+    page.click("#publish-button")
+    page.click("#publish-submit")
+    expect(page.locator(".toast", has_text="Published revision")).to_be_visible()
+    dialog = page.locator("#alias-failures")
+    expect(dialog).to_contain_text("couldn't be read back", timeout=15000)  # after its retries
+    expect(page.locator("#status")).to_have_text("Published (frozen)")
+    page.unroute("**/api/v1/changesets/*")
+    dialog.locator("text=Retry").click()
+    expect(page.locator("#rev-picker")).to_be_visible()  # aliases copied, back in static mode
+    merged = ids_by_label("taxonomy")["C_merged"]
+    assert NodeAlias.objects.filter(node_id=merged, alias="box", removed_at__isnull=True).exists()
+
+
+def test_part_labels_are_checked_against_the_draft_as_it_is_now(site, taxonomy, drafter):
+    page = new_draft(site, drafter)
+    menu(site, "Chaetoceros", "split")
+    wizard_next(page)
+    page.fill('[data-part="0"]', "foo")
+    page.fill('[data-part="1"]', "bar")
+    expect(page.locator("#wizard-error")).to_have_text("")
+    page.keyboard.press("Escape")
+    page.evaluate(
+        "Alpine.$data(document.querySelector('.shell'))"
+        ".addChanges([{op: 'add', node: 'new:1', label: 'foo', parent: null}])"
+    )
+    menu(site, "Chaetoceros", "split")
+    wizard_next(page)
+    page.fill('[data-part="0"]', "foo")
+    page.fill('[data-part="1"]', "bar")
+    expect(page.locator("#wizard-error")).to_contain_text("Already used by foo")
+
+
 def test_new_node_cannot_take_a_deprecated_label(site, taxonomy, drafter):
     page = new_draft(site, drafter)
     menu(site, "Chaetoceros", "split")

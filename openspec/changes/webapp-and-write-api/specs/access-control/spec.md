@@ -134,7 +134,7 @@ including drafts the approver wrote.
 /orgs/{org}/members` with `{username, role}` adds a user, returning `201`, or
 `409` with error `already_member` if they are one; `PUT
 /orgs/{org}/members/{username}` with `{role}` sets a user's role, any role
-including `owner`; `DELETE /orgs/{org}/members/{username}` removes them,
+including `owner`, adding them if they aren't a member; `DELETE /orgs/{org}/members/{username}` removes them,
 returning `204`.
 
 #### Scenario: Owner raises a member
@@ -144,6 +144,10 @@ returning `204`.
 #### Scenario: Adding an existing member
 - **WHEN** an owner adds a user who is already `approver` as `reader`
 - **THEN** the API returns `409` with error `already_member` and the user stays `approver`
+
+#### Scenario: Setting the role of a non-member
+- **WHEN** an owner sets the role of a user who isn't a member to `drafter`
+- **THEN** the API returns `200` and the user is a `drafter` of the organization
 
 #### Scenario: Co-owner
 - **WHEN** an owner sets another member's role to `owner`

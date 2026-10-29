@@ -396,8 +396,15 @@
     <div class="modal-dialog"><div class="modal-content">
       <div class="modal-header"><h5 class="modal-title">Some aliases weren't copied</h5></div>
       <div class="modal-body">
-        <p>The merge is published, but these aliases couldn't be added to the merged node:</p>
-        <template x-for="a in aliasFailures" :key="a.node + a.alias"><div class="small" x-text="a.alias + ' → ' + lbl(a.node) + ': ' + a.error"></div></template>
+        <template x-if="aliasError">
+          <p>The merge is published, but its changes couldn't be read back to copy the merged nodes' labels and aliases: <span x-text="aliasError"></span></p>
+        </template>
+        <template x-if="!aliasError">
+          <div>
+            <p>The merge is published, but these aliases couldn't be added to the merged node:</p>
+            <template x-for="a in aliasFailures" :key="a.node + a.alias"><div class="small" x-text="a.alias + ' → ' + lbl(a.node) + ': ' + a.error"></div></template>
+          </div>
+        </template>
       </div>
       <div class="modal-footer">
         <button class="btn btn-outline-secondary" @click="exitAfterPublish()">Skip</button>

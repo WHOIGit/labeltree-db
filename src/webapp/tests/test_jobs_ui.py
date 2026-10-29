@@ -1,5 +1,6 @@
 """WoRMS job progress, the sync menu and failed AphiaIDs (spec: webapp)."""
 
+import itertools
 import json
 from datetime import UTC, datetime, timedelta
 
@@ -179,13 +180,34 @@ def test_one_status_poller_however_often_the_menu_opens(site, taxonomy, drafter)
     site.login(drafter)
     page = site.open("/trees/taxonomy/")
     polls = []
-    page.on("request", lambda r: "/api/v1/worms/jobs?tree=" in r.url and polls.append(r.url))
+    page.on("requestfinished", lambda r: "/api/v1/worms/jobs?tree=" in r.url and polls.append(r))
     for _ in range(4):
         page.click("#sync-button")  # open
         page.click("#tree")  # close (click outside)
     page.click("#sync-button")
     page.wait_for_timeout(2500)
-    assert len(polls) <= 4  # about one a second from a single loop
+    # One loop waits a second between polls; a second loop would poll in between.
+    starts = sorted(r.timing["startTime"] for r in polls)
+    assert len(starts) >= 2
+    assert min(b - a for a, b in itertools.pairwise(starts)) > 800
+
+
+def test_the_sync_menu_keeps_polling_through_a_transient_failure(site, taxonomy, drafter):
+    site.login(drafter)
+    page = site.open("/trees/taxonomy/")
+    polls = []
+
+    def flaky(route):
+        polls.append(route.request.url)
+        if len(polls) == 1:
+            route.fulfill(status=502, json={"detail": "bad gateway"})
+        else:
+            route.continue_()
+
+    page.route("**/api/v1/worms/jobs?tree=*", flaky)
+    page.click("#sync-button")
+    page.wait_for_timeout(3500)
+    assert len(polls) >= 3  # retried after a second, then polled on
 
 
 def test_lost_job_status_clears_the_running_sync(site, taxonomy, drafter):

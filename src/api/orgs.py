@@ -117,6 +117,7 @@ def add_member(request, org_id: str, body: NewMemberIn):
 
 @router.put("/{org_id}/members/{username}")
 def set_member(request, org_id: str, username: str, body: MemberIn):
+    """Set a user's role, adding them if they aren't a member."""
     org = get_org(org_id)
     require_org(request.user, org.id, Role.OWNER)
     role = parse_role(body.role)

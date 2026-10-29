@@ -16,6 +16,7 @@ export default () => ({
   },
   explain(r) {
     if (r.data?.error === 'last_owner') return 'The organization needs an owner: make someone else an owner first.';
+    if (r.data?.error === 'already_member') return `${r.data.detail} Change their role in the list.`;
     return problem(r);
   },
   async setRole(username, role) {
@@ -32,8 +33,7 @@ export default () => ({
    * stale list can't turn this into a role change. */
   async add() {
     const r = await api('POST', `/orgs/${this.org}/members`, { username: this.newUser.trim(), role: this.newRole });
-    if (r.data?.error === 'already_member') this.error = `${r.data.detail} Change their role in the list.`;
-    else this.error = r.ok ? '' : this.explain(r);
+    this.error = r.ok ? '' : this.explain(r);
     if (r.ok) this.newUser = '';
     await this.reload();
   },

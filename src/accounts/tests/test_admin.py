@@ -66,6 +66,18 @@ def test_create_an_organization_and_its_owner(admin_client):
     assert admin_client.get(reverse("admin:accounts_orgmember_changelist")).status_code == 200
 
 
+def test_members_and_tokens_pick_users_by_username(admin_client):
+    User.objects.create_user("curator1")
+    User.objects.create_user("drafter1")
+    for page in ["admin:accounts_orgmember_add", "admin:accounts_apitoken_add"]:
+        assert "admin-autocomplete" in admin_client.get(reverse(page)).content.decode()
+    found = admin_client.get(
+        reverse("admin:autocomplete"),
+        {"term": "cura", "app_label": "accounts", "model_name": "orgmember", "field_name": "user"},
+    ).json()
+    assert [r["text"] for r in found["results"]] == ["curator1"]
+
+
 def test_move_a_tree_to_another_organization(admin_client, tree):
     Organization.objects.create(id="lab_a", name="Lab A")
     url = reverse("admin:core_tree_change", args=[tree])

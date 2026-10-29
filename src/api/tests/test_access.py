@@ -300,10 +300,10 @@ def test_owner_raises_a_member(owner, taxonomy):
     assert role_on("drafter1") == "approver"
 
 
-def test_owner_adds_a_user(owner):
+def test_setting_the_role_of_a_non_member(owner):
     make_user("newcomer")
-    call(logged_in(owner), "put", "/orgs/amplify/members/newcomer", {"role": "reader"})
-    assert role_on("newcomer") == "reader"
+    status, _ = call(logged_in(owner), "put", "/orgs/amplify/members/newcomer", {"role": "drafter"})
+    assert status == 200 and role_on("newcomer") == "drafter"
 
 
 def test_co_owner(owner):

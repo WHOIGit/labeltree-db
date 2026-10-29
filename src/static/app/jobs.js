@@ -1,7 +1,7 @@
 // WoRMS jobs: start, poll, and the progress bars (spec: webapp "WoRMS job
 // progress"). A job's status comes from GET /worms/jobs/{job}.
 
-import { api, problem } from './api.js';
+import { api, problem, retrying, sleep } from './api.js';
 
 // Waits before each retry of a job started through the API (worms.client.JOB_BACKOFF).
 export const JOB_BACKOFF = [1, 2, 5, 12];
@@ -13,32 +13,26 @@ export async function startJob(body) {
   return r.data;
 }
 
-// Waits before retrying a failed poll; a transient proxy error shouldn't lose the job.
-const POLL_RETRIES = [1000, 2000, 4000];
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-/** Poll a job about every second until it ends; `onUpdate(status)` sees each.
- * A failed poll is retried a few times, except 401, 403 and 404, which won't
- * get better. */
-export async function pollJob(id, onUpdate, interval = 1000) {
-  let failures = 0;
-  for (;;) {
-    let r;
-    try {
-      r = await api('GET', `/worms/jobs/${id}`);
-    } catch (e) {
-      r = { ok: false, status: 0, data: { detail: e.message } };  // network error
-    }
-    if (!r.ok) {
-      if ([401, 403, 404].includes(r.status) || failures === POLL_RETRIES.length) throw new Error(problem(r));
-      await sleep(POLL_RETRIES[failures++]);
-      continue;
-    }
-    failures = 0;
-    onUpdate(r.data);
-    if (r.data.state !== 'running') return r.data;
+/**
+ * Call `call()` every `interval` ms while `active()`, until `done(data)`;
+ * `onUpdate(data)` (which may be async) sees each answer. Each call is
+ * retried through transient failures; one that still fails throws. Returns
+ * the last data, or null once no longer active.
+ */
+export async function poll(call, { onUpdate = () => {}, done = () => false, active = () => true, interval = 1000 }) {
+  while (active()) {
+    const r = await retrying(call);
+    if (!r.ok) throw new Error(problem(r));
+    await onUpdate(r.data);
+    if (done(r.data)) return r.data;
     await sleep(interval);
   }
+  return null;
+}
+
+/** Poll a job about every second until it ends; `onUpdate(status)` sees each. */
+export function pollJob(id, onUpdate, interval = 1000) {
+  return poll(() => api('GET', `/worms/jobs/${id}`), { onUpdate, done: s => s.state !== 'running', interval });
 }
 
 /** One bar per AphiaID being retried: how far through all its retry waits it is. */

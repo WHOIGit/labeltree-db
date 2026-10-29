@@ -437,8 +437,9 @@ GET    /orgs/{org}/members              members with their roles (reader)
 POST   /orgs/{org}/members {username, role}
                                         add a user (owner); 409 already_member if they are one
 PUT    /orgs/{org}/members/{username} {role}
-                                        set a user's role (owner);
-                                        409 last_owner if it would leave no owner
+                                        set a user's role (owner), adding them if
+                                        they aren't a member; 409 last_owner if it
+                                        would leave no owner
 DELETE /orgs/{org}/members/{username}   remove a member (owner); 409 last_owner as above
 ```
 

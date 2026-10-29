@@ -173,7 +173,9 @@ While a job runs, one bar shows AphiaIDs done out of the total. Each AphiaID
 being retried gets its own bar through its retry waits (1, 2, 5 and 12 s), and
 a rate-limit pause from WoRMS replaces them with one pause bar. AphiaIDs that
 still fail are listed at the end with **Try again** (those AphiaIDs only) or
-**Proceed anyway**.
+**Proceed anyway**. The page polls a job's status about every second; a poll
+that fails on the way (network error or a 5xx from the proxy) is retried after
+1, 2 and 4 s before the page gives up on the job.
 
 ## Merge and split
 
@@ -250,7 +252,9 @@ has narrowed.
 
 Aliases aren't part of changesets, so after a merge is published the UI copies
 each deprecated node's label and aliases into the surviving or new node's
-alias list.
+alias list. It reads the published changeset back for the new node's id. If
+that read or any alias fails, the merge stays published and a dialog says what
+wasn't copied, with **Retry** and **Skip**.
 
 ## Import
 
