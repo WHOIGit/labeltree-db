@@ -1,0 +1,24 @@
+{% extends "webapp/base.html" %}
+{% block title %}Log in · labeltree{% endblock %}
+{% block content %}
+<main class="container narrow py-4">
+  <h1 class="h4 mb-3">Log in</h1>
+  {% if form.errors %}
+    <div class="alert alert-danger">Wrong username or password.</div>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="mb-2">
+      <label class="form-label" for="id_username">Username</label>
+      <input class="form-control" id="id_username" name="username" autocomplete="username" required autofocus>
+    </div>
+    <div class="mb-3">
+      <label class="form-label" for="id_password">Password</label>
+      <input class="form-control" id="id_password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="btn btn-primary">Log in</button>
+  </form>
+  <p class="form-text mt-3">Accounts are created by a site admin.</p>
+</main>
+{% endblock %}

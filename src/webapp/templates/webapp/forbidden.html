@@ -1,0 +1,8 @@
+{% extends "webapp/base.html" %}
+{% block content %}
+<main class="container narrow py-4">
+  <h1 class="h4">Not allowed</h1>
+  <p>{{ reason }}</p>
+  <p><a href="{% url 'home' %}">Back to the trees</a></p>
+</main>
+{% endblock %}

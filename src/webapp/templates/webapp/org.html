@@ -1,0 +1,46 @@
+{% extends "webapp/base.html" %}
+{% block title %}{{ org.name }} · labeltree{% endblock %}
+{% block content %}
+<main class="container narrow py-4">
+  <h1 class="h4">{{ org.name }} <small class="text-muted">{{ org.id }}</small></h1>
+  <h2 class="h6 mt-3">Trees</h2>
+  <ul id="org-trees">{% for t in trees %}<li><a href="{% url 'tree' t.id %}">{{ t.id }}</a> {{ t.title }}</li>{% empty %}<li class="text-muted">No trees yet.</li>{% endfor %}</ul>
+
+  {% if is_member %}
+    {{ page|json_script:"page-data" }}
+    <section x-data="members" id="members">
+      <h2 class="h6 mt-3">Members</h2>
+      <p class="form-text">Each role includes the ones below it, reader &lt; drafter &lt; approver &lt; owner, and applies to every tree of {{ org.name }}. Owners manage members and create trees here.</p>
+      <div class="alert alert-danger py-2" x-show="error" x-text="error"></div>
+      <table class="table table-sm align-middle">
+        <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
+        <tbody>
+          <template x-for="m in members" :key="m.username">
+            <tr :data-member="m.username">
+              <td x-text="m.username"></td>
+              <td>
+                <template x-if="canManage">
+                  <select class="form-select form-select-sm w-auto" :value="m.role" @change="setRole(m.username, $event.target.value)">
+                    <template x-for="r in roles" :key="r"><option :value="r" :selected="r === m.role" x-text="r"></option></template>
+                  </select>
+                </template>
+                <template x-if="!canManage"><span x-text="m.role"></span></template>
+              </td>
+              <td><template x-if="canManage"><button class="btn btn-sm btn-link text-danger" @click="remove(m.username)">Remove</button></template></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+      <template x-if="canManage">
+        <form class="d-flex gap-2" @submit.prevent="add()">
+          <input class="form-control form-control-sm w-auto" placeholder="username" x-model="newUser" name="new-user">
+          <select class="form-select form-select-sm w-auto" x-model="newRole" name="new-role">
+            <template x-for="r in roles" :key="r"><option :value="r" x-text="r"></option></template>
+          </select>
+          <button class="btn btn-sm btn-primary" :disabled="!newUser.trim()">Add member</button>
+        </form>
+      </template>
+    </section>
+  {% endif %}
+</main>
+{% endblock %}

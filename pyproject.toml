@@ -24,6 +24,10 @@ dependencies = [
 dev = [
     "pytest>=9.1",
     "pytest-django>=4.14",
+    # Browser tests. Pinned to the playwright-driver in flake.lock's nixpkgs, whose
+    # browsers the dev shell provides (PLAYWRIGHT_BROWSERS_PATH).
+    "playwright==1.59.0",
+    "pytest-playwright>=0.7",
 ]
 
 # pip installs only the dependencies; the code runs from src/ (manage.py, pytest pythonpath).

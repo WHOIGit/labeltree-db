@@ -34,36 +34,36 @@
 
 ## 5. Web app shell
 
-- [ ] 5.1 Add login/logout, the base template, vendored Bootstrap 5 and Alpine.js (CSP build) static files, Django's CSP middleware with the policy from design.md, and anonymous read-only browsing with "Log in to edit"; verify that an anonymous visit shows the tree without edit or sync controls, that login-only pages redirect, and that pages load with no CSP violations in the browser console
-- [ ] 5.2 Port the mockup's tree browser to an Alpine store backed by `/api/v1`: tree and revision pickers, expand/collapse, filter, AphiaID pills and the frozen revision changes panel; verify the pill colours and badges (none, grey, green, orange `!`, red `?`) and tooltips with browser tests on the tags and taxonomy trees
-- [ ] 5.3 Add the hideable warnings panel (from `GET /worms/warnings?tree=`) with jump-to-node; verify on `NES2022_taxonomy`'s 13 `unaccepted_aphia` nodes
-- [ ] 5.4 Implement the node page (state, version history, WoRMS card, warning history, aliases, successors); verify against a deprecated node and a node with warning history
-- [ ] 5.5 Build the shared job-progress component (job bar, one bar per retrying AphiaID, pause bar, failure list with Try again / Proceed anyway) and the sync menu (`sync_new`, `sync_tree`, superuser-only `sync_all`) that also shows runs started elsewhere; verify with browser tests against fixture-driven jobs, including a retry and a failure
+- [x] 5.1 Add login/logout, the base template, vendored Bootstrap 5 and Alpine.js (CSP build) static files, Django's CSP middleware with the policy from design.md, and anonymous read-only browsing with "Log in to edit"; verify that an anonymous visit shows the tree without edit or sync controls, that login-only pages redirect, and that pages load with no CSP violations in the browser console
+- [x] 5.2 Port the mockup's tree browser to an Alpine store backed by `/api/v1`: tree and revision pickers, expand/collapse, filter, AphiaID pills and the frozen revision changes panel; verify the pill colours and badges (none, grey, green, orange `!`, red `?`) and tooltips with browser tests on the tags and taxonomy trees
+- [x] 5.3 Add the hideable warnings panel (from `GET /worms/warnings?tree=`) with jump-to-node; verify on `NES2022_taxonomy`'s 13 `unaccepted_aphia` nodes
+- [x] 5.4 Implement the node page (state, version history, WoRMS card, warning history, aliases, successors); verify against a deprecated node and a node with warning history
+- [x] 5.5 Build the shared job-progress component (job bar, one bar per retrying AphiaID, pause bar, failure list with Try again / Proceed anyway) and the sync menu (`sync_new`, `sync_tree`, superuser-only `sync_all`) that also shows runs started elsewhere; verify with browser tests against fixture-driven jobs, including a retry and a failure
 
-- [ ] 5.6 Implement the organization page (its trees; members with their role; owner controls to add, change and remove; last-owner refusal), the tree picker grouped by organization, and the user's own page listing their organizations and roles; verify the organization-page scenarios in browser tests
+- [x] 5.6 Implement the organization page (its trees; members with their role; owner controls to add, change and remove; last-owner refusal), the tree picker grouped by organization, and the user's own page listing their organizations and roles; verify the organization-page scenarios in browser tests
 
 ## 6. Draft editor
 
-- [ ] 6.1 Implement edit mode (new or open draft from its stored changes, status bar, leave confirmation) and the node menu with Edit, New child, New node, Move to (pick mode excluding descendants) and Deprecate (blocked with children), with no server calls while composing; verify the edit-mode and composing scenarios in browser tests
-- [ ] 6.2 Implement Validate (validate, fetch job for `worms_missing` with progress, validate again) and the Save gate (disabled until the current list is validated, re-enabled Validate after any edit); verify the validate-before-save scenarios
-- [ ] 6.3 Implement the changes panel tabs (As edited with errors placed through `sources`, As reduced, By node, Summary, WoRMS warnings, Errors), out-of-date greying, unread markers and counts, removal of changes and groups, and hover/click jump-to-node; verify the tab, notification, jump and safe-removal scenarios
-- [ ] 6.4 Implement the draft markings (green, yellow with version badge, grey struck-through); verify the child-added scenario
-- [ ] 6.5 Implement Save (showing the reduced list, confirmation when it has errors), Rebase, Publish with notes and Discard, with `412` handling that re-fetches; verify the save-with-errors and rebase-then-publish scenarios
-- [ ] 6.6 Implement the draft list and review page (By node first, then grouped changes and warning changes); verify the review scenario
+- [x] 6.1 Implement edit mode (new or open draft from its stored changes, status bar, leave confirmation) and the node menu with Edit, New child, New node, Move to (pick mode excluding descendants) and Deprecate (blocked with children), with no server calls while composing; verify the edit-mode and composing scenarios in browser tests
+- [x] 6.2 Implement Validate (validate, fetch job for `worms_missing` with progress, validate again) and the Save gate (disabled until the current list is validated, re-enabled Validate after any edit); verify the validate-before-save scenarios
+- [x] 6.3 Implement the changes panel tabs (As edited with errors placed through `sources`, As reduced, By node, Summary, WoRMS warnings, Errors), out-of-date greying, unread markers and counts, removal of changes and groups, and hover/click jump-to-node; verify the tab, notification, jump and safe-removal scenarios
+- [x] 6.4 Implement the draft markings (green, yellow with version badge, grey struck-through); verify the child-added scenario
+- [x] 6.5 Implement Save (showing the reduced list, confirmation when it has errors), Rebase, Publish with notes and Discard, with `412` handling that re-fetches; verify the save-with-errors and rebase-then-publish scenarios
+- [x] 6.6 Implement the draft list and review page (By node first, then grouped changes and warning changes); verify the review scenario
 
 ## 7. Wizards
 
-- [ ] 7.1 Implement the merge wizard (with and without replacement) and copying aliases after a merge publishes, with retry on failure; verify both merge scenarios and the aliases-after-merge scenario
-- [ ] 7.2 Implement the split wizard (with and without replacement, all children assigned when replacing); verify the split scenarios
-- [ ] 7.3 Implement the import wizard (upload or paste, top level or under a node), sharing JSON fixtures with the server parser; verify the import-under-a-node scenario and that both parsers agree on the fixtures
-- [ ] 7.4 Implement Add from WoRMS with the suggested parent from the lineage and the label rule; verify the suggested-parent and unsafe-characters scenarios against recorded WoRMS fixtures
-- [ ] 7.5 Implement alias and description editing from the node menu and Clone as new tree; verify the alias-in-static-mode, description-in-static-mode and clone-flow scenarios
+- [x] 7.1 Implement the merge wizard (with and without replacement) and copying aliases after a merge publishes, with retry on failure; verify both merge scenarios and the aliases-after-merge scenario
+- [x] 7.2 Implement the split wizard (with and without replacement, all children assigned when replacing); verify the split scenarios
+- [x] 7.3 Implement the import wizard (upload or paste, top level or under a node), sharing JSON fixtures with the server parser; verify the import-under-a-node scenario and that both parsers agree on the fixtures
+- [x] 7.4 Implement Add from WoRMS with the suggested parent from the lineage and the label rule; verify the suggested-parent and unsafe-characters scenarios against recorded WoRMS fixtures
+- [x] 7.5 Implement alias and description editing from the node menu and Clone as new tree; verify the alias-in-static-mode, description-in-static-mode and clone-flow scenarios
 
 ## 8. Integration and docs
 
-- [ ] 8.1 End-to-end browser test: a drafter splits a node in `NES2022_taxonomy` and validates (fetch job runs), another drafter edits the same draft (`412` then re-fetch), an approver rebases after an intervening publish and publishes; verify the revision, version changes, successors and warning history via the read API
-- [ ] 8.2 Verify that roi-db's and datasetman's read calls work without credentials against both NES2022 trees, and that the same calls to write, validate or start jobs get `401`
-- [ ] 8.3 Update `design/mockups/webapp-mockup.html` and its spec to the Validate flow, changes panel tabs, AphiaID pills with `!` and `?` badges, warnings panel, sync menu, progress bars, organization page and a role selector of anonymous, `reader`, `drafter`, `approver` and `owner`, and refresh the snapshot; verify by opening the mockup
+- [x] 8.1 End-to-end browser test: a drafter splits a node in `NES2022_taxonomy` and validates (fetch job runs), another drafter edits the same draft (`412` then re-fetch), an approver rebases after an intervening publish and publishes; verify the revision, version changes, successors and warning history via the read API
+- [x] 8.2 Verify that roi-db's and datasetman's read calls work without credentials against both NES2022 trees, and that the same calls to write, validate or start jobs get `401`
+- [x] 8.3 Update `design/mockups/webapp-mockup.html` and its spec to the Validate flow, changes panel tabs, AphiaID pills with `!` and `?` badges, warnings panel, sync menu, progress bars, organization page and a role selector of anonymous, `reader`, `drafter`, `approver` and `owner`, and refresh the snapshot; verify by opening the mockup
 
 ## Workflow follow-up
 

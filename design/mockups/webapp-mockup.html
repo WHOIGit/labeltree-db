@@ -113,6 +113,26 @@
     .picker .path { color: var(--lt-muted); font-size: .8em; margin-left: auto; }
     .review { font-size: .85rem; border: 1px solid var(--lt-line); border-radius: .375rem; }
     .toasts { position: fixed; right: 1rem; bottom: 1rem; z-index: 1100; display: grid; gap: .5rem; }
+
+    /* AphiaID pills: grey never fetched, green, orange ! warnings, red ? unknown_aphia */
+    .pill { position: relative; display: inline-flex; align-items: center; justify-content: center;
+            width: 22px; height: 22px; border-radius: 50%; text-decoration: none; font-size: 12px; line-height: 1; }
+    .pill-green { background: #d1f0dc; } .pill-orange { background: #ffd8a8; }
+    .pill-red { background: #ffc9c9; } .pill-grey { background: #e3e6ea; filter: grayscale(1); }
+    .pill .pb { position: absolute; top: -4px; right: -5px; min-width: 13px; height: 13px; border-radius: 7px;
+                font-size: 9px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: center; }
+    .pill-orange .pb { background: #e8590c; } .pill-red .pb { background: #c92a2a; }
+    /* changes panel tabs */
+    .tabs { display: flex; flex-wrap: wrap; gap: .1rem; padding: .3rem .5rem 0; border-bottom: 1px solid var(--lt-line); }
+    .tabs button { border: 1px solid transparent; border-bottom: 0; background: none; padding: .25rem .5rem; font-size: .8rem;
+                   border-radius: .3rem .3rem 0 0; color: var(--lt-muted); }
+    .tabs button.active { border-color: var(--lt-line); background: #fff; color: #000; margin-bottom: -1px; }
+    .tabs .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--lt-blue); margin-left: .25rem; }
+    .stale { opacity: .45; } .stale-note { font-size: .8rem; color: #8a5a00; background: #fff8e1; padding: .25rem .75rem; }
+    /* job progress */
+    .job { padding: .5rem .75rem; border-bottom: 1px solid var(--lt-line); font-size: .8rem; }
+    .job .progress { height: 8px; margin: .2rem 0 .4rem; }
+    .main.with-warnings { grid-template-columns: 280px minmax(0, 1fr) 440px; }
     .mock-note { font-size: .75rem; color: var(--lt-muted); }
   </style>
 </head>
@@ -163,7 +183,10 @@
     <span class="flex-grow-1"></span>
 
     <!-- Static mode buttons -->
-    <template x-if="mode === 'static'">
+    <template x-if="mode === 'static' && role === 'anonymous'">
+      <button class="btn btn-sm btn-primary" @click="toast('The real app goes to the login page')">Log in to edit</button>
+    </template>
+    <template x-if="mode === 'static' && role !== 'anonymous'">
       <div class="d-flex gap-2">
         <div class="dropdown" x-data="{ open: false }" @click.outside="open = false">
           <button class="btn btn-sm btn-primary dropdown-toggle" @click="open = !open"
@@ -197,10 +220,26 @@
             </template>
           </div>
         </div>
+        <div class="dropdown" x-data="{ open: false }" @click.outside="open = false">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" @click="open = !open">WoRMS sync</button>
+          <div class="dropdown-menu dropdown-menu-end p-2" :class="{ show: open }" style="right: 0; min-width: 300px">
+            <template x-if="sync">
+              <div class="small mb-2"><strong>Running:</strong> <span x-text="sync.kind + ' · ' + sync.done + ' of ' + sync.total"></span>
+                <div class="progress" style="height: 8px"><div class="progress-bar" :style="'width:' + (100 * sync.done / sync.total) + '%'"></div></div></div>
+            </template>
+            <button class="dropdown-item" :class="{ disabled: !has('drafter') || sync }" :title="has('drafter') ? '' : 'Needs drafter role'"
+                    @click="open = false; startSync('sync_new')">Sync new AphiaIDs</button>
+            <button class="dropdown-item" :class="{ disabled: !has('drafter') || sync }" :title="has('drafter') ? '' : 'Needs drafter role'"
+                    @click="open = false; startSync('sync_tree')">Sync this tree</button>
+            <button class="dropdown-item disabled" title="Site admins only">Full cache sync</button>
+            <div class="small text-muted mt-1">Syncs refresh cached WoRMS records and re-check warnings. Cron runs them nightly.</div>
+          </div>
+        </div>
         <button class="btn btn-sm btn-outline-secondary" @click="openClone()"
-                :disabled="!has('admin') || latest === 0"
-                :title="!has('admin') ? 'Needs admin role' : (latest === 0 ? 'Tree has no revisions' : 'Start a new tree from revision ' + viewRev)">
+                :disabled="!has('owner') || latest === 0"
+                :title="!has('owner') ? 'Needs owner role' : (latest === 0 ? 'Tree has no revisions' : 'Start a new tree from revision ' + viewRev)">
           Clone as new tree…</button>
+        <button class="btn btn-sm btn-link" @click="openOrg()">AMPLIfy members</button>
       </div>
     </template>
 
@@ -209,6 +248,7 @@
       <div class="d-flex gap-2">
         <template x-if="!frozen">
           <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-primary" @click="validate()" :disabled="!!validateBlock" :title="validateBlock">Validate</button>
             <button class="btn btn-sm btn-primary" @click="saveDraft()" :disabled="!!saveBlock" :title="saveBlock">Save Draft</button>
             <button class="btn btn-sm btn-success" @click="openPublish()" :disabled="!!publishBlock" :title="publishBlock">Publish Revision</button>
             <button class="btn btn-sm btn-outline-danger" @click="discardDraft()" :disabled="!cs.id"
@@ -222,15 +262,30 @@
     <div class="field border-start ps-3">
       <span class="k mock-note">Mock role:</span>
       <select class="form-select form-select-sm" x-model="role" @change="refresh()">
+        <option value="anonymous">anonymous</option>
         <option value="reader">reader</option>
         <option value="drafter">drafter</option>
-        <option value="drafter+approver">drafter + approver</option>
-        <option value="admin">admin</option>
+        <option value="approver">approver</option>
+        <option value="owner">owner</option>
       </select>
     </div>
   </header>
 
-  <div class="main">
+  <div class="main" :class="{ 'with-warnings': warningsOpen }">
+    <!-- ===================== Warnings panel ===================== -->
+    <template x-if="warningsOpen">
+      <section class="panel">
+        <div class="panel-head"><h2>WoRMS warnings</h2><span class="flex-grow-1"></span>
+          <small class="text-muted" x-text="warningRows.length + ' nodes'"></small></div>
+        <div class="scroll">
+          <template x-for="w in warningRows" :key="w.key">
+            <div class="crow" @mouseenter="hover = [w.id]" @mouseleave="hover = []" @click="reveal(w.id)">
+              <div class="txt"><div x-text="w.label"></div><div class="chk warn" x-text="w.text"></div></div>
+            </div>
+          </template>
+        </div>
+      </section>
+    </template>
     <!-- ===================== Tree panel ===================== -->
     <section class="panel">
       <div class="panel-head">
@@ -239,6 +294,7 @@
                x-model="filter" @input.debounce.150ms="refresh()">
         <button class="btn btn-sm btn-link" @click="expandAll()">Expand all</button>
         <button class="btn btn-sm btn-link" @click="collapseAll()">Collapse all</button>
+        <button class="btn btn-sm btn-link" @click="warningsOpen = !warningsOpen" x-text="warningsOpen ? 'Hide warnings' : 'Warnings'"></button>
         <span class="flex-grow-1"></span>
         <span class="mock-note" x-show="mode === 'edit'">
           <span class="badge b-new">new</span> <span class="badge b-bump">version +1</span> <span class="badge b-dep">deprecated</span>
@@ -265,12 +321,9 @@
             <button class="kebab" title="Node actions" @click.stop="openMenu(r, $event)">⋮</button>
             <span class="lbl" x-text="r.label"></span>
             <span class="nk" x-show="r.nk" x-text="'(' + r.nk + ')'"></span>
-            <template x-if="r.aphia">
-              <a class="badge b-worms" :href="wormsUrl(r.aphia)" target="_blank" rel="noopener"
-                 @click.stop title="Open in WoRMS" x-text="'WoRMS ' + r.aphia"></a>
-            </template>
-            <template x-if="r.warns.length">
-              <span class="badge b-warn" :title="r.warnTitle" x-text="'⚠ ' + r.warns.length"></span>
+            <template x-if="r.pill">
+              <a class="pill" :class="'pill-' + r.pill.kind" :href="wormsUrl(r.aphia)" target="_blank" rel="noopener"
+                 @click.stop :title="r.pill.title">🪱<template x-if="r.pill.badge"><span class="pb" x-text="r.pill.badge"></span></template></a>
             </template>
             <template x-if="r.mark === 'new'"><span class="badge b-new">new</span></template>
             <template x-if="r.mark === 'bump'"><span class="badge b-bump" x-text="'v' + r.version + ' → v' + (r.version + 1)"></span></template>
@@ -287,7 +340,43 @@
         <span class="flex-grow-1"></span>
         <small class="text-muted" x-text="v.head"></small>
       </div>
-      <div class="summary" x-show="v.summary.n || v.summary.conflicts.length">
+      <template x-if="job">
+        <div class="job">
+          <div x-text="job?.text + ': ' + job?.done + ' of ' + job?.total + ' AphiaIDs'"></div>
+          <div class="progress"><div class="progress-bar" :style="'width:' + (100 * job?.done / job?.total) + '%'"></div></div>
+          <template x-if="job?.retry">
+            <div><span x-text="'Retrying AphiaID ' + job?.retry?.aphia + ' (attempt ' + job?.retry?.attempt + ' of 4)'"></span>
+              <div class="progress"><div class="progress-bar bg-warning" :style="'width:' + job?.retry?.pct + '%'"></div></div></div>
+          </template>
+        </div>
+      </template>
+      <template x-if="mode === 'edit'">
+        <nav class="tabs">
+          <template x-for="t in tabs" :key="t.key">
+            <button :class="{ active: tab === t.key }" @click="tab = t.key; unread[t.key] = false">
+              <span x-text="t.label"></span>
+              <template x-if="t.key === 'errors' && validated"><span class="badge text-bg-light" x-text="v.summary.errors + v.summary.conflicts.length"></span></template>
+              <template x-if="t.key === 'worms' && validated"><span class="badge text-bg-light" x-text="v.summary.warnings"></span></template>
+              <template x-if="unread[t.key]"><span class="dot"></span></template>
+            </button>
+          </template>
+        </nav>
+      </template>
+      <template x-if="mode === 'edit' && tab !== 'edited' && !validated"><p class="text-muted p-3 mb-0">Press Validate to see the results.</p></template>
+      <template x-if="mode === 'edit' && tab !== 'edited' && validated && stale"><div class="stale-note">Out of date: press Validate.</div></template>
+      <template x-if="mode === 'edit' && tab !== 'edited' && validated">
+        <div class="scroll" :class="{ stale }">
+          <template x-for="row in tabRows" :key="row.key">
+            <div class="crow" @mouseenter="hover = row.touched" @mouseleave="hover = []" @click="reveal(row.touched[0])">
+              <div class="txt"><div x-text="row.text"></div>
+                <template x-for="e in row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                <template x-for="w in row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template></div>
+            </div>
+          </template>
+          <p class="text-muted p-3 mb-0" x-show="!tabRows.length">Nothing here.</p>
+        </div>
+      </template>
+      <div class="summary" x-show="(mode === 'static' || tab === 'edited') && (v.summary.n || v.summary.conflicts.length)">
         <div>
           <span x-text="v.summary.n + ' changes'"></span>
           · <span :class="v.summary.errors ? 'text-danger fw-semibold' : ''" x-text="v.summary.errors + ' errors'"></span>
@@ -307,7 +396,7 @@
           </div>
         </template>
       </div>
-      <div class="scroll">
+      <div class="scroll" x-show="mode === 'static' || tab === 'edited'">
         <template x-if="!v.items.length">
           <p class="text-muted p-3 mb-0" x-text="mode === 'edit' ? 'No changes yet. Use a node\'s ⋮ menu, or + New node.' : 'No changes to show.'"></p>
         </template>
@@ -334,8 +423,8 @@
                       <span class="badge op" :class="'op-' + row.op" x-text="row.op"></span>
                       <div class="txt">
                         <div x-text="row.text"></div>
-                        <template x-for="e in row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
-                        <template x-for="w in row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template>
+                        <template x-for="e in (showChecks ? row.errors : [])"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                        <template x-for="w in (showChecks ? row.warnings : [])"><div class="chk warn" x-text="'⚠ ' + w"></div></template>
                       </div>
                       <template x-if="!frozen">
                         <button class="x" title="Remove this change" @click.stop="removeChange(row.i)">✕</button>
@@ -351,8 +440,8 @@
                 <span class="badge op" :class="'op-' + it.row.op" x-text="it.row.op"></span>
                 <div class="txt">
                   <div x-text="it.row.text"></div>
-                  <template x-for="e in it.row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
-                  <template x-for="w in it.row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template>
+                  <template x-for="e in (showChecks ? it.row.errors : [])"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                  <template x-for="w in (showChecks ? it.row.warnings : [])"><div class="chk warn" x-text="'⚠ ' + w"></div></template>
                 </div>
                 <template x-if="!frozen">
                   <button class="x" title="Remove this change" @click.stop="removeChange(it.row.i)">✕</button>
@@ -866,6 +955,29 @@
   </div>
 </template>
 
+<!-- Organization page (members and roles) -->
+<template x-if="modal === 'org'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">AMPLIfy · members</h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <p class="small text-muted">Trees: NES2022_taxonomy, NES2022_tags. Each role includes the ones below it
+          (reader &lt; drafter &lt; approver &lt; owner) and applies to every tree of the organization.</p>
+        <div class="alert alert-danger py-1 small" x-show="f.error" x-text="f.error"></div>
+        <table class="table table-sm align-middle">
+          <template x-for="m in members" :key="m.user">
+            <tr><td x-text="m.user"></td>
+              <td><select class="form-select form-select-sm" :disabled="!has('owner')" @change="setMember(m.user, $event.target.value)">
+                <template x-for="r in ['reader', 'drafter', 'approver', 'owner']" :key="r"><option :value="r" :selected="r === m.role" x-text="r"></option></template>
+              </select></td></tr>
+          </template>
+        </table>
+        <p class="form-text mb-0" x-text="has('owner') ? 'Owners add, change and remove members. The last owner can\'t step down.' : 'Only owners change members.'"></p>
+      </div>
+    </div></div>
+  </div>
+</template>
+
 <!-- Confirm -->
 <template x-if="conf">
   <div class="modal d-block" tabindex="-1" style="z-index: 1080">
@@ -895,11 +1007,13 @@
 // Engine: atomic changes over an in-memory tree (see design/backend.md)
 // ---------------------------------------------------------------------------
 const LABEL_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
+// The role in the tree's organization; each includes the ones below it.
 const ROLES = {
-  reader: [],
-  drafter: ['drafter'],
-  'drafter+approver': ['drafter', 'approver'],
-  admin: ['drafter', 'approver', 'admin'],
+  anonymous: [],
+  reader: ['reader'],
+  drafter: ['reader', 'drafter'],
+  approver: ['reader', 'drafter', 'approver'],
+  owner: ['reader', 'drafter', 'approver', 'owner'],
 };
 const isPh = id => typeof id === 'string' && id.startsWith('new:');
 const keyOf = id => (id == null ? '' : String(id));
@@ -1173,6 +1287,8 @@ function importChanges(nodes, group) {
     { warning: 'out_of_lineage', detail: 'Nearest anchored ancestor Coccolithophyceae (592906) is not in the WoRMS lineage of Phaeocystis (115088). [mock]' }];
   DB.warnings[L('Kryptoperidinium_triquetrum')] = [
     { warning: 'unaccepted_aphia', detail: 'WoRMS marks AphiaID 1346683 as unaccepted; accepted AphiaID 109484 is suggested. [mock]' }];
+  DB.warnings[L('Nanoneis')] = [
+    { warning: 'unknown_aphia', detail: 'WoRMS has no record for AphiaID 248179. [mock]' }];
   DB.warnings[L('Tintinnina')] = [
     { warning: 'out_of_lineage', detail: 'Nearest anchored ancestor Choreotrichida (341353) is not in the WoRMS lineage of Tintinnina (732976). [mock]' },
     { warning: 'unaccepted_aphia', detail: 'WoRMS marks AphiaID 732976 as unaccepted. [mock]' }];
@@ -1184,7 +1300,17 @@ function importChanges(nodes, group) {
 let CUR = { state: new Map(), ev: null, kids: new Map() }; // not reactive on purpose
 
 document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
-  role: 'drafter+approver',
+  role: 'approver',
+  warningsOpen: false,
+  tab: 'edited',
+  tabs: [{ key: 'edited', label: 'As edited' }, { key: 'reduced', label: 'As reduced' }, { key: 'bynode', label: 'By node' },
+         { key: 'summary', label: 'Summary' }, { key: 'worms', label: 'WoRMS warnings' }, { key: 'errors', label: 'Errors' }],
+  unread: {},
+  validatedKey: null,
+  job: null,
+  sync: null,
+  members: [{ user: 'sbatchelder', role: 'owner' }, { user: 'jdoe', role: 'approver' }, { user: 'asmith', role: 'drafter' },
+            { user: 'guest', role: 'reader' }],
   treeId: 'NES2022_taxonomy',
   viewRev: 0,
   mode: 'static',          // 'static' | 'edit'
@@ -1243,12 +1369,14 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
   get saveBlock() {
     if (!this.has('drafter')) return 'Needs drafter role';
     if (!this.dirty) return 'No unsaved changes';
+    if (!this.validated || this.stale) return 'Validate first';
     return '';
   },
   get publishBlock() {
     if (!this.has('approver')) return 'Needs approver role';
     if (!this.cs.id || this.dirty) return 'Save the draft first';
     if (!this.cs.changes.length) return 'No changes';
+    if (!this.validated || this.stale) return 'Validate first';
     if (this.v.summary.errors) return `Fix ${this.v.summary.errors} errors first`;
     if (this.v.summary.conflicts.length) return 'Resolve the conflict first';
     return '';
@@ -1306,7 +1434,7 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
                      q && n.label.toLowerCase().includes(q) && 'hit',
                      pickBad && (pickBad.has(id) || n.dep ? 'unpickable' : 'pickable')].filter(Boolean).join(' ');
         rows.push({ id, key: keyOf(id), depth, label: n.label, aphia: n.aphia_id, nk, hasKids, open, mark,
-                    version: n.version, warns, warnTitle: warns.map(w => `${w.warning}: ${w.detail}`).join('\n'), cls });
+                    version: n.version, warns, pill: this.pill(n, warns, ev?.added?.has(id)), cls });
         if (open) walk(id, depth + 1);
       }
     };
@@ -1375,6 +1503,108 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     const walk = p => (CUR.kids.get(p) || []).forEach(k => { out.add(k); walk(k); });
     walk(id);
     return out;
+  },
+
+  // AphiaID pill: grey never fetched (here: added in the draft), red ? unknown_aphia,
+  // orange ! any other warning, else green. No AphiaID, no pill.
+  pill(n, warns, added) {
+    if (n.aphia_id == null) return null;
+    const codes = warns.map(w => w.warning);
+    let kind = 'green', badge = '';
+    if (codes.includes('unknown_aphia')) { kind = 'red'; badge = '?'; }
+    else if (codes.length) { kind = 'orange'; badge = '!'; }
+    else if (added) kind = 'grey';
+    const title = [`AphiaID ${n.aphia_id}` + (kind === 'grey' ? ' (not fetched yet: Validate fetches it)' : ''),
+                   ...warns.map(w => `${w.warning}: ${w.detail}`)].join('\n');
+    return { kind, badge, title };
+  },
+
+  // ---- validate, tabs, syncs (simulated: nothing leaves the page) ----------
+  get changesKey() { return JSON.stringify([this.cs?.base_rev, this.cs?.changes]); },
+  get validated() { return this.validatedKey !== null; },
+  get stale() { return this.validated && this.validatedKey !== this.changesKey; },
+  get showChecks() { return this.mode === 'static' || (this.validated && !this.stale); },
+  get validateBlock() {
+    if (!this.cs?.changes.length) return 'No changes yet';
+    if (this.job) return 'Validating…';
+    if (this.validated && !this.stale) return 'Already validated';
+    return '';
+  },
+  validate() {
+    const cached = new Set([...history(this.treeId).snaps[this.latest].values()].map(n => n.aphia_id));
+    const missing = [...new Set(this.cs.changes.map(c => c.aphia_id).filter(a => a != null && !cached.has(a)))];
+    const finish = () => {
+      this.job = null;
+      this.validatedKey = this.changesKey;
+      for (const t of this.tabs) if (t.key !== this.tab) this.unread[t.key] = true;
+      this.refresh();
+    };
+    if (!missing.length) return finish();
+    // A fetch job for the AphiaIDs that aren't cached, with one retry shown.
+    this.job = { text: 'Fetching WoRMS records', done: 0, total: missing.length, retry: null };
+    let step = 0;
+    const tick = () => {
+      step++;
+      if (step <= 5) this.job.retry = { aphia: missing[0], attempt: 1 + Math.floor(step / 3), pct: step * 12 };
+      else { this.job.retry = null; this.job.done = Math.min(this.job.total, this.job.done + 1); }
+      if (this.job.done < this.job.total) setTimeout(tick, 250); else finish();
+    };
+    setTimeout(tick, 250);
+  },
+  get tabRows() {
+    const rows = this.v.items.flatMap(it => (it.kind === 'group' ? it.rows : [it.row]));
+    const ev = CUR.ev;
+    switch (this.tab) {
+      case 'reduced':
+        return rows.map(r => ({ key: r.i, text: `${r.i + 1} ${r.op} ${r.text}`, touched: r.touched, errors: [], warnings: [] }));
+      case 'bynode':
+        return [...(ev?.added || []), ...(ev?.bump || []), ...(ev?.deprecated || [])].map(id => {
+          const n = CUR.state.get(id);
+          const v = ev.added.has(id) ? 'new → v1' : ev.deprecated.has(id) ? `v${n.version} → deprecated` : `v${n.version} → v${n.version + 1}`;
+          return { key: keyOf(id), text: `${n.label}: ${v}`, touched: [id], errors: [], warnings: [] };
+        });
+      case 'summary':
+        return [{ key: 's', touched: [], errors: [], warnings: [],
+                  text: `${this.v.summary.n} changes · ${this.v.summary.added} new · ${this.v.summary.bumped} version increases · ${this.v.summary.deprecated} deprecated · ${this.v.summary.errors} errors · ${this.v.summary.warnings} WoRMS warnings` }];
+      case 'worms':
+        return rows.filter(r => r.warnings.length).map(r => ({ key: r.i, text: r.text, touched: r.touched, errors: [], warnings: r.warnings }));
+      case 'errors':
+        return [...this.v.summary.conflicts.map((c, i) => ({ key: 'c' + i, text: 'stale_base: ' + c, touched: [], errors: [], warnings: [] })),
+                ...rows.filter(r => r.errors.length).map(r => ({ key: r.i, text: r.text, touched: r.touched, errors: r.errors, warnings: [] }))];
+    }
+    return [];
+  },
+  get warningRows() {
+    return Object.entries(DB.warnings).filter(([id]) => CUR.state.has(Number(id))).map(([id, ws]) => ({
+      key: id, id: Number(id), label: CUR.state.get(Number(id)).label, text: ws.map(w => w.warning).join(', ') }));
+  },
+  startSync(kind) {
+    if (!this.has('drafter') || this.sync) return;
+    const anchored = [...CUR.state.values()].filter(n => n.aphia_id != null).length;
+    this.sync = { kind, done: 0, total: kind === 'sync_new' ? 3 : anchored };
+    this.job = { text: 'WoRMS sync', done: 0, total: this.sync.total, retry: null };
+    const tick = () => {
+      const left = this.sync.total - this.sync.done;
+      this.sync.done += Math.min(left, Math.max(1, Math.round(this.sync.total / 25)));
+      this.job.done = this.sync.done;
+      this.job.retry = this.sync.done > this.sync.total / 2 && this.sync.done < this.sync.total * 0.7
+        ? { aphia: 149122, attempt: 2, pct: 40 } : null;
+      if (this.sync.done < this.sync.total) setTimeout(tick, 120);
+      else { this.sync = null; this.job = null; this.toast(`${kind} finished: pills and warnings refreshed`); }
+    };
+    setTimeout(tick, 120);
+  },
+  openOrg() { this.f = { error: '' }; this.modal = 'org'; },
+  setMember(user, role) {
+    const owners = this.members.filter(m => m.role === 'owner');
+    if (role !== 'owner' && owners.length === 1 && owners[0].user === user) {
+      this.f.error = 'The organization needs an owner: make someone else an owner first.';
+      this.members = [...this.members];
+      return;
+    }
+    this.f.error = '';
+    this.members.find(m => m.user === user).role = role;
+    this.toast(`${user} is now ${role}`);
   },
 
   // ---- tree navigation ---------------------------------------------------
@@ -1468,7 +1698,9 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
   aphiaVal(a) { return a === '' || a == null ? null : Number(a); },
 
   // ---- draft lifecycle ---------------------------------------------------
+  resetValidation() { this.validatedKey = null; this.unread = {}; this.tab = 'edited'; },
   startNewDraft() {
+    this.resetValidation();
     this.cs = { id: null, tree: this.treeId, base_rev: this.latest || null, changes: [], notes: '', state: 'draft', author: 'you' };
     this.mode = 'edit';
     this.dirty = false;
@@ -1476,6 +1708,7 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     this.refresh();
   },
   openDraft(id) {
+    this.resetValidation();
     this.cs = JSON.parse(JSON.stringify(DB.changesets[id]));
     this.mode = 'edit';
     this.dirty = false;
@@ -1488,6 +1721,10 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     else go();
   },
   saveDraft() {
+    if (this.v.summary.errors && !this._confirmedSave) {
+      return this.confirm('Save a draft with errors?', `This draft has ${this.v.summary.errors} structural errors. It can be saved, but it will not be publishable as it is.`,
+        'Save anyway', 'btn-warning', () => { this._confirmedSave = true; this.saveDraft(); this._confirmedSave = false; });
+    }
     if (!this.cs.id) {
       this.cs.id = DB.nextCs++;
       this.cs.created_at = new Date().toISOString().slice(0, 10);

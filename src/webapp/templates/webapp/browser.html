@@ -1,0 +1,405 @@
+{% extends "webapp/base.html" %}
+{% block title %}{{ page.tree|default:"New tree" }} · labeltree{% endblock %}
+{% block body_class %}app{% endblock %}
+{% block content %}
+{{ page|json_script:"page-data" }}
+<div class="shell" x-data="browser" x-cloak @keydown.escape.window="onEscape()">
+
+  <!-- ===================== Top bar ===================== -->
+  <header class="topbar">
+    <div class="field">
+      <span class="k">Tree:</span>
+      <template x-if="!newTree">
+        <select class="form-select form-select-sm" id="tree-picker" :disabled="mode !== 'static'"
+                :title="mode !== 'static' ? 'Leave edit mode to switch trees' : ''" @change="selectTree($event.target.value)">
+          <template x-for="g in trees" :key="g.org">
+            <optgroup :label="g.name">
+              <template x-for="t in g.trees" :key="t.id">
+                <option :value="t.id" :selected="t.id === treeId" x-text="t.id"></option>
+              </template>
+            </optgroup>
+          </template>
+        </select>
+      </template>
+      <template x-if="newTree"><strong x-text="title"></strong></template>
+    </div>
+
+    <div class="field">
+      <span class="k" x-text="revLabel"></span>
+      <template x-if="mode === 'static'">
+        <select class="form-select form-select-sm" id="rev-picker" @change="selectRev($event.target.value)">
+          <template x-for="o in revisions" :key="o.rev">
+            <option :value="o.rev" :selected="o.rev === viewRev" x-text="o.text"></option>
+          </template>
+        </select>
+      </template>
+      <template x-if="mode === 'edit'"><strong id="base-rev" x-text="baseText"></strong></template>
+    </div>
+
+    <div class="field" x-show="mode === 'edit'">
+      <span class="k">Draft:</span><strong id="draft-id" x-text="draftLabel"></strong>
+    </div>
+    <div class="field">
+      <span class="k">Status:</span><span class="badge" id="status" :class="status.cls" x-text="status.text"></span>
+    </div>
+
+    <span class="flex-grow-1"></span>
+
+    <template x-if="mode === 'static'">
+      <div class="d-flex gap-2 align-items-center">
+        <template x-if="!loggedIn">
+          <a class="btn btn-sm btn-primary" id="login-to-edit" :href="'/login/?next=/trees/' + treeId + '/'">Log in to edit</a>
+        </template>
+        <template x-if="loggedIn">
+          <div class="d-flex gap-2">
+            <div class="menu-wrap" @click.outside="editOpen = false">
+              <button class="btn btn-sm btn-primary dropdown-toggle" id="edit-button" @click="toggleEditMenu()"
+                      :disabled="!can('drafter')" :title="hint('drafter')">Edit</button>
+              <div class="dropdown-menu" id="edit-menu" :class="{ show: editOpen }">
+                <button class="dropdown-item" id="new-draft" @click="startNewDraft()" x-text="'New draft from revision ' + latestRev"></button>
+                <template x-if="drafts.open.length">
+                  <div>
+                    <hr class="dropdown-divider"><h6 class="dropdown-header">Open drafts</h6>
+                    <template x-for="d in drafts.open" :key="d.id">
+                      <button class="dropdown-item" :data-draft="d.id" @click="openDraftFromMenu(d.id)">
+                        <span x-text="'#' + d.id"></span> <small class="text-muted" x-text="draftText(d)"></small>
+                      </button>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="drafts.discarded.length">
+                  <div>
+                    <hr class="dropdown-divider"><h6 class="dropdown-header">Discarded drafts (read-only)</h6>
+                    <template x-for="d in drafts.discarded" :key="d.id">
+                      <button class="dropdown-item text-muted" :data-draft="d.id" @click="openDraftFromMenu(d.id)">
+                        <span x-text="'#' + d.id"></span> <small x-text="draftText(d)"></small>
+                      </button>
+                    </template>
+                  </div>
+                </template>
+                <hr class="dropdown-divider">
+                <a class="dropdown-item" :href="'/trees/' + treeId + '/drafts/'">Draft list and review…</a>
+              </div>
+            </div>
+            <div class="menu-wrap" @click.outside="syncOpen = false">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" id="sync-button" @click="toggleSync()">WoRMS sync</button>
+              <div class="dropdown-menu p-2" id="sync-menu" :class="{ show: syncOpen }">
+                <template x-if="syncs && syncs.active">
+                  <div class="small mb-2" id="sync-running">
+                    <div><strong>Running:</strong> <span x-text="syncs.active.kind + ' started by ' + syncs.active.started_by"></span></div>
+                    <div class="progress"><div class="progress-bar" :style="jobBar(syncs.active)"></div></div>
+                    <div x-text="jobText(syncs.active)"></div>
+                  </div>
+                </template>
+                <button class="dropdown-item" data-sync="sync_new" @click="startSync('sync_new')" :class="{ disabled: !!syncHint('sync_new') }" :title="syncHint('sync_new')">Sync new AphiaIDs</button>
+                <button class="dropdown-item" data-sync="sync_tree" @click="startSync('sync_tree')" :class="{ disabled: !!syncHint('sync_tree') }" :title="syncHint('sync_tree')">Sync this tree</button>
+                <template x-if="user.superuser">
+                  <button class="dropdown-item" data-sync="sync_all" @click="startSync('sync_all')" :class="{ disabled: !!syncHint('sync_all') }" :title="syncHint('sync_all')">Full cache sync</button>
+                </template>
+                <template x-if="syncs && syncs.last">
+                  <div class="small text-muted mt-2" x-text="'Last: ' + syncs.last.kind + ', ' + syncs.last.state + ', ' + (syncs.last.finished_at || '').slice(0, 16)"></div>
+                </template>
+              </div>
+            </div>
+            <button class="btn btn-sm btn-outline-secondary" id="clone-button" @click="openClone()"
+                    :disabled="!!cloneHint" :title="cloneHint || 'Start a new tree from revision ' + viewRev">Clone as new tree…</button>
+          </div>
+        </template>
+      </div>
+    </template>
+
+    <template x-if="mode === 'edit'">
+      <div class="d-flex gap-2">
+        <template x-if="!frozen">
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-primary" id="validate-button" @click="validate()" :disabled="!!validateBlock" :title="validateBlock">Validate</button>
+            <button class="btn btn-sm btn-primary" id="save-button" @click="save()" :disabled="!!saveBlock" :title="saveBlock">Save Draft</button>
+            <button class="btn btn-sm btn-success" id="publish-button" @click="openPublish()" :disabled="!!publishBlock" :title="publishBlock">Publish Revision</button>
+            <button class="btn btn-sm btn-outline-danger" id="discard-button" @click="discardDraft()" :disabled="!draft.id"
+                    :title="draft.id ? '' : 'Nothing saved to discard'">Discard Draft</button>
+          </div>
+        </template>
+        <button class="btn btn-sm btn-outline-secondary" id="exit-button" @click="exitEdit()">Exit</button>
+      </div>
+    </template>
+  </header>
+
+  <div class="main" :class="{ 'with-warnings': warningsOpen }">
+    <!-- ===================== Warnings panel ===================== -->
+    <template x-if="warningsOpen">
+      <section class="panel" id="warnings-panel">
+        <div class="panel-head"><h2>WoRMS warnings</h2><span class="flex-grow-1"></span>
+          <small class="text-muted" x-text="warningsList.length + ' nodes, latest revision'"></small></div>
+        <div class="scroll">
+          <template x-for="n in warningsList" :key="n.id">
+            <div class="crow" :data-node="n.id" @mouseenter="setHover([n.id])" @mouseleave="clearHover()" @click="reveal(n.id)">
+              <div class="txt"><div x-text="n.label"></div><div class="chk warn" x-text="warningText(n)"></div></div>
+            </div>
+          </template>
+          <p class="text-muted p-3" x-show="!warningsList.length">No nodes have WoRMS warnings.</p>
+        </div>
+      </section>
+    </template>
+
+    <!-- ===================== Tree panel ===================== -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Tree</h2>
+        <input class="form-control form-control-sm" id="filter" style="max-width: 240px" placeholder="Filter labels and aliases…"
+               x-model="filter" @input.debounce.150ms="refresh()">
+        <button class="btn btn-sm btn-link" @click="expandAll()">Expand all</button>
+        <button class="btn btn-sm btn-link" @click="collapseAll()">Collapse all</button>
+        <button class="btn btn-sm btn-link" id="warnings-toggle" x-show="treeId" @click="toggleWarnings()"
+                x-text="warningsOpen ? 'Hide warnings' : 'Warnings'"></button>
+        <span class="flex-grow-1"></span>
+        <template x-if="mode === 'edit'">
+          <span class="small"><span class="badge b-new">new</span> <span class="badge b-bump">version +1</span> <span class="badge b-dep">deprecated</span></span>
+        </template>
+        <template x-if="mode === 'edit'">
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary" id="worms-add" @click="openWorms()" :disabled="!editable" :title="editHint">Add from WoRMS…</button>
+            <button class="btn btn-sm btn-outline-primary" id="import-button" @click="openImport()" :disabled="!editable" :title="editHint">Import…</button>
+            <button class="btn btn-sm btn-outline-primary" id="new-node" @click="openAdd()" :disabled="!editable" :title="editable ? 'Add a node' : editHint">+ New node</button>
+          </div>
+        </template>
+      </div>
+      <template x-if="pick">
+        <div class="pick-banner" id="pick-banner">
+          <span>Click the new parent for <strong x-text="pick.label"></strong></span>
+          <span class="flex-grow-1"></span>
+          <button class="btn btn-sm btn-outline-primary" @click="pickTarget(null)">Make top level</button>
+          <button class="btn btn-sm btn-outline-secondary" @click="cancelPick()">Cancel</button>
+        </div>
+      </template>
+      <div class="scroll py-1" id="tree" :class="{ picking: pick }">
+        <p class="text-muted p-3 mb-0" x-show="loading">Loading…</p>
+        <template x-for="r in rows" :key="r.key">
+          <div class="trow" :id="'n-' + r.key" :data-label="r.label" :class="r.cls" :style="r.indent"
+               @click="rowClick(r)" @dblclick="openDetails(r.id)">
+            <button class="caret" :class="{ invisible: !r.hasKids }" @click.stop="toggle(r.id)" x-text="r.open ? '▾' : '▸'"></button>
+            <button class="kebab" title="Node actions" @click.stop="openMenu(r, $event)">⋮</button>
+            <span class="lbl" x-text="r.label"></span>
+            <span class="nk" x-show="r.nk" x-text="'(' + r.nk + ')'"></span>
+            <template x-if="r.pill">
+              <a class="pill" :class="'pill-' + r.pill.kind" :href="r.pill.href" target="_blank" rel="noopener"
+                 :title="r.pill.title" :data-pill="r.pill.kind" @click.stop>🪱<template x-if="r.pill.badge"><span class="pb" x-text="r.pill.badge"></span></template></a>
+            </template>
+            <template x-if="r.mark === 'new'"><span class="badge b-new">new</span></template>
+            <template x-if="r.mark === 'bump'"><span class="badge b-bump" x-text="r.bump"></span></template>
+            <template x-if="r.mark === 'dep'"><span class="badge b-dep">deprecated</span></template>
+          </div>
+        </template>
+      </div>
+    </section>
+
+    <!-- ===================== Changes panel ===================== -->
+    <aside class="panel" id="changes-panel">
+      <div class="panel-head">
+        <h2>Changes</h2><span class="flex-grow-1"></span>
+        <small class="text-muted" x-text="mode === 'static' ? revHead : (draft.id ? 'draft #' + draft.id : 'new draft')"></small>
+      </div>
+
+      <!-- job progress: validate's fetch job -->
+      <template x-for="j in (job ? [job] : [])" :key="j.id">
+        <div class="job" id="fetch-job">
+          <div x-text="'Fetching WoRMS records: ' + jobText(j)"></div>
+          <div class="progress"><div class="progress-bar" :style="jobBar(j)"></div></div>
+          <template x-for="b in retries(j)" :key="b.aphia_id">
+            <div class="retry-bar"><span x-text="'Retrying AphiaID ' + b.aphia_id + ' (attempt ' + b.attempt + ' of ' + b.retries + ')'"></span>
+              <div class="progress"><div class="progress-bar bg-warning" :style="width(b.percent)"></div></div></div>
+          </template>
+          <template x-for="p in (pause(j) ? [pause(j)] : [])" :key="'pause'">
+            <div class="pause-bar"><span x-text="'WoRMS asked us to wait: paused, ' + p.seconds + ' s left'"></span>
+              <div class="progress"><div class="progress-bar bg-secondary" :style="width(p.percent)"></div></div></div>
+          </template>
+        </div>
+      </template>
+      <template x-if="jobFailed">
+        <div class="job" id="fetch-failed">
+          <div class="text-danger">Some WoRMS records couldn't be fetched:</div>
+          <template x-for="x in jobFailed" :key="x.aphia_id"><div x-text="x.aphia_id + ': ' + x.reason"></div></template>
+          <div class="d-flex gap-2 mt-1">
+            <button class="btn btn-sm btn-outline-primary" @click="tryAgain()">Try again</button>
+            <button class="btn btn-sm btn-outline-secondary" @click="proceedAnyway()">Proceed anyway</button>
+          </div>
+        </div>
+      </template>
+
+      <!-- sync progress -->
+      <template x-for="j in (syncJob ? [syncJob] : [])" :key="j.id">
+        <div class="job" id="sync-job">
+          <div x-text="'WoRMS sync: ' + jobText(j)"></div>
+          <div class="progress"><div class="progress-bar" :style="jobBar(j)"></div></div>
+          <template x-for="b in retries(j)" :key="b.aphia_id">
+            <div class="retry-bar"><span x-text="'Retrying AphiaID ' + b.aphia_id + ' (attempt ' + b.attempt + ' of ' + b.retries + ')'"></span>
+              <div class="progress"><div class="progress-bar bg-warning" :style="width(b.percent)"></div></div></div>
+          </template>
+          <template x-for="p in (pause(j) ? [pause(j)] : [])" :key="'pause'">
+            <div class="pause-bar"><span x-text="'Paused by WoRMS rate limiting, ' + p.seconds + ' s left'"></span>
+              <div class="progress"><div class="progress-bar bg-secondary" :style="width(p.percent)"></div></div></div>
+          </template>
+        </div>
+      </template>
+      <template x-if="syncFailed">
+        <div class="job" id="sync-failed">
+          <div class="text-danger" x-text="syncFailed.kind + ' finished with failures:'"></div>
+          <template x-for="x in syncFailed.failed" :key="x.aphia_id"><div x-text="x.aphia_id + ': ' + x.reason"></div></template>
+          <div class="d-flex gap-2 mt-1">
+            <button class="btn btn-sm btn-outline-primary" @click="syncAgain()">Try again</button>
+            <button class="btn btn-sm btn-outline-secondary" @click="dismissSync()">Dismiss</button>
+          </div>
+        </div>
+      </template>
+
+      <!-- static mode: what changed in the viewed revision -->
+      <template x-if="mode === 'static'">
+        <div class="scroll" id="revision-changes">
+          <template x-if="revChanges && revChanges.notes"><div class="summary" x-text="revChanges.notes"></div></template>
+          <template x-for="it in revItems" :key="it.key">
+            <div>
+              <template x-if="it.kind === 'group'">
+                <div>
+                  <div class="group-head" :data-group="it.group" @click="toggleGroup(it.group)">
+                    <span x-text="isCollapsed(it.group) ? '▸' : '▾'"></span><span x-text="it.group"></span>
+                    <small class="text-muted fw-normal" x-text="it.rows.length + ' changes'"></small>
+                  </div>
+                  <template x-for="row in (isCollapsed(it.group) ? [] : it.rows)" :key="'g' + row.i">
+                    <div class="crow in-group" @click="reveal(row.c.node)">
+                      <span class="seq" x-text="row.i + 1"></span><span class="badge op" :class="'op-' + row.c.op" x-text="row.c.op"></span>
+                      <div class="txt" x-text="row.text"></div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <template x-if="it.kind === 'one'">
+                <div class="crow" @click="reveal(it.row.c.node)">
+                  <span class="seq" x-text="it.row.i + 1"></span><span class="badge op" :class="'op-' + it.row.c.op" x-text="it.row.c.op"></span>
+                  <div class="txt" x-text="it.row.text"></div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- edit mode: tabs -->
+      <template x-if="mode === 'edit'">
+        <div class="d-flex flex-column flex-grow-1" style="min-height: 0">
+          <nav class="tabs" id="tabs">
+            <template x-for="t in tabs" :key="t.key">
+              <button :class="tabClass(t.key)" :data-tab="t.key" @click="selectTab(t.key)">
+                <span x-text="t.label"></span>
+                <template x-if="tabCount(t.key) !== ''"><span class="badge text-bg-light count" x-text="tabCount(t.key)"></span></template>
+                <template x-if="unread(t.key)"><span class="dot" title="Updated"></span></template>
+              </button>
+            </template>
+          </nav>
+          <template x-if="stale && tab !== 'edited'"><div class="stale-note" id="stale-note">Out of date: press Validate.</div></template>
+          <template x-if="!validation && tab !== 'edited'"><p class="text-muted p-3 mb-0">Press Validate to see the results.</p></template>
+
+          <div class="scroll" :class="{ stale: stale && tab !== 'edited' }" id="tab-body">
+            <!-- As edited -->
+            <template x-if="tab === 'edited'">
+              <div id="tab-edited">
+                <template x-if="!changes.length"><p class="text-muted p-3 mb-0">No changes yet. Use a node's ⋮ menu, or + New node.</p></template>
+                <template x-for="it in editedItems" :key="it.key">
+                  <div>
+                    <template x-if="it.kind === 'group'">
+                      <div>
+                        <div class="group-head" :data-group="it.group" @click="toggleGroup(it.group)">
+                          <span x-text="isCollapsed(it.group) ? '▸' : '▾'"></span><span x-text="it.group"></span>
+                          <small class="text-muted fw-normal" x-text="it.rows.length + ' changes'"></small>
+                          <span class="flex-grow-1"></span>
+                          <template x-if="!frozen"><button class="btn btn-sm btn-link text-danger p-0" title="Remove the whole group" @click.stop="removeGroup(it.group)">✕</button></template>
+                        </div>
+                        <template x-for="row in (isCollapsed(it.group) ? [] : it.rows)" :key="'g' + row.i">
+                          <div class="crow in-group" :data-change="row.i + 1" @mouseenter="setHover(row.touched)" @mouseleave="clearHover()" @click="reveal(row.c.node)">
+                            <span class="seq" x-text="row.i + 1"></span><span class="badge op" :class="'op-' + row.op" x-text="row.op"></span>
+                            <div class="txt"><div x-text="row.text"></div>
+                              <template x-for="e in row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                              <template x-for="w in row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template></div>
+                            <template x-if="!frozen"><button class="x" title="Remove this change" @click.stop="removeChange(row.i)">✕</button></template>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                    <template x-if="it.kind === 'one'">
+                      <div class="crow" :data-change="it.row.i + 1" @mouseenter="setHover(it.row.touched)" @mouseleave="clearHover()" @click="reveal(it.row.c.node)">
+                        <span class="seq" x-text="it.row.i + 1"></span><span class="badge op" :class="'op-' + it.row.op" x-text="it.row.op"></span>
+                        <div class="txt"><div x-text="it.row.text"></div>
+                          <template x-for="e in it.row.errors"><div class="chk err" x-text="'✖ ' + e"></div></template>
+                          <template x-for="w in it.row.warnings"><div class="chk warn" x-text="'⚠ ' + w"></div></template></div>
+                        <template x-if="!frozen"><button class="x" title="Remove this change" @click.stop="removeChange(it.row.i)">✕</button></template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <!-- As reduced -->
+            <template x-if="tab === 'reduced' && validation">
+              <div id="tab-reduced">
+                <template x-for="row in reducedRows" :key="row.key">
+                  <div class="crow" @mouseenter="setHover(row.touched)" @mouseleave="clearHover()" @click="reveal(row.touched[0])">
+                    <span class="seq" x-text="row.seq"></span><span class="badge op" :class="'op-' + row.op" x-text="row.op"></span>
+                    <div class="txt"><div x-text="row.text"></div><small class="text-muted" x-text="'from ' + row.sources"></small></div>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <!-- By node -->
+            <template x-if="tab === 'bynode' && validation">
+              <div id="tab-bynode">
+                <template x-for="n in nodeRows" :key="n.key">
+                  <div class="crow" :data-node="n.key" @mouseenter="setHover([n.node])" @mouseleave="clearHover()" @click="reveal(n.node)">
+                    <div class="txt"><strong x-text="n.label"></strong> <span class="text-muted" x-text="n.version"></span>
+                      <template x-for="g in n.groups" :key="g"><span class="badge text-bg-light ms-1" x-text="g"></span></template>
+                      <template x-for="l in n.lines"><div class="small" x-text="l"></div></template></div>
+                  </div>
+                </template>
+              </div>
+            </template>
+            <!-- Summary -->
+            <template x-if="tab === 'summary' && validation">
+              <div class="summary" id="tab-summary"><template x-for="l in summaryLines"><div x-text="l"></div></template></div>
+            </template>
+            <!-- WoRMS warnings -->
+            <template x-if="tab === 'worms' && validation">
+              <div id="tab-worms">
+                <template x-for="w in warnRows()" :key="w.key">
+                  <div class="crow" @mouseenter="setHover([w.node])" @mouseleave="clearHover()" @click="reveal(w.node)"><div class="txt chk warn" x-text="w.text"></div></div>
+                </template>
+                <div class="group-head">Existing nodes whose warnings change</div>
+                <template x-for="w in warnChangeRows()" :key="w.key">
+                  <div class="crow" @mouseenter="setHover([w.node])" @mouseleave="clearHover()" @click="reveal(w.node)"><div class="txt" x-text="w.text"></div></div>
+                </template>
+              </div>
+            </template>
+            <!-- Errors -->
+            <template x-if="tab === 'errors' && validation">
+              <div id="tab-errors">
+                <template x-for="e in errorRows()" :key="e.key">
+                  <div class="crow" @mouseenter="setHover([e.node])" @mouseleave="clearHover()" @click="reveal(e.node)">
+                    <div class="txt"><div class="chk err" x-text="e.text"></div><template x-for="s in e.sub"><div class="small" x-text="s"></div></template></div>
+                  </div>
+                </template>
+                <template x-if="conflicts.length && !frozen">
+                  <div class="p-2"><button class="btn btn-sm btn-outline-danger" id="rebase-button" @click="rebase()" x-text="'Rebase on revision ' + validation.latest_rev"></button></div>
+                </template>
+                <p class="text-muted p-3 mb-0" x-show="!errorRows().length">No errors.</p>
+              </div>
+            </template>
+          </div>
+          <div class="notes">
+            <label class="form-label small text-muted mb-1" for="notes">Notes</label>
+            <template x-if="!frozen"><textarea class="form-control form-control-sm" id="notes" rows="2" x-model="draft.notes" @input="markDirty()" placeholder="What this changeset does and why"></textarea></template>
+            <template x-if="frozen"><div class="small" x-text="draft.notes || '—'"></div></template>
+          </div>
+        </div>
+      </template>
+    </aside>
+  </div>
+
+  {% include "webapp/browser_dialogs.html" %}
+</div>
+{% endblock %}

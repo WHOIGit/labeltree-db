@@ -1,0 +1,7 @@
+{"input": {"nodes": [{"label": "a"}, {"label": "b", "children": [{"label": "c"}]}]},
+ "options": {"parent": 42, "group": "import#2"},
+ "expected": [
+  {"op": "add", "group": "import#2", "node": "new:1", "label": "a", "parent": 42},
+  {"op": "add", "group": "import#2", "node": "new:2", "label": "b", "parent": 42},
+  {"op": "add", "group": "import#2", "node": "new:3", "label": "c", "parent": "new:2"}
+ ]}

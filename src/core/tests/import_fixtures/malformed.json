@@ -1,0 +1,3 @@
+{"input": {"nodes": [{"label": "a", "children": [{"label": "b"}, {"aphia_id": 3}]}]},
+ "options": {"parent": null, "group": "import#1"},
+ "error": "nodes[0].children[1]"}

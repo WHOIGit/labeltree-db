@@ -1,0 +1,15 @@
+{"input": {"tree": "x", "nodes": [
+  {"label": "interaction", "description": "Two organisms", "children": [
+    {"label": "grazing", "aphia_id": 149122, "aliases": ["eats"]},
+    {"label": "external_flagellate", "children": [{"label": "deep"}]}
+  ]},
+  {"label": "bleb", "description": "", "aliases": [], "ignored": "field"}
+]},
+ "options": {"parent": null, "group": "import#1"},
+ "expected": [
+  {"op": "add", "group": "import#1", "node": "new:1", "label": "interaction", "parent": null, "description": "Two organisms"},
+  {"op": "add", "group": "import#1", "node": "new:2", "label": "grazing", "parent": "new:1", "aphia_id": 149122, "aliases": ["eats"]},
+  {"op": "add", "group": "import#1", "node": "new:3", "label": "external_flagellate", "parent": "new:1"},
+  {"op": "add", "group": "import#1", "node": "new:4", "label": "deep", "parent": "new:3"},
+  {"op": "add", "group": "import#1", "node": "new:5", "label": "bleb", "parent": null}
+ ]}

@@ -1,0 +1,71 @@
+{% extends "webapp/base.html" %}
+{% block title %}{{ detail.label }} · labeltree{% endblock %}
+{% block nav %}<a href="{% url 'tree' node.tree_id %}">{{ node.tree_id }}</a>{% endblock %}
+{% block content %}
+<main class="container py-4">
+  <h1 class="h4">{{ detail.label|default:node.id }} <small class="text-muted">node {{ node.id }}</small></h1>
+
+  {% if node.deprecated_in_rev %}
+    <div class="alert alert-secondary" id="deprecated">
+      Deprecated in revision {{ node.deprecated_in_rev }}.
+      {% if successors %}Successors:
+        {% for s in successors %}<a href="{% url 'node' s.id %}">{{ s.label }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+      {% else %}No successors.{% endif %}
+    </div>
+  {% else %}
+    <dl class="row" id="current">
+      <dt class="col-sm-3">Tree</dt><dd class="col-sm-9"><a href="{% url 'tree' node.tree_id %}">{{ node.tree_id }}</a> at revision {{ latest_rev }}</dd>
+      <dt class="col-sm-3">Version</dt><dd class="col-sm-9">v{{ detail.version }}</dd>
+      <dt class="col-sm-3">Parent</dt><dd class="col-sm-9">{% if detail.parent %}<a href="{% url 'node' detail.parent.id %}">{{ detail.parent.label }}</a>{% else %}(top level){% endif %}</dd>
+      <dt class="col-sm-3">Children</dt><dd class="col-sm-9">{% for c in detail.children %}<a href="{% url 'node' c.id %}">{{ c.label }}</a>{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}</dd>
+      <dt class="col-sm-3">Description</dt><dd class="col-sm-9">{{ detail.description|default:"—" }}</dd>
+      <dt class="col-sm-3">Created in revision</dt><dd class="col-sm-9">{{ node.created_in_rev }}</dd>
+    </dl>
+
+    <h2 class="h6">WoRMS</h2>
+    <div class="card mb-3" id="worms-card"><div class="card-body small">
+      {% if detail.aphia_id %}
+        <p class="mb-1">AphiaID <a href="https://www.marinespecies.org/aphia.php?p=taxdetails&amp;id={{ detail.aphia_id }}" target="_blank" rel="noopener">{{ detail.aphia_id }} ↗</a></p>
+        {% if detail.worms_data %}
+          <p class="mb-1">{{ detail.worms_data.scientificname }} · {{ detail.worms_data.rank }} · {{ detail.worms_data.status }}
+            <span class="text-muted">(WoRMS, accessed {{ detail.worms_data.fetched_at|slice:":10" }})</span></p>
+        {% else %}
+          <p class="mb-1 text-muted">Not fetched from WoRMS yet.</p>
+        {% endif %}
+        <p class="mb-0">Current warnings:
+          {% for w in detail.worms_warnings %}<span class="d-block"><code>{{ w.warning }}</code> {{ w.detail }}</span>{% empty %}none{% endfor %}</p>
+      {% else %}
+        <p class="mb-0 text-muted">Not anchored to WoRMS.</p>
+      {% endif %}
+    </div></div>
+  {% endif %}
+
+  <h2 class="h6">Version history</h2>
+  <table class="table table-sm" id="versions">
+    <thead><tr><th>Version</th><th>Label</th><th>Parent</th><th>AphiaID</th><th>Revisions</th></tr></thead>
+    <tbody>{% for v in versions %}
+      <tr><td>v{{ v.version }}</td><td>{{ v.label }}</td><td>{{ v.parent_id|default:"top level" }}</td><td>{{ v.aphia_id|default:"" }}</td>
+          <td>{{ v.valid_from_rev }}–{% if v.valid_to_rev %}{{ v.valid_to_rev|add:"-1" }}{% else %}latest{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+
+  <h2 class="h6">Warning history</h2>
+  <table class="table table-sm" id="warning-history">
+    <thead><tr><th>Computed</th><th>Warnings</th></tr></thead>
+    <tbody>{% for row in warning_history %}
+      <tr><td>{{ row.computed_at|date:"Y-m-d H:i" }}</td>
+          <td>{% for w in row.warnings %}<code>{{ w.warning }}</code> {% empty %}<span class="text-muted">none (cleared)</span>{% endfor %}</td></tr>
+    {% empty %}<tr><td colspan="2" class="text-muted">No warnings recorded.</td></tr>{% endfor %}</tbody>
+  </table>
+
+  <h2 class="h6">Aliases</h2>
+  <table class="table table-sm" id="aliases">
+    <thead><tr><th>Alias</th><th>Added</th><th>Removed</th></tr></thead>
+    <tbody>{% for a in aliases %}
+      <tr class="{% if a.removed_at %}text-muted{% endif %}"><td>{{ a.alias }}</td>
+          <td>{{ a.added_by }}, {{ a.added_at|date:"Y-m-d" }}</td>
+          <td>{% if a.removed_at %}{{ a.removed_by }}, {{ a.removed_at|date:"Y-m-d" }}{% endif %}</td></tr>
+    {% empty %}<tr><td colspan="3" class="text-muted">No aliases.</td></tr>{% endfor %}</tbody>
+  </table>
+</main>
+{% endblock %}

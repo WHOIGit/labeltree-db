@@ -89,7 +89,18 @@
         in
         {
           default = pkgs.mkShell {
-            packages = [ python postgresql pkgs.ruff db-start db-stop app-start app-stop ];
+            # nodejs runs the web app's expander tests (node --test); Playwright's
+            # browsers come from nixpkgs, matching the pinned Python playwright.
+            packages = [
+              python postgresql pkgs.ruff pkgs.nodejs db-start db-stop app-start app-stop
+            ];
+
+            PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+            PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+            # The pip wheel's bundled node can't run on NixOS; use nixpkgs' node instead.
+            PLAYWRIGHT_NODEJS_PATH = "${pkgs.nodejs}/bin/node";
+            # pip wheels with C++ extensions (greenlet, used by playwright) need libstdc++.
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
 
             shellHook = ''
               # Anchor to the repo root even when entered from a subdirectory (e.g. src/).

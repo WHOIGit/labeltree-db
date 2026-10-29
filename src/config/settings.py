@@ -13,6 +13,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.utils.csp import CSP
 
 # src/
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -52,10 +53,12 @@ INSTALLED_APPS = [
     "core",
     "worms",
     "api",
+    "webapp",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -120,6 +123,9 @@ CACHES = {
 # Authentication
 
 AUTH_USER_MODEL = "accounts.User"
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
 
 AUTHENTICATION_BACKENDS = [
     # First: refuses logins while a username and address are locked out.
@@ -147,6 +153,24 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
+
+
+# Content Security Policy
+# Scripts only from our own static files: the web app uses Alpine's CSP build,
+# whose attribute expressions need no eval, and no inline <script>. Inline
+# styles stay allowed (Alpine's :style bindings); Bootstrap's CSS uses data:
+# images. The API docs page, which loads Swagger from a CDN, is exempt.
+
+SECURE_CSP = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    "img-src": [CSP.SELF, "data:"],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+    "frame-ancestors": [CSP.NONE],
+}
 
 
 # Internationalization

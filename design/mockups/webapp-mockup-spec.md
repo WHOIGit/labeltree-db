@@ -64,8 +64,8 @@ changes asks for confirmation.
 
 | State | Buttons |
 |---|---|
-| Static | **Edit ▾**, **Clone as new tree…** |
-| Edit (`None`, unsaved, saved) | **Save Draft** (enabled when unsaved), **Publish Revision** (approver; enabled when saved and free of errors), **Discard Draft** (saved drafts), **Exit** |
+| Static | **Edit ▾**, **WoRMS sync ▾**, **Clone as new tree…** (owner), **AMPLIfy members**; anonymous visitors see only **Log in to edit** |
+| Edit (`None`, unsaved, saved) | **Validate**, **Save Draft** (enabled once the current list is validated), **Publish Revision** (approver; enabled when saved, validated and free of errors), **Discard Draft** (saved drafts), **Exit** |
 | Discarded (frozen) | **Exit** |
 
 The revision picker lists each revision with its publish date and author.
@@ -74,9 +74,15 @@ The revision picker lists each revision with its publish date and author.
 returns to static mode on that revision. **Clone as new tree…** is described in
 [webapp.md](../webapp.md#cloning-a-tree).
 
-The mockup's top bar also has a **Role** selector (`reader`, `drafter`,
-`drafter + approver`, `admin`), so role-gated buttons can be tried out. Disabled
-buttons show the reason as a tooltip.
+The mockup's top bar also has a **Role** selector (`anonymous`, `reader`,
+`drafter`, `approver`, `owner`: the user's role in the tree's organization,
+each including the ones below), so role-gated buttons can be tried out.
+Disabled buttons show the reason as a tooltip.
+
+**Validate** (edit mode) simulates the real flow: AphiaIDs the changes set that
+aren't cached start a fetch job with a progress bar, including one retry bar,
+then the results show in the changes panel tabs and **Save Draft** is enabled.
+Any later edit marks the results out of date and disables Save again.
 
 ## The tree
 
@@ -86,12 +92,17 @@ buttons show the reason as a tooltip.
 - **Filter box:** matches labels and aliases, and expands the matching nodes'
   ancestors.
 - **Badges** after the label:
-  - **WoRMS badge** when the node has an `aphia_id`: shows the AphiaID and
-    links to `https://www.marinespecies.org/aphia.php?p=taxdetails&id=<aphia_id>`
-    in a new tab.
-  - **Warning badge** (⚠ and a count) when the node has one or more current
-    [WoRMS warnings](../worms.md#the-warnings). Its tooltip lists each warning
-    and its detail.
+  - **AphiaID pill** (🪱) when the node has an `aphia_id`, linking to
+    `https://www.marinespecies.org/aphia.php?p=taxdetails&id=<aphia_id>` in a
+    new tab: green without warnings, orange with a `!` badge with any current
+    [WoRMS warning](../worms.md#the-warnings), red with a `?` badge with
+    `unknown_aphia`, grey when never fetched (here: added in the draft). Its
+    tooltip shows the AphiaID and each warning.
+- **Warnings panel** (Warnings / Hide warnings): the nodes with current WoRMS
+  warnings; hovering highlights a node, clicking jumps to it.
+- **WoRMS sync ▾**: Sync new AphiaIDs and Sync this tree (drafter); Full cache
+  sync is shown disabled (site admins only). A started sync shows a progress
+  bar in the changes panel, with a retry bar while an AphiaID is retried.
 - **Draft markings** (edit mode only), using the colour key from
   [diagrams/README.md](../diagrams/README.md): **green** for added nodes,
   **yellow** for nodes whose version will increase (edited, moved, or a
@@ -167,6 +178,13 @@ so.
 
 ## Changes panel
 
+In edit mode the panel has tabs: **As edited** (the editable list below),
+**As reduced**, **By node** (the net change and version of each affected
+node), **Summary**, **WoRMS warnings** and **Errors**, the last two with
+counts. After Validate, tabs with new results show an unread dot until opened.
+Before validating, the result tabs ask for Validate; after an edit, they are
+greyed as out of date.
+
 - **Summary line:** number of changes, errors and WoRMS warnings, then new
   nodes, version increases and deprecations.
 - **Ordered list.** Each row shows its position, an op badge (`add`, `edit`,
@@ -175,8 +193,9 @@ so.
   shown by label, e.g. `new:1 (Chaetocerotaceae_sl)`.
 - **Groups** (`merge#1`, `split#2`, `import#1`) collapse into a header with
   their change count. Large groups such as `import#1` start collapsed.
-- **Inline checks** under the change that caused them: structural errors in
-  red (they block publishing), WoRMS warnings in yellow (they don't).
+- **Inline checks** under the change that caused them, once validated:
+  structural errors in red (they block publishing), WoRMS warnings in yellow
+  (they don't). Saving a draft with errors asks for confirmation first.
 - **Conflicts** appear under the summary line whenever the draft's `base_rev`
   is not the latest revision, naming the later revisions and the nodes the
   draft touches that they changed, with a **Rebase on revision r** button.
@@ -203,8 +222,10 @@ so.
 - One open draft, #6, based on revision 2. It edits a node that revision 3
   deprecated, so it shows a conflict.
 - One discarded draft, #3: a `split#1` of `Eucampia`.
-- Made-up current WoRMS warnings (`out_of_lineage`, `unaccepted_aphia`) on
-  `Phaeocystis`, `Kryptoperidinium_triquetrum` and `Tintinnina`.
+- Made-up current WoRMS warnings (`out_of_lineage`, `unaccepted_aphia`,
+  `unknown_aphia`) on `Phaeocystis`, `Kryptoperidinium_triquetrum`,
+  `Tintinnina` and `Nanoneis`.
+- Made-up members of AMPLIfy, one per role.
 - Node ids are made up. AphiaIDs are real, from the example files.
 
 The mockup replays the published changesets to build each revision, including
@@ -217,9 +238,18 @@ revision also touched are listed. It does not call WoRMS:
 `duplicate_aphia` is computed locally for `add` and `edit`, and other changes
 show the touched node's current warnings.
 
+## Organization page
+
+**AMPLIfy members** opens the organization's members with their roles. Owners
+change roles there; demoting the last owner is refused with an explanation.
+
 ## Out of scope for now
+
+The web app itself (`src/webapp`, `src/static/app`) implements everything
+below; the mockup leaves it out.
 
 - A visual diff of draft against base revision, beyond the draft markings.
 - Reordering changes by drag and drop.
 - Import from file and **Add from WoRMS**.
-- The node page, draft list and review pages, and WoRMS syncs and the warnings report.
+- The node page, the draft list and review pages, and the user's own page.
+- Real reduction in **As reduced**: the mockup lists the changes as edited.

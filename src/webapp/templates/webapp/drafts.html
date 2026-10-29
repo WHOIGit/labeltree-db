@@ -1,0 +1,25 @@
+{% extends "webapp/base.html" %}
+{% block title %}Drafts of {{ tree.id }} · labeltree{% endblock %}
+{% block nav %}<a href="{% url 'tree' tree.id %}">{{ tree.id }}</a>{% endblock %}
+{% block content %}
+<main class="container py-4">
+  <h1 class="h4">Drafts of {{ tree.id }} <small class="text-muted">latest revision {{ latest_rev }}</small></h1>
+  <table class="table table-sm" id="open-drafts">
+    <thead><tr><th>Draft</th><th>Base revision</th><th>Author</th><th>Changes</th><th>Updated</th><th></th></tr></thead>
+    <tbody>{% for c in open %}
+      <tr><td><a href="{% url 'review' c.pk %}">#{{ c.pk }}</a></td>
+          <td>{{ c.base_rev }}{% if c.base_rev != latest_rev %} <span class="badge text-bg-warning">behind</span>{% endif %}</td>
+          <td>{{ c.author }}</td><td>{{ c.num_changes }}</td><td>{{ c.updated_at|date:"Y-m-d H:i" }}</td>
+          <td><a href="{% url 'edit' c.pk %}">Open in editor</a></td></tr>
+    {% empty %}<tr><td colspan="6" class="text-muted">No open drafts.</td></tr>{% endfor %}</tbody>
+  </table>
+  {% if discarded %}
+    <h2 class="h6 mt-4">Discarded drafts (read-only)</h2>
+    <table class="table table-sm text-muted" id="discarded-drafts">
+      <tbody>{% for c in discarded %}
+        <tr><td><a href="{% url 'review' c.pk %}">#{{ c.pk }}</a></td><td>base {{ c.base_rev }}</td><td>{{ c.author }}</td><td>{{ c.num_changes }} changes</td></tr>
+      {% endfor %}</tbody>
+    </table>
+  {% endif %}
+</main>
+{% endblock %}

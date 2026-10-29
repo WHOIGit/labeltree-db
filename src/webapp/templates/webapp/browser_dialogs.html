@@ -1,0 +1,428 @@
+<!-- Node menu -->
+<template x-if="menu">
+  <div class="dropdown-menu show node-menu shadow" id="node-menu" :style="menu.style" @click.outside="menu = null">
+    <h6 class="dropdown-header" x-text="menu.label"></h6>
+    <template x-for="m in menu.items" :key="m.key">
+      <div>
+        <template x-if="m.divider"><hr class="dropdown-divider"></template>
+        <template x-if="!m.divider">
+          <button class="dropdown-item d-flex justify-content-between gap-3" :data-action="m.action" :class="{ disabled: m.hint }"
+                  :title="m.hint || ''" @click="menuPick(m)">
+            <span x-text="m.text"></span><span class="hint" x-text="m.hint"></span>
+          </button>
+        </template>
+      </div>
+    </template>
+  </div>
+</template>
+
+<!-- Add / edit node -->
+<template x-if="modal === 'node'">
+  <div class="modal d-block" tabindex="-1" id="node-dialog" @click.self="closeModal()">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="nodeTitle"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label" for="f-label">Label</label>
+          <input class="form-control" id="f-label" x-model="f.label" :class="{ 'is-invalid': f.label && labelError(f.label, f.id) }">
+          <div class="invalid-feedback" x-text="labelError(f.label, f.id)"></div>
+          <div class="form-text">Machine-safe, unique in the tree: letters, digits, <code>_ . -</code></div>
+        </div>
+        <template x-if="f.mode === 'add' && !f.parentFixed">
+          <div class="mb-2">
+            <label class="form-label" for="f-parent">Parent</label>
+            <select class="form-select" id="f-parent" x-model="f.parentKey">
+              <option value="">(top level)</option>
+              <template x-for="o in options" :key="o.key"><option :value="o.key" x-text="o.text"></option></template>
+            </select>
+          </div>
+        </template>
+        <template x-if="f.mode === 'add'">
+          <div class="mb-2"><label class="form-label" for="f-desc">Initial description</label>
+            <textarea class="form-control" id="f-desc" rows="2" x-model="f.description"></textarea></div>
+        </template>
+        <div class="mb-2">
+          <label class="form-label" for="f-aphia">AphiaID</label>
+          <input class="form-control" id="f-aphia" x-model="f.aphia" :class="{ 'is-invalid': aphiaError(f.aphia) }" placeholder="none">
+          <div class="form-text" x-show="f.mode === 'edit'">Clear it to remove the AphiaID.</div>
+        </div>
+        <template x-if="f.mode === 'add'">
+          <div class="mb-2"><label class="form-label" for="f-aliases">Initial aliases</label>
+            <input class="form-control" id="f-aliases" x-model="f.aliases" placeholder="comma-separated">
+            <div class="form-text">Written as the node's aliases when the draft is published.</div></div>
+        </template>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="f-submit" :disabled="!!nodeFormError" :title="nodeFormError" @click="submitNode()"
+                x-text="f.mode === 'edit' ? 'Add edit to draft' : 'Add to draft'"></button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Aliases -->
+<template x-if="modal === 'aliases'">
+  <div class="modal d-block" tabindex="-1" id="aliases-dialog" @click.self="closeModal()">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="'Aliases of ' + lbl(f.id)"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small">Aliases aren't versioned and aren't part of any draft. Each change is saved at once, for every revision.</div>
+        <div class="alert alert-danger py-1 small" x-show="f.error" x-text="f.error"></div>
+        <ul class="list-group mb-2">
+          <template x-for="a in f.list" :key="a.id">
+            <li class="list-group-item d-flex align-items-center py-1"><span class="flex-grow-1" x-text="a.alias"></span>
+              <button class="btn btn-sm btn-link text-danger" @click="removeAlias(a)">remove</button></li>
+          </template>
+          <template x-if="!f.list.length"><li class="list-group-item text-muted py-1">No aliases</li></template>
+        </ul>
+        <div class="input-group">
+          <input class="form-control" id="alias-input" x-model="f.add" placeholder="New alias (free text)" @keydown.enter="addAlias()">
+          <button class="btn btn-outline-secondary" id="alias-add" :disabled="!f.add.trim()" @click="addAlias()">Add</button>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-primary" @click="closeModal()">Done</button></div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Description -->
+<template x-if="modal === 'description'">
+  <div class="modal d-block" tabindex="-1" id="description-dialog" @click.self="closeModal()">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="'Description of ' + lbl(f.id)"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 small" x-show="!f.inDraft">Descriptions aren't versioned and aren't part of any draft. Saving takes effect at once, for every revision; earlier descriptions are kept in the node's history. Save an empty description to clear it.</div>
+        <div class="alert alert-info py-2 small" x-show="f.inDraft">This node is new in the draft: its description is part of its <code>add</code> and is written when the draft is published.</div>
+        <textarea class="form-control" id="description-text" rows="4" x-model="f.text" placeholder="Definition and annotation guidance"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="description-save" @click="saveDescription()">Save description</button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Details -->
+<template x-if="modal === 'details'">
+  <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="f.label"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <dl class="row mb-0">
+          <template x-for="row in f.rows" :key="row[0]">
+            <div style="display: contents"><dt class="col-sm-3 text-muted fw-normal" x-text="row[0]"></dt><dd class="col-sm-9" x-text="row[1]"></dd></div>
+          </template>
+          <dt class="col-sm-3 text-muted fw-normal">WoRMS</dt>
+          <dd class="col-sm-9">
+            <template x-if="f.aphia"><a :href="wormsUrl(f.aphia)" target="_blank" rel="noopener" x-text="'AphiaID ' + f.aphia + ' ↗'"></a></template>
+            <template x-if="!f.aphia"><span class="text-muted">not anchored</span></template>
+          </dd>
+          <dt class="col-sm-3 text-muted fw-normal">WoRMS warnings</dt>
+          <dd class="col-sm-9">
+            <template x-if="!f.warns.length"><span class="text-muted">none</span></template>
+            <template x-for="w in f.warns"><div><code x-text="w.warning"></code> <span x-text="w.detail"></span></div></template>
+          </dd>
+        </dl>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Deprecate -->
+<template x-if="modal === 'deprecate'">
+  <div class="modal d-block" tabindex="-1" id="deprecate-dialog" @click.self="closeModal()">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="'Deprecate ' + lbl(f.id)"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <template x-if="f.kids">
+          <div class="alert alert-warning mb-0" id="deprecate-blocked"><strong x-text="lbl(f.id)"></strong> still has <span x-text="f.kids"></span> children.
+            The children must be moved, merged or split first: move them elsewhere, or use <em>Merge…</em> or <em>Split…</em>, which handle the children for you.</div>
+        </template>
+        <template x-if="!f.kids">
+          <div>
+            <p>The node leaves the tree from the next revision on. Its id still resolves, and its label becomes free.</p>
+            <label class="form-label">Successors <span class="text-muted">(optional)</span></label>
+            <div class="mb-1 d-flex flex-wrap gap-1">
+              <template x-for="s in f.sel" :key="s"><span class="badge text-bg-primary" style="cursor: pointer" x-text="lbl(s) + ' ✕'" @click="toggleSel(s)"></span></template>
+            </div>
+            <input class="form-control form-control-sm mb-1" x-model="f.q" placeholder="Find nodes…">
+            <div class="picker">
+              <template x-for="o in pickerOptions(f.q, [f.id])" :key="o.key">
+                <label><input type="checkbox" :checked="isSel(o.id)" @change="toggleSel(o.id)"><span x-text="o.label"></span><span class="path" x-text="o.path"></span></label>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn btn-danger" id="deprecate-submit" :disabled="f.kids > 0" @click="submitDeprecate()">Add to draft</button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Merge and split wizards -->
+<template x-if="modal === 'wizard'">
+  <div class="modal d-block" tabindex="-1" id="wizard" @click.self="closeModal()">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="wizTitle"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <template x-if="wizIs('merge', 1)">
+          <div>
+            <p>Choose the nodes to merge with <strong x-text="lbl(f.a)"></strong>. Siblings are listed first.</p>
+            <div class="mb-1 d-flex flex-wrap gap-1">
+              <span class="badge text-bg-secondary" x-text="lbl(f.a)"></span>
+              <template x-for="s in f.sel" :key="s"><span class="badge text-bg-primary" style="cursor: pointer" x-text="lbl(s) + ' ✕'" @click="toggleSel(s)"></span></template>
+            </div>
+            <input class="form-control form-control-sm mb-1" id="merge-find" x-model="f.q" placeholder="Find nodes…">
+            <div class="picker" id="merge-candidates">
+              <template x-for="o in mergeCandidates()" :key="o.key">
+                <label :data-label="o.label"><input type="checkbox" :checked="isSel(o.id)" @change="toggleSel(o.id)"><span x-text="o.label"></span><span class="path" x-text="o.path"></span></label>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="wizModeStep">
+          <div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" id="m-repl" :checked="f.repl" @change="setRepl(true)">
+              <label class="form-check-label" for="m-repl"><strong>With replacement</strong> (default)
+                <div class="small text-muted" x-text="f.wizard === 'merge' ? 'All merged nodes are deprecated, and a new node replaces them.' : lbl(f.a) + ' is deprecated, and new nodes replace it.'"></div></label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="radio" id="m-norepl" :checked="!f.repl" @change="setRepl(false)">
+              <label class="form-check-label" for="m-norepl"><strong>Without replacement</strong>
+                <div class="small text-muted" x-text="f.wizard === 'merge' ? 'One node keeps its id and broadens; the others merge into it.' : lbl(f.a) + ' keeps its id and narrows; new siblings take some of its children.'"></div></label>
+            </div>
+            <template x-if="!f.repl && f.wizard === 'merge'">
+              <div class="ms-4 mb-2"><label class="form-label" for="survivor">Surviving node</label>
+                <select class="form-select form-select-sm w-auto" id="survivor" x-model="f.survivorKey">
+                  <template x-for="id in mergeIds()" :key="id"><option :value="id" x-text="lbl(id)"></option></template>
+                </select></div>
+            </template>
+          </div>
+        </template>
+
+        <template x-if="wizIs('merge', 3)">
+          <div>
+            <template x-if="!f.repl"><p class="text-muted">No new node: the merged nodes' children move to <strong x-text="lbl(survivor())"></strong>.</p></template>
+            <template x-if="f.repl">
+              <div class="row g-2">
+                <div class="col-md-6"><label class="form-label" for="merge-label">New node label</label>
+                  <input class="form-control" id="merge-label" x-model="f.parts[0].label" :class="{ 'is-invalid': partError(0) }">
+                  <div class="invalid-feedback" x-text="partError(0)"></div></div>
+                <div class="col-md-6"><label class="form-label">AphiaID</label><input class="form-control" x-model="f.parts[0].aphia" placeholder="none"></div>
+                <div class="col-12"><label class="form-label">Description</label><input class="form-control" x-model="f.parts[0].description"></div>
+                <div class="col-12"><label class="form-label" for="merge-parent">Parent</label>
+                  <select class="form-select" id="merge-parent" x-model="f.parentKey">
+                    <option value="">(top level)</option>
+                    <template x-for="o in mergeParentOptions()" :key="o.key"><option :value="o.key" x-text="o.text"></option></template>
+                  </select>
+                  <div class="form-text">Defaults to the merged nodes' nearest common parent.</div></div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <template x-if="wizIs('split', 2)">
+          <div>
+            <p x-text="f.repl ? 'Name the nodes that replace ' + lbl(f.a) + ' (at least two). They are added as its siblings.' : 'Name the new sibling(s) of ' + lbl(f.a) + '.'"></p>
+            <template x-for="(p, i) in f.parts" :key="i">
+              <div class="row g-2 mb-2 align-items-start">
+                <div class="col-md-5"><input class="form-control form-control-sm" :data-part="i" x-model="p.label" placeholder="label" :class="{ 'is-invalid': partError(i) }">
+                  <div class="invalid-feedback" x-text="partError(i)"></div></div>
+                <div class="col-md-2"><input class="form-control form-control-sm" x-model="p.aphia" placeholder="AphiaID"></div>
+                <div class="col-md-4"><input class="form-control form-control-sm" x-model="p.description" placeholder="description"></div>
+                <div class="col-md-1"><button class="btn btn-sm btn-link text-danger" x-show="canRemovePart()" @click="removePart(i)">✕</button></div>
+              </div>
+            </template>
+            <button class="btn btn-sm btn-outline-secondary" @click="addPart()">+ Another node</button>
+          </div>
+        </template>
+
+        <template x-if="wizIs('split', 3)">
+          <div>
+            <template x-if="!f.kids.length"><p class="text-muted"><span x-text="lbl(f.a)"></span> has no children to assign.</p></template>
+            <template x-if="f.kids.length">
+              <div>
+                <p x-text="f.repl ? 'Assign every child of ' + lbl(f.a) + ' to one of the new nodes.' : 'Choose which children move to a new node. The rest stay with ' + lbl(f.a) + '.'"></p>
+                <table class="table table-sm align-middle"><tbody>
+                  <template x-for="k in f.kids" :key="k">
+                    <tr><td x-text="lbl(k)"></td>
+                      <td><select class="form-select form-select-sm" :data-child="lbl(k)" x-model="f.assign[k]">
+                        <option value="" x-text="f.repl ? '— choose —' : 'stay with ' + lbl(f.a)"></option>
+                        <template x-for="(p, i) in f.parts" :key="i"><option :value="i" x-text="p.label || '(new node ' + (i + 1) + ')'"></option></template>
+                      </select></td></tr>
+                  </template>
+                </tbody></table>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <template x-if="f.step === 4">
+          <div>
+            <p>These changes will be added to the draft as <code x-text="f.preview.group"></code>. You can remove them later as a group.</p>
+            <div class="review" id="wizard-review">
+              <template x-for="row in f.preview.rows" :key="row.i">
+                <div class="crow"><span class="seq" x-text="row.i + 1"></span><span class="badge op" :class="'op-' + row.op" x-text="row.op"></span><div class="txt" x-text="row.text"></div></div>
+              </template>
+            </div>
+            <p class="form-text" x-show="f.wizard === 'merge'" x-text="mergeNote"></p>
+          </div>
+        </template>
+      </div>
+      <div class="modal-footer">
+        <span class="me-auto small text-danger" id="wizard-error" x-text="wizError"></span>
+        <button class="btn btn-outline-secondary" @click="wizBack()" x-text="f.step > 1 ? 'Back' : 'Cancel'"></button>
+        <template x-if="f.step < 4"><button class="btn btn-primary" id="wizard-next" :disabled="!!wizError" @click="wizNext()">Next</button></template>
+        <template x-if="f.step === 4"><button class="btn btn-primary" id="wizard-add" @click="wizAdd()">Add to draft</button></template>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Import -->
+<template x-if="modal === 'import'">
+  <div class="modal d-block" tabindex="-1" id="import-dialog" @click.self="closeModal()">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Import labels</h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <p class="small">An import file is <code>{"nodes": [{"label", "aphia_id", "description", "aliases", "children"}]}</code>; only <code>label</code> is required.</p>
+        <input class="form-control form-control-sm mb-2" type="file" accept=".json,application/json" @change="readImportFile($event)">
+        <textarea class="form-control font-monospace" id="import-text" rows="8" x-model="f.text" placeholder="…or paste the file here"></textarea>
+        <label class="form-label mt-2" for="import-under">Place</label>
+        <select class="form-select" id="import-under" x-model="f.under">
+          <option value="">at the top level</option>
+          <template x-for="o in options" :key="o.key"><option :value="o.key" x-text="'under ' + o.text"></option></template>
+        </select>
+        <div class="text-danger small mt-2" id="import-error" x-text="f.error"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="import-submit" :disabled="!f.text.trim()" @click="submitImport()">Add to draft</button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Add from WoRMS -->
+<template x-if="modal === 'worms'">
+  <div class="modal d-block" tabindex="-1" id="worms-dialog" @click.self="closeModal()">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Add from WoRMS</h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <form class="input-group mb-2" @submit.prevent="searchWorms()">
+          <input class="form-control" id="worms-q" x-model="f.q" placeholder="Scientific name, e.g. Chaetoceros debilis">
+          <button class="btn btn-outline-secondary" id="worms-search" :disabled="!f.q.trim() || f.searching">Search</button>
+        </form>
+        <div class="text-danger small" x-text="f.error"></div>
+        <div class="picker mb-2" x-show="f.results.length" id="worms-results">
+          <template x-for="rec in f.results" :key="rec.AphiaID">
+            <label :data-aphia="rec.AphiaID"><input type="radio" name="worms-pick" @change="pickWorms(rec)">
+              <span x-text="rec.scientificname"></span><span class="path" x-text="rec.rank + ' · ' + rec.status + ' · ' + rec.AphiaID"></span></label>
+          </template>
+        </div>
+        <template x-if="f.picked">
+          <div class="row g-2">
+            <div class="col-md-6"><label class="form-label" for="worms-label">Label</label>
+              <input class="form-control" id="worms-label" x-model="f.label" :class="{ 'is-invalid': wormsError }">
+              <div class="invalid-feedback" x-text="wormsError"></div></div>
+            <div class="col-md-6"><label class="form-label" for="worms-parent">Parent</label>
+              <select class="form-select" id="worms-parent" x-model="f.parentKey">
+                <option value="">(top level)</option>
+                <template x-for="o in options" :key="o.key"><option :value="o.key" :selected="o.key === f.parentKey" x-text="o.text"></option></template>
+              </select>
+              <div class="form-text" x-text="f.suggested != null ? 'Suggested: the nearest node in its WoRMS lineage, ' + lbl(f.suggested) + '.' : 'No node of its WoRMS lineage is in the tree.'"></div></div>
+          </div>
+        </template>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="worms-submit" :disabled="!!wormsError" @click="submitWorms()">Add to draft</button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Clone -->
+<template x-if="modal === 'clone'">
+  <div class="modal d-block" tabindex="-1" id="clone-dialog" @click.self="closeModal()">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="'Clone ' + treeId + ' at revision ' + viewRev"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <div class="mb-2"><label class="form-label" for="clone-org">Organization</label>
+          <select class="form-select" id="clone-org" x-model="f.org"><template x-for="o in ownedOrgs" :key="o.id"><option :value="o.id" x-text="o.name"></option></template></select></div>
+        <div class="mb-2"><label class="form-label" for="clone-id">New tree id</label>
+          <input class="form-control" id="clone-id" x-model="f.id" :class="{ 'is-invalid': f.id && cloneError }"><div class="invalid-feedback" x-text="cloneError"></div></div>
+        <div class="mb-2"><label class="form-label" for="clone-title">Title</label><input class="form-control" id="clone-title" x-model="f.title"></div>
+        <div class="mb-2"><label class="form-label" for="clone-desc">Description</label><input class="form-control" id="clone-desc" x-model="f.description"></div>
+        <div class="text-danger small" x-text="f.error"></div>
+        <p class="form-text mb-0">Creates a new-tree draft (<code>import#1</code>) holding this revision's nodes and AphiaIDs with their current descriptions and aliases. The nodes get new ids; an owner publishes it as revision 1.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn btn-primary" id="clone-submit" :disabled="!!cloneError" @click="submitClone()">Create draft</button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Publish -->
+<template x-if="modal === 'publish'">
+  <div class="modal d-block" tabindex="-1" id="publish-dialog" @click.self="closeModal()">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="'Publish draft #' + draft.id"></h5><button class="btn-close" @click="closeModal()"></button></div>
+      <div class="modal-body">
+        <label class="form-label" for="publish-notes">Notes</label>
+        <textarea class="form-control" id="publish-notes" rows="3" x-model="f.notes"></textarea>
+        <p class="form-text mb-0">All checks run again. A published revision can't be edited.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
+        <button class="btn btn-success" id="publish-submit" @click="doPublish()">Publish</button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Aliases that couldn't be copied after a merge -->
+<template x-if="modal === 'aliasFailures'">
+  <div class="modal d-block" tabindex="-1" id="alias-failures">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Some aliases weren't copied</h5></div>
+      <div class="modal-body">
+        <p>The merge is published, but these aliases couldn't be added to the merged node:</p>
+        <template x-for="a in aliasFailures" :key="a.node + a.alias"><div class="small" x-text="a.alias + ' → ' + lbl(a.node) + ': ' + a.error"></div></template>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="exitAfterPublish()">Skip</button>
+        <button class="btn btn-primary" @click="retryAliases()">Retry</button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<!-- Confirm -->
+<template x-if="conf">
+  <div class="modal d-block" tabindex="-1" id="confirm" style="z-index: 1080">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="conf.title"></h5></div>
+      <div class="modal-body" x-text="conf.body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" @click="conf = null">Cancel</button>
+        <button class="btn" id="confirm-ok" :class="conf.cls" @click="confirmOk()" x-text="conf.ok"></button>
+      </div>
+    </div></div>
+  </div>
+</template>
+
+<div class="toasts">
+  <template x-for="t in toasts" :key="t.id">
+    <div class="toast show align-items-center border-0" :class="t.cls"><div class="toast-body" x-text="t.text"></div></div>
+  </template>
+</div>

@@ -316,14 +316,20 @@ injected `x-init` or `@click` attribute into running script. So the app uses
 Alpine's CSP build, under Django's built-in CSP middleware:
 
 ```
-script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none';
-base-uri 'self'; frame-ancestors 'none'
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self';
+frame-ancestors 'none'
 ```
 
-- All logic lives in `Alpine.data` components and `Alpine.store` in static ES
-  modules; attributes only name properties and methods (`@click="toggle"`,
-  `x-text="label"`). The mockup's inline expressions become getters and
-  methods as they are ported.
+- All logic lives in `Alpine.data` components in static ES modules
+  (`static/app/`). The CSP build (3.17) parses attribute expressions itself,
+  without `eval`: property reads, comparisons, ternaries and calls of the
+  component's methods work, but not assignments to nested properties,
+  template literals, arrow functions or globals (`JSON`, `Number`, …), so
+  those live in the component as getters and methods.
+- `img-src data:` is for Bootstrap's inline SVG icons (select arrows, close
+  buttons). The API's `/docs` page, which loads Swagger UI from a CDN, is
+  exempt (`csp_override`).
 - No inline `<script>`; page data a script needs comes from `json_script` or
   the API.
 - Inline styles stay allowed: injected styles are a much smaller risk than

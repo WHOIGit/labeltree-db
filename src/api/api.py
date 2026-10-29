@@ -1,4 +1,5 @@
 from django.http import Http404
+from django.views.decorators.csp import csp_override
 from ninja import NinjaAPI
 from ninja.errors import AuthenticationError, HttpError, ValidationError
 
@@ -9,7 +10,10 @@ from .auth import DEFAULT_AUTH
 from .conventions import APIError, bad_parameter, error_response, not_found
 
 # Every route needs a login unless it opts out with auth=None (see api.auth).
-api = NinjaAPI(title="labeltree-db", version="1", auth=DEFAULT_AUTH)
+# The docs page loads Swagger UI from a CDN, which the site's CSP would block.
+api = NinjaAPI(
+    title="labeltree-db", version="1", auth=DEFAULT_AUTH, docs_decorator=csp_override({})
+)
 
 
 @api.exception_handler(APIError)

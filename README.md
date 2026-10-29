@@ -137,6 +137,26 @@ deploy directory and image from `deploy.sh`:
 30 3 * * *  cd /srv/labeltree-db && IMAGE=registry.example.org/amplify/labeltree-db:latest docker compose exec -T web python manage.py worms_sync NES2022_taxonomy --user cron
 ```
 
+## Web app and tests
+
+The web app is served at `/` by the same Django project as the API (`app-start`
+in `nix develop` runs it on port 8000). Anyone can browse trees; editing needs
+a login (`/login/`) and a role in the tree's organization. Its scripts are
+static ES modules in `src/static/app/`, using vendored Bootstrap and Alpine.js
+(`src/static/vendor/`), under a strict Content Security Policy.
+
+Run the tests from `src/` in `nix develop`, with the database running:
+
+```sh
+pytest -q                          # everything, including browser tests
+pytest -q --ignore=webapp/tests    # without the browser tests
+node --test static/app/tests/*.test.mjs   # the web app's expanders alone
+```
+
+The browser tests drive Chromium with Playwright against Django's live server.
+The dev shell provides Chromium (`PLAYWRIGHT_BROWSERS_PATH`) and Node; install
+the test dependencies with `pip install -e '.[dev]'`.
+
 ## Design documents
 
 - [Backend](design/backend.md): data model, versioning rules, atomic changes

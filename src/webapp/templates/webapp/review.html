@@ -1,0 +1,88 @@
+{% extends "webapp/base.html" %}
+{% load labels %}
+{% block title %}Changeset #{{ cs.pk }} · labeltree{% endblock %}
+{% block nav %}{% if cs.tree_id %}<a href="{% url 'tree' cs.tree_id %}">{{ cs.tree_id }}</a> · <a href="{% url 'drafts' cs.tree_id %}">drafts</a>{% endif %}{% endblock %}
+{% block content %}
+{{ page|json_script:"page-data" }}
+<main class="container py-4" x-data="review">
+  <h1 class="h4">Changeset #{{ cs.pk }}
+    <span class="badge text-bg-secondary" id="state">{{ cs.state }}</span>
+    <small class="text-muted">{% if cs.tree_id %}{{ cs.tree_id }}, base revision {{ cs.base_rev }}{% else %}new tree {{ cs.new_tree_id }} in {{ cs.new_tree_org_id }}{% endif %} · {{ cs.author }}</small>
+  </h1>
+  <p>{{ cs.notes|default:"No notes." }}</p>
+
+  {% if validation %}
+    <div class="d-flex gap-2 mb-3 flex-wrap" id="actions">
+      <a class="btn btn-sm btn-outline-primary" href="{% url 'edit' cs.pk %}">Open in editor</a>
+      {% if cs.tree_id and validation.latest_rev != cs.base_rev %}
+        <button class="btn btn-sm btn-outline-danger" @click="rebase()" :disabled="!can('drafter')" :title="hint('drafter')">Rebase on revision {{ validation.latest_rev }}</button>
+      {% endif %}
+      <button class="btn btn-sm btn-success" @click="openPublish()" :disabled="!!publishBlock" :title="publishBlock">Publish</button>
+      <button class="btn btn-sm btn-outline-danger" @click="discard()" :disabled="!can('drafter')" :title="hint('drafter')">Discard</button>
+    </div>
+    <div class="alert alert-danger py-2" x-show="error" x-text="error"></div>
+
+    {% if validation.conflicts or validation.errors %}
+      <div class="alert alert-warning" id="problems">
+        {% for c in validation.conflicts %}<div><strong>{{ c.error }}</strong>: {{ c.detail }}
+          {% for n in c.nodes %}<span class="d-block small">{{ n.node|stringformat:"s"|default:"" }} {{ labels|label_of:n.node }}: {{ n.detail }}</span>{% endfor %}</div>{% endfor %}
+        {% for e in validation.errors %}<div><strong>{{ e.error }}</strong> (change {{ e.seq }}): {{ e.detail }}</div>{% endfor %}
+      </div>
+    {% endif %}
+
+    <h2 class="h6">By node</h2>
+    <table class="table table-sm" id="by-node">
+      <thead><tr><th>Node</th><th>Version</th><th>Changes</th><th>Groups</th></tr></thead>
+      <tbody>{% for n in validation.node_changes %}
+        <tr><td>{{ labels|label_of:n.node }}</td>
+            <td>{% if n.from %}v{{ n.from }}{% else %}new{% endif %} → {% if n.to %}v{{ n.to }}{% else %}deprecated{% endif %}</td>
+            <td class="small">{% for f, v in n.fields.items %}<span class="d-block">{{ f }}: {{ v|pair }}</span>{% endfor %}
+              {% if n.children_gained %}<span class="d-block">gains {% for c in n.children_gained %}{{ labels|label_of:c }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+              {% if n.children_lost %}<span class="d-block">loses {% for c in n.children_lost %}{{ labels|label_of:c }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}
+              {% if n.successors %}<span class="d-block">successors {% for c in n.successors %}{{ labels|label_of:c }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>{% endif %}</td>
+            <td>{% for g in n.groups %}<span class="badge text-bg-light">{{ g }}</span> {% endfor %}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+
+    <h2 class="h6">WoRMS warnings that will change</h2>
+    <ul id="warning-changes">{% for w in validation.warning_changes %}
+      <li>{{ labels|label_of:w.node }}: {% for a in w.added %}<span class="text-warning-emphasis">+{{ a }}</span> {% endfor %}{% for r in w.removed %}<span class="text-success">−{{ r }}</span> {% endfor %}</li>
+    {% empty %}<li class="text-muted">None.</li>{% endfor %}
+    {% if validation.worms == "unavailable" %}<li class="text-muted">Some checks are unavailable: AphiaIDs {{ validation.worms_missing|join:", " }} aren't cached yet.</li>{% endif %}
+    </ul>
+  {% endif %}
+
+  <h2 class="h6">Changes</h2>
+  <div class="review" id="changes">
+    {% for item in items %}
+      {% if item.group %}<div class="group-head">{{ item.group }} <small class="text-muted fw-normal">{{ item.changes|length }} changes</small></div>{% endif %}
+      {% for c in item.changes %}
+        <div class="crow{% if item.group %} in-group{% endif %}"><span class="seq">{{ c.seq }}</span><span class="badge op op-{{ c.op }}">{{ c.op }}</span>
+          <span class="txt">{{ labels|label_of:c.node }}
+            {% if c.op == "add" %} under {{ labels|label_of:c.parent }}{% if c.aphia_id %}, AphiaID {{ c.aphia_id }}{% endif %}{% endif %}
+            {% if c.op == "edit" %}{% if c.label %}: label → {{ c.label }}{% endif %}{% if "aphia_id" in c %} AphiaID → {{ c.aphia_id|default:"none" }}{% endif %}{% endif %}
+            {% if c.op == "move" %}: {{ labels|label_of:c.from_parent }} → {{ labels|label_of:c.to_parent }}{% endif %}
+            {% if c.op == "deprecate" and c.successors %} → {% for s in c.successors %}{{ labels|label_of:s }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+          </span></div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <template x-if="publishing">
+    <div class="modal d-block" tabindex="-1">
+      <div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Publish changeset #{{ cs.pk }}</h5></div>
+        <div class="modal-body">
+          <label class="form-label" for="publish-notes">Notes</label>
+          <textarea class="form-control" id="publish-notes" rows="3" x-model="notes"></textarea>
+          <p class="form-text mb-0">All checks run again. A published revision can't be edited.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" @click="publishing = false">Cancel</button>
+          <button class="btn btn-success" @click="publish()">Publish</button>
+        </div>
+      </div></div>
+    </div>
+  </template>
+</main>
+{% endblock %}
