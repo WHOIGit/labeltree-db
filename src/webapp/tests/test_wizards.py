@@ -104,7 +104,7 @@ def test_aliases_after_a_merge(site, taxonomy):
     expect(page.locator("#publish-button")).to_be_enabled()
     page.click("#publish-button")
     page.click("#publish-submit")
-    expect(page.locator("#status")).to_have_text("Published (frozen)")
+    expect(page.locator("#rev-picker")).to_be_visible()  # back in static mode: aliases copied
     merged = ids_by_label("taxonomy")["C_merged"]
     aliases = set(
         NodeAlias.objects.filter(node_id=merged, removed_at__isnull=True).values_list(
@@ -297,3 +297,45 @@ def test_clone_flow(site, taxonomy):
     draft = Changeset.objects.get(new_tree_id="lab_taxonomy")
     assert (draft.new_tree_org_id, draft.base_rev) == ("lab_a", None)
     expect(site.row("Chromista")).to_be_visible()
+
+
+def test_merge_alias_failure_leaves_the_editor_frozen(site, taxonomy):
+    """Publishing succeeded; failing to copy aliases mustn't leave an editable draft."""
+    page = new_draft(site, make_user("approver1", roles={"amplify": "approver"}))
+    menu(site, "Chaetoceros_didymus", "merge")
+    page.fill("#merge-find", "box")
+    page.click('#merge-candidates [data-label="box"] input')
+    wizard_next(page)
+    wizard_next(page)
+    page.fill("#merge-label", "C_merged")
+    wizard_next(page)
+    page.click("#wizard-add")
+    page.click("#validate-button")
+    expect(page.locator("#save-button")).to_be_enabled()
+    page.click("#save-button")
+    expect(page.locator("#publish-button")).to_be_enabled()
+    page.route(
+        "**/api/v1/nodes/*/aliases",
+        lambda route: route.fulfill(status=500, json={"detail": "boom"})
+        if route.request.method == "POST" else route.continue_(),
+    )  # fmt: skip
+    page.click("#publish-button")
+    page.click("#publish-submit")
+    expect(page.locator("#alias-failures")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator("#status")).to_have_text("Published (frozen)")
+    assert (
+        page.locator("#publish-button").count() == 0 and page.locator("#save-button").count() == 0
+    )
+
+
+def test_new_node_cannot_take_a_deprecated_label(site, taxonomy, drafter):
+    page = new_draft(site, drafter)
+    menu(site, "Chaetoceros", "split")
+    wizard_next(page)
+    page.fill('[data-part="0"]', "Chaetoceros")
+    page.fill('[data-part="1"]', "Chaetoceros_b")
+    expect(page.locator("#wizard-error")).to_contain_text(
+        "stays taken until this draft is published"
+    )
+    assert page.is_disabled("#wizard-next")

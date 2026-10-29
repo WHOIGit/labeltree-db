@@ -29,7 +29,7 @@
       <template x-if="mode === 'static'">
         <select class="form-select form-select-sm" id="rev-picker" @change="selectRev($event.target.value)">
           <template x-for="o in revisions" :key="o.rev">
-            <option :value="o.rev" :selected="o.rev === viewRev" x-text="o.text"></option>
+            <option :value="o.rev" :selected="isWantedRev(o.rev)" x-text="o.text"></option>
           </template>
         </select>
       </template>
@@ -174,7 +174,7 @@
       <div class="scroll py-1" id="tree" :class="{ picking: pick }">
         <p class="text-muted p-3 mb-0" x-show="loading">Loading…</p>
         <template x-for="r in rows" :key="r.key">
-          <div class="trow" :id="'n-' + r.key" :data-label="r.label" :class="r.cls" :style="r.indent"
+          <div class="trow" :id="'n-' + r.key" :data-label="r.label" :class="rowClass(r)" :style="r.indent"
                @click="rowClick(r)" @dblclick="openDetails(r.id)">
             <button class="caret" :class="{ invisible: !r.hasKids }" @click.stop="toggle(r.id)" x-text="r.open ? '▾' : '▸'"></button>
             <button class="kebab" title="Node actions" @click.stop="openMenu(r, $event)">⋮</button>

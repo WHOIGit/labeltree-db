@@ -97,8 +97,11 @@ of scope: nothing here needs expiry flows or third-party login.
   authenticated user may call them. A new-tree changeset has no tree yet; its
   checks use the organization in `new_tree.org`, stored as
   `Changeset.new_tree_org`.
-- **Members:** `GET /orgs/{org}/members`, `PUT /orgs/{org}/members/{username}
-  {role}` and `DELETE /orgs/{org}/members/{username}`. Changing or removing an
+- **Members:** `GET /orgs/{org}/members`, `POST /orgs/{org}/members
+  {username, role}` (add only: `409 already_member` for a member, so a stale
+  member list can't turn an add into a role change), `PUT
+  /orgs/{org}/members/{username} {role}` and `DELETE
+  /orgs/{org}/members/{username}`. Changing or removing an
   owner locks the organization's member rows (`SELECT ... FOR UPDATE`) and
   refuses with `409 last_owner` if no owner would remain, unless a superuser
   makes the change.

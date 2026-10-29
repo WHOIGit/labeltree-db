@@ -73,12 +73,22 @@ export function applyLocal(base, changes) {
       deprecated.add(c.node);
     }
   }
-  const kidsOf = (state, id) => new Set([...state.values()].filter(n => !n.dep && n.parent === id).map(n => n.id));
+  const kidSets = state => {
+    const sets = new Map();
+    for (const n of state.values()) {
+      if (n.dep) continue;
+      if (!sets.has(n.parent)) sets.set(n.parent, new Set());
+      sets.get(n.parent).add(n.id);
+    }
+    return sets;
+  };
+  const kidsBefore = kidSets(base), kidsAfter = kidSets(s);
+  const none = new Set();
   const bump = new Set();
   for (const [id, old] of base) {
     const now = s.get(id);
     if (!now || now.dep) continue;
-    const before = kidsOf(base, id), after = kidsOf(s, id);
+    const before = kidsBefore.get(id) || none, after = kidsAfter.get(id) || none;
     const kidsChanged = before.size !== after.size || [...before].some(k => !after.has(k));
     if (old.label !== now.label || old.aphia_id !== now.aphia_id || old.parent !== now.parent || kidsChanged) bump.add(id);
   }

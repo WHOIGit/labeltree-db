@@ -13,14 +13,31 @@ export async function startJob(body) {
   return r.data;
 }
 
-/** Poll a job about every second until it ends; `onUpdate(status)` sees each. */
+// Waits before retrying a failed poll; a transient proxy error shouldn't lose the job.
+const POLL_RETRIES = [1000, 2000, 4000];
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Poll a job about every second until it ends; `onUpdate(status)` sees each.
+ * A failed poll is retried a few times, except 401, 403 and 404, which won't
+ * get better. */
 export async function pollJob(id, onUpdate, interval = 1000) {
+  let failures = 0;
   for (;;) {
-    const r = await api('GET', `/worms/jobs/${id}`);
-    if (!r.ok) throw new Error(problem(r));
+    let r;
+    try {
+      r = await api('GET', `/worms/jobs/${id}`);
+    } catch (e) {
+      r = { ok: false, status: 0, data: { detail: e.message } };  // network error
+    }
+    if (!r.ok) {
+      if ([401, 403, 404].includes(r.status) || failures === POLL_RETRIES.length) throw new Error(problem(r));
+      await sleep(POLL_RETRIES[failures++]);
+      continue;
+    }
+    failures = 0;
     onUpdate(r.data);
     if (r.data.state !== 'running') return r.data;
-    await new Promise(resolve => setTimeout(resolve, interval));
+    await sleep(interval);
   }
 }
 

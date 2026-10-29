@@ -173,6 +173,7 @@ LADDER = ["none", "reader", "drafter", "approver", "owner", "superuser"]
 MATRIX = [
     ("get", "/orgs/amplify/members", None, "reader"),
     ("put", "/orgs/amplify/members/target", {"role": "reader"}, "owner"),
+    ("post", "/orgs/amplify/members", {"username": "target", "role": "drafter"}, "owner"),
     ("delete", "/orgs/amplify/members/target", None, "owner"),
     ("get", "/worms/jobs?tree=taxonomy", None, "reader"),
     ("get", "/worms/jobs/j1", None, "reader"),
@@ -374,3 +375,31 @@ def test_job_started_by_token_user(taxonomy, token_for, fake_jobs):
     key = token_for(make_user("script1", roles={"amplify": "drafter"}))
     assert token_client(key)("post", "/worms/jobs", sync_tree("taxonomy"))[0] == 202
     assert fake_jobs == ["script1"]
+
+
+def test_add_a_member(owner):
+    make_user("newcomer")
+    client = logged_in(owner)
+    status, body = call(
+        client, "post", "/orgs/amplify/members", {"username": "newcomer", "role": "drafter"}
+    )
+    assert (status, body["role"]) == (201, "drafter") and role_on("newcomer") == "drafter"
+
+
+def test_adding_an_existing_member_is_refused(owner):
+    make_user("approver1", roles={"amplify": "approver"})
+    status, body = call(logged_in(owner), "post", "/orgs/amplify/members",
+                        {"username": "approver1", "role": "reader"})  # fmt: skip
+    assert (status, body["error"]) == (409, "already_member")
+    assert role_on("approver1") == "approver"
+
+
+def test_add_member_errors(owner):
+    client = logged_in(owner)
+    assert (
+        call(client, "post", "/orgs/amplify/members", {"username": "nobody", "role": "reader"})[0]
+        == 404
+    )
+    make_user("newcomer")
+    body = {"username": "newcomer", "role": "admin"}
+    assert call(client, "post", "/orgs/amplify/members", body)[0] == 400

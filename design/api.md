@@ -434,8 +434,10 @@ PUT    /nodes/{id}/description {description}
 
 # Organization members
 GET    /orgs/{org}/members              members with their roles (reader)
+POST   /orgs/{org}/members {username, role}
+                                        add a user (owner); 409 already_member if they are one
 PUT    /orgs/{org}/members/{username} {role}
-                                        add a user or change their role (owner);
+                                        set a user's role (owner);
                                         409 last_owner if it would leave no owner
 DELETE /orgs/{org}/members/{username}   remove a member (owner); 409 last_owner as above
 ```
@@ -621,7 +623,7 @@ Errors have one body shape:
 | `401` | Not authenticated, on an endpoint that needs a login. |
 | `403` | Authenticated, but the user's role in the tree's organization is too low, or not a site admin for `sync_all`. |
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
-| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting an organization's last owner (`last_owner`). |
+| `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting an organization's last owner (`last_owner`), or adding an existing member (`already_member`). |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
 | `422` | Request body invalid, or publish blocked by structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |

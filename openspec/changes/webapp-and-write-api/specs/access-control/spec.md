@@ -130,14 +130,20 @@ including drafts the approver wrote.
 
 ### Requirement: Owner manages members
 `owner` SHALL allow managing the organization's members: `GET
-/orgs/{org}/members` lists each member with their role, for any member; `PUT
-/orgs/{org}/members/{username}` with `{role}` adds a user or changes their
-role, any role including `owner`; `DELETE /orgs/{org}/members/{username}`
-removes them, returning `204`.
+/orgs/{org}/members` lists each member with their role, for any member; `POST
+/orgs/{org}/members` with `{username, role}` adds a user, returning `201`, or
+`409` with error `already_member` if they are one; `PUT
+/orgs/{org}/members/{username}` with `{role}` sets a user's role, any role
+including `owner`; `DELETE /orgs/{org}/members/{username}` removes them,
+returning `204`.
 
 #### Scenario: Owner raises a member
 - **WHEN** an owner sets a drafter's role to `approver`
 - **THEN** the member's role is `approver` and they can publish on every tree of the organization
+
+#### Scenario: Adding an existing member
+- **WHEN** an owner adds a user who is already `approver` as `reader`
+- **THEN** the API returns `409` with error `already_member` and the user stays `approver`
 
 #### Scenario: Co-owner
 - **WHEN** an owner sets another member's role to `owner`

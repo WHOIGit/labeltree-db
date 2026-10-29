@@ -143,7 +143,7 @@ AXES_RESET_ON_SUCCESS = True
 # The client address is the X-Forwarded-For entry Apache sets. A header with
 # more entries means the client sent its own; then the proxy's address is used,
 # so spoofing the header can't dodge the limit. Only Apache must reach gunicorn
-# (compose-prod.yaml binds it to 127.0.0.1).
+# (compose yaml binds it to 127.0.0.1).
 AXES_IPWARE_PROXY_COUNT = 0
 AXES_IPWARE_META_PRECEDENCE_ORDER = ["HTTP_X_FORWARDED_FOR", "REMOTE_ADDR"]
 

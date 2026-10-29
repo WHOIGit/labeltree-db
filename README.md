@@ -134,7 +134,7 @@ deploy directory and image from `deploy.sh`:
 
 ```
 # m h dom mon dow  command
-30 3 * * *  cd /srv/labeltree-db && IMAGE=registry.example.org/amplify/labeltree-db:latest docker compose exec -T web python manage.py worms_sync NES2022_taxonomy --user cron
+30 3 * * *  cd /opt/labeltree-db && IMAGE=harbor-registry.whoi.edu/amplify/labeltree-db:latest docker compose exec -T web python manage.py worms_sync NES2022_taxonomy --user cron
 ```
 
 ## Web app and tests

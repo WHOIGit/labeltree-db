@@ -12,8 +12,7 @@ tree's organization.
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count
-from django.http import Http404
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from accounts.models import Organization, OrgMember, Role
 from accounts.roles import Forbidden, org_role, require, require_org
@@ -68,18 +67,11 @@ def _browser(request, *, tree: Tree | None, draft: Changeset | None):
 
 
 def tree_page(request, tree_id: str):
-    try:
-        tree = Tree.objects.get(pk=tree_id)
-    except Tree.DoesNotExist:
-        raise Http404(f"Tree {tree_id} does not exist.") from None
-    return _browser(request, tree=tree, draft=None)
+    return _browser(request, tree=get_object_or_404(Tree, pk=tree_id), draft=None)
 
 
 def _changeset(cs: int) -> Changeset:
-    try:
-        return Changeset.objects.select_related("tree").get(pk=cs)
-    except Changeset.DoesNotExist:
-        raise Http404(f"Changeset {cs} does not exist.") from None
+    return get_object_or_404(Changeset.objects.select_related("tree"), pk=cs)
 
 
 def _require_reader(request, changeset: Changeset):
@@ -102,11 +94,9 @@ def edit_page(request, cs: int):
 
 @login_required
 def drafts_page(request, tree_id: str):
+    tree = get_object_or_404(Tree, pk=tree_id)
     try:
-        tree = Tree.objects.get(pk=tree_id)
         require(request.user, tree.id, Role.READER)
-    except Tree.DoesNotExist:
-        raise Http404(f"Tree {tree_id} does not exist.") from None
     except Forbidden as exc:
         return forbidden(request, exc)
     changesets = (
@@ -179,10 +169,7 @@ def _labels(changeset: Changeset, body: dict) -> dict:
 def node_page(request, node_id: int):
     from api.serializers import RevisionView, deprecation_record
 
-    try:
-        node = Node.objects.select_related("tree").get(pk=node_id)
-    except Node.DoesNotExist:
-        raise Http404(f"Node {node_id} does not exist.") from None
+    node = get_object_or_404(Node.objects.select_related("tree"), pk=node_id)
     rev = latest_rev(node.tree_id)
     if node.deprecated_in_rev is None:
         view = RevisionView(node.tree, rev)
@@ -210,10 +197,7 @@ def node_page(request, node_id: int):
 
 
 def org_page(request, org_id: str):
-    try:
-        org = Organization.objects.get(pk=org_id)
-    except Organization.DoesNotExist:
-        raise Http404(f"Organization {org_id} does not exist.") from None
+    org = get_object_or_404(Organization, pk=org_id)
     role = org_role(request.user, org.id)
     members = []
     if role is not None:

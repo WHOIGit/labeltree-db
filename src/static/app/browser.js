@@ -13,7 +13,8 @@ import { atLeast, needs, roleIn } from './roles.js';
 // Not reactive on purpose: large, and replaced wholesale.
 let BASE = new Map(); // the tree at the viewed revision, or a draft's base revision
 let CUR = { state: new Map(), kids: new Map(), local: null };
-let PREV = new Map(); // the revision before the viewed one, for labels of deprecated nodes
+let PARTS = { key: null, errors: [] }; // the wizard's part errors, for its current input
+let PREV = new Map(); // labels, as of the revision before the viewed one, of the nodes it changed
 
 const TABS = [
   { key: 'edited', label: 'As edited' },
@@ -32,6 +33,7 @@ export default () => ({
   exp: {}, filter: '', pick: null, hover: [], flash: null,
   collapsed: {}, menu: null, modal: null, f: {}, conf: null, toasts: [],
   rows: [], options: [],
+  loadSeq: 0, wantedRev: null, watching: false,
   validation: null, validatedKey: null, validating: false, validations: 0,
   tab: 'edited', seen: {}, tabs: TABS,
   job: null, jobFailed: null, jobResolve: null, pauseSeen: {}, now: Date.now(),
@@ -91,19 +93,55 @@ export default () => ({
     const r = await api('GET', `/trees/${this.treeId}/export?rev=${rev}`);
     return fromExport(r.data.nodes);
   },
+  /**
+   * Show revision `rev`. Every write of the displayed tree (here, and opening,
+   * saving or rebasing a draft) bumps `loadSeq`, so a load that is overtaken
+   * while it waits is dropped. Returns whether this load was applied.
+   */
   async loadRev(rev) {
     rev = Number(rev);
-    BASE = await this.loadState(rev);
+    this.wantedRev = rev;
+    const seq = ++this.loadSeq;
+    const [state, changes] = await Promise.all([
+      this.loadState(rev), api('GET', `/trees/${this.treeId}/revisions/${rev}/changes`),
+    ]);
+    const revChanges = changes.ok ? changes.data : null;
+    const prev = await this.previousLabels(revChanges, rev);
+    if (seq !== this.loadSeq) return false;
+    BASE = state;
+    PREV = prev;
     this.viewRev = rev;
-    if (!this.exp[this.treeId]) this.expandTop();
-    const r = await api('GET', `/trees/${this.treeId}/revisions/${rev}/changes`);
-    PREV = rev > 1 ? await this.loadState(rev - 1) : new Map();
-    this.revChanges = r.ok ? r.data : null;
+    this.revChanges = revChanges;
+    if (!this.exp[this.treeKey]) this.expandTop();
     this.collapsed = {};
     this.refresh();
+    return true;
+  },
+  /** Labels, as of the revision before, of the existing nodes a revision's
+   * changes name: renamed nodes' old names and deprecated nodes' labels. */
+  async previousLabels(revChanges, rev) {
+    const ids = [...new Set((revChanges?.changes || []).flatMap(touched).filter(id => typeof id === 'number'))];
+    if (!ids.length || rev <= 1) return new Map();
+    const labels = new Map();
+    for (let i = 0; i < ids.length; i += 200) {  // short URLs, however big the revision
+      const r = await api('GET', `/trees/${this.treeId}/nodes?ids=${ids.slice(i, i + 200).join(',')}&rev=${rev - 1}`);
+      for (const n of r.data?.nodes || []) if (n.label) labels.set(n.id, { label: n.label });
+    }
+    return labels;
+  },
+  /** Load a draft's base revision as the displayed tree, unless overtaken. */
+  async loadBase(rev) {
+    const seq = ++this.loadSeq;
+    const state = await this.loadState(rev);
+    if (seq !== this.loadSeq) return false;
+    BASE = state;
+    this.viewRev = rev;
+    this.wantedRev = rev;
+    return true;
   },
   async selectTree(id) { window.location.href = `/trees/${id}/`; },
   async selectRev(rev) { await this.loadRev(rev); },
+  isWantedRev(rev) { return rev === this.wantedRev; },
 
   // ---- the tree -------------------------------------------------------------------------
   refresh() {
@@ -125,7 +163,6 @@ export default () => ({
       }
     }
     const exp = (this.exp[this.treeKey] ||= {});
-    const hov = new Set(this.hover);
     const pickBad = this.pick ? this.descendantsOf(this.pick.id) : null;
     const rows = [];
     const walk = (pid, depth) => {
@@ -135,7 +172,7 @@ export default () => ({
         const all = kids.get(id) || [];
         const open = match ? true : !!exp[keyOf(id)];
         const mark = !local ? '' : local.added.has(id) ? 'new' : n.dep ? 'dep' : local.bump.has(id) ? 'bump' : '';
-        const cls = [mark && 'mark-' + mark, hov.has(id) && 'hl', this.flash === id && 'flash',
+        const cls = [mark && 'mark-' + mark, this.flash === id && 'flash',
                      q && n.label.toLowerCase().includes(q) && 'hit',
                      pickBad && (pickBad.has(id) || n.dep ? 'unpickable' : 'pickable')].filter(Boolean).join(' ');
         rows.push({ id, key: keyOf(id), depth, label: n.label, nk: all.filter(k => !state.get(k).dep).length,
@@ -172,8 +209,10 @@ export default () => ({
     walk(id);
     return out;
   },
-  setHover(ids) { this.hover = (ids || []).filter(x => x != null); this.refresh(); },
-  clearHover() { this.hover = []; this.refresh(); },
+  // Hover only changes the row classes, not the tree model.
+  setHover(ids) { this.hover = (ids || []).filter(x => x != null); },
+  clearHover() { this.hover = []; },
+  rowClass(r) { return this.hover.includes(r.id) ? r.cls + ' hl' : r.cls; },
   /** Expand the node's ancestors, scroll to it and flash it. */
   reveal(id) {
     if (id == null || !CUR.state.has(id)) { if (id != null) this.toast(`${this.lbl(id)} isn't in this view`); return; }
@@ -248,7 +287,9 @@ export default () => ({
   draftText(d) { return `base ${d.base_rev ?? 'none'} · ${d.author} · ${d.num_changes} changes`; },
   async startNewDraft() {
     this.editOpen = false;
-    if (this.viewRev !== this.latestRev) await this.loadRev(this.latestRev);
+    // Start only if the latest revision is what's shown: a draft builds on it.
+    if (this.viewRev === this.latestRev) { this.loadSeq++; this.wantedRev = this.latestRev; }  // drop pending picks
+    else if (!(await this.loadRev(this.latestRev))) return;
     this.draft = { id: null, base_rev: this.latestRev, state: 'draft', notes: '', etag: null, author: this.user.username };
     this.enterEdit([]);
   },
@@ -260,9 +301,9 @@ export default () => ({
     if (cs.tree) {
       this.treeId = cs.tree;
       if (!this.revisions.length) await this.loadRevisions();
-      BASE = await this.loadState(cs.base_rev);
-      this.viewRev = cs.base_rev;
+      if (!(await this.loadBase(cs.base_rev))) return;
     } else {
+      this.loadSeq++;
       BASE = new Map();
       this.newTree = cs.new_tree;
       this.org = cs.new_tree.org;
@@ -511,9 +552,23 @@ export default () => ({
     const [first, ...rest] = ids.map(chain);
     return first.find(p => rest.every(c => c.includes(p))) ?? null;
   },
+  /** Nodes the wizard deprecates; their labels stay taken (see X.labelProblem). */
+  wizardDeprecates() {
+    const f = this.f;
+    if (f.wizard === 'merge') return f.repl ? this.mergeIds() : this.mergeIds().filter(id => id !== this.survivor());
+    return f.repl ? [f.a] : [];
+  },
+  /** The parts' label and AphiaID errors, computed once per input. */
   partErrors() {
-    const labels = this.f.parts.map(p => p.label);
-    return this.f.parts.map((p, i) => this.labelError(p.label, null, labels.filter((_, j) => j !== i)) || this.aphiaError(p.aphia));
+    const f = this.f;
+    const key = JSON.stringify([f.wizard, f.a, f.parts, f.repl, f.survivorKey, f.sel]);
+    if (PARTS.key === key) return PARTS.errors;
+    const labels = f.parts.map(p => p.label);
+    const reserved = new Set(this.wizardDeprecates());
+    const errors = f.parts.map((p, i) =>
+      X.labelProblem(p.label, CUR.state, null, labels.filter((_, j) => j !== i), reserved) || this.aphiaError(p.aphia));
+    PARTS = { key, errors };
+    return errors;
   },
   partError(i) { return this.f.parts[i].label ? this.partErrors()[i] : ''; },
   get wizError() {
@@ -822,7 +877,7 @@ export default () => ({
   },
   async stored(r) {
     const cs = r.data;
-    if (cs.base_rev !== this.draft.base_rev) { BASE = await this.loadState(cs.base_rev); this.viewRev = cs.base_rev; }
+    if (cs.base_rev !== this.draft.base_rev) await this.loadBase(cs.base_rev);
     this.draft = { ...this.draft, id: cs.id, base_rev: cs.base_rev, etag: r.etag, state: cs.state, notes: cs.notes };
     this.changes = cs.changes.map(({ seq, ...c }) => c);
     this.dirty = false;
@@ -838,9 +893,8 @@ export default () => ({
   async rebase() {
     await this.loadRevisions();
     if (!this.draft.id) {
+      if (!(await this.loadBase(this.latestRev))) return;
       this.draft.base_rev = this.latestRev;
-      BASE = await this.loadState(this.latestRev);
-      this.viewRev = this.latestRev;
       this.markDirty();
       return;
     }
@@ -857,9 +911,10 @@ export default () => ({
       return;
     }
     this.closeModal();
+    this.draft.state = 'published';  // frozen from here on, even if copying aliases fails
+    this.dirty = false;
     const merged = this.changes.some(c => c.group?.startsWith('merge#'));
     const aliases = merged ? await this.copyMergeAliases() : true;
-    this.dirty = false;
     this.toast(`Published revision ${r.data.rev}`);
     if (this.newTree) { window.location.href = `/trees/${this.newTree.id}/`; return; }
     if (aliases) { this.mode = 'static'; this.draft = null; this.changes = []; await this.loadRevisions(); await this.loadRev(this.latestRev); }
@@ -912,13 +967,19 @@ export default () => ({
     if (this.syncOpen) this.watchSyncs();
   },
   async watchSyncs() {
-    while (this.syncOpen || this.syncs?.active) {
-      const r = await api('GET', `/worms/jobs?tree=${this.treeId}`);
-      if (!r.ok) return;
-      const wasActive = this.syncs?.active;
-      this.syncs = r.data;
-      if (wasActive && !r.data.active) await this.afterSync(r.data.last);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    if (this.watching) return;  // one loop, however often the menu opens
+    this.watching = true;
+    try {
+      while (this.syncOpen || this.syncs?.active) {
+        const r = await api('GET', `/worms/jobs?tree=${this.treeId}`);
+        if (!r.ok) return;
+        const wasActive = this.syncs?.active;
+        this.syncs = r.data;
+        if (wasActive && !r.data.active) await this.afterSync(r.data.last);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } finally {
+      this.watching = false;
     }
   },
   syncHint(kind) {
@@ -935,13 +996,20 @@ export default () => ({
     this.syncKind = kind;
     this.syncFailed = null;
     this.syncJob = job;
-    const done = await pollJob(job.id, s => { this.syncJob = s; });
-    this.syncJob = null;
+    let done;
+    try {
+      done = await pollJob(job.id, s => { this.syncJob = s; });
+    } catch (e) {
+      this.toast(`Lost track of the sync: ${e.message}`, 'text-bg-danger');
+      return;
+    } finally {
+      this.syncJob = null;
+    }
     await this.afterSync(done);
   },
   async afterSync(status) {
     if (status?.failed?.length && status.started_by === this.user.username) this.syncFailed = status;
-    if (this.mode === 'static') await this.loadRev(this.viewRev);
+    if (this.mode === 'static') await this.loadRev(this.wantedRev ?? this.viewRev);
     if (this.warningsOpen) await this.loadWarnings();
   },
   get syncRunning() { return this.syncJob || this.syncs?.active || null; },

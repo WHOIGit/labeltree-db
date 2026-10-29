@@ -173,3 +173,53 @@ def test_proceed_anyway(site, taxonomy, drafter, worms_http):
     expect(page.locator("#save-button")).to_be_enabled(timeout=20000)
     page.click('[data-tab="summary"]')
     assert "checks unavailable for AphiaIDs 110153" in page.inner_text("#tab-summary")
+
+
+def test_one_status_poller_however_often_the_menu_opens(site, taxonomy, drafter):
+    site.login(drafter)
+    page = site.open("/trees/taxonomy/")
+    polls = []
+    page.on("request", lambda r: "/api/v1/worms/jobs?tree=" in r.url and polls.append(r.url))
+    for _ in range(4):
+        page.click("#sync-button")  # open
+        page.click("#tree")  # close (click outside)
+    page.click("#sync-button")
+    page.wait_for_timeout(2500)
+    assert len(polls) <= 4  # about one a second from a single loop
+
+
+def test_lost_job_status_clears_the_running_sync(site, taxonomy, drafter):
+    site.login(drafter)
+    page = site.open("/trees/taxonomy/")
+    page.route(
+        "**/api/v1/worms/jobs/*",
+        lambda route: route.fulfill(status=502, json={"detail": "bad gateway"}),
+    )
+    page.click("#sync-button")
+    page.click('[data-sync="sync_tree"]')
+    # gives up only after its retries (1, 2 and 4 s)
+    expect(page.locator(".toast")).to_contain_text("Lost track of the sync", timeout=15000)
+    expect(page.locator("#sync-job")).to_have_count(0)
+
+
+def test_a_transient_poll_failure_is_retried(site, taxonomy, drafter):
+    site.login(drafter)
+    page = site.open("/trees/taxonomy/")
+    failures = []
+
+    def flaky(route):
+        if len(failures) < 2:
+            failures.append(route.request.url)
+            route.fulfill(status=502, json={"detail": "bad gateway"})
+        else:
+            route.continue_()
+
+    page.route("**/api/v1/worms/jobs/*", flaky)
+    page.click("#sync-button")
+    page.click('[data-sync="sync_tree"]')
+    for _ in range(60):  # both failed polls retried, then the sync finished
+        if len(failures) == 2 and page.locator("#sync-job").count() == 0:
+            break
+        page.wait_for_timeout(250)
+    assert len(failures) == 2 and page.locator("#sync-job").count() == 0
+    assert page.locator(".toast", has_text="Lost track").count() == 0

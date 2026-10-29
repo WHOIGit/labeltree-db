@@ -106,3 +106,9 @@ test('clone data skips deprecated nodes and keeps aliases', () => {
   assert.deepEqual(data.nodes[0].children[0].aliases, ['ex']);
   assert.deepEqual(data.nodes[2].children, []);
 });
+
+test('labels a macro deprecates stay taken until publish', () => {
+  const s = state();
+  assert.match(X.labelProblem('A', s, null, [], new Set([1])), /stays taken until this draft is published/);
+  assert.match(X.labelProblem('A', s), /Already used/);
+});

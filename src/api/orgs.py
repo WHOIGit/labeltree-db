@@ -23,6 +23,19 @@ class MemberIn(Schema):
     role: str
 
 
+class NewMemberIn(Schema):
+    username: str
+    role: str
+
+
+def parse_role(name: str) -> Role:
+    try:
+        return Role.named(name)
+    except ValueError:
+        names = ", ".join(r.label for r in Role)
+        raise bad_parameter(f"role must be one of {names}.") from None
+
+
 def get_org(org_id: str) -> Organization:
     try:
         return Organization.objects.get(pk=org_id)
@@ -84,15 +97,29 @@ def list_members(request, org_id: str):
     return respond(request, {"org": org.id, "members": [member_body(m) for m in members]})
 
 
+@router.post("/{org_id}/members")
+def add_member(request, org_id: str, body: NewMemberIn):
+    """Add a user; 409 already_member if they are one (change roles with PUT)."""
+    org = get_org(org_id)
+    require_org(request.user, org.id, Role.OWNER)
+    role = parse_role(body.role)
+    user = get_user(body.username)
+    member, created = OrgMember.objects.get_or_create(user=user, org=org, defaults={"role": role})
+    if not created:
+        raise APIError(
+            409, "already_member",
+            f"{body.username} is already {Role(member.role).label} in organization {org.id}.",
+        )  # fmt: skip
+    response = respond(request, {"org": org.id, **member_body(member)})
+    response.status_code = 201
+    return response
+
+
 @router.put("/{org_id}/members/{username}")
 def set_member(request, org_id: str, username: str, body: MemberIn):
     org = get_org(org_id)
     require_org(request.user, org.id, Role.OWNER)
-    try:
-        role = Role.named(body.role)
-    except ValueError:
-        names = ", ".join(r.label for r in Role)
-        raise bad_parameter(f"role must be one of {names}.") from None
+    role = parse_role(body.role)
     user = get_user(username)
     with transaction.atomic():
         _keep_an_owner(request, org.id, username, role)

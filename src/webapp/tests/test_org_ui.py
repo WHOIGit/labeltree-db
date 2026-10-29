@@ -47,3 +47,14 @@ def test_my_page(site, taxonomy):
     site.login(make_user("curator1", roles={"amplify": "drafter"}))
     page = site.open("/me/")
     assert "AMPLIfy" in page.inner_text("#my-roles") and "drafter" in page.inner_text("#my-roles")
+
+
+def test_adding_an_existing_member_changes_nothing(site, taxonomy):
+    owner = make_user("owner1", roles={"amplify": "owner"})
+    make_user("approver1", roles={"amplify": "approver"})
+    site.login(owner)
+    page = site.open("/orgs/amplify/")
+    page.fill('[name="new-user"]', "approver1")
+    page.click("text=Add member")
+    expect(page.locator("#members .alert-danger")).to_contain_text("approver1 is already approver")
+    assert OrgMember.objects.get(user__username="approver1").role == Role.APPROVER

@@ -7,10 +7,11 @@ from pathlib import Path
 
 import pytest
 from django.core.management import call_command
+from playwright.sync_api import expect
 
 from core.changesets import create_changeset, publish_changeset
 from core.models import Tree
-from core.tests.helpers import LABELDATA, TAGS, add, deprecate, ids_by_label, org, publish
+from core.tests.helpers import LABELDATA, TAGS, add, deprecate, edit, ids_by_label, org, publish
 from worms.warnings import record_warnings
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -129,9 +130,7 @@ def test_viewing_a_past_revision(site, taxonomy):
         options[0].startswith("3 ·") and options[0].endswith("(latest)") and "alice" in options[0]
     )
     page.select_option("#rev-picker", "2")
-    page.wait_for_load_state("networkidle")
-    page.click("text=Expand all")
-    assert site.row("box").is_visible()
+    expect(site.row("box")).to_be_visible()  # box's parent is top level, so already expanded
 
 
 def test_filter(site, taxonomy):
@@ -194,3 +193,52 @@ def test_warnings_panel_on_nes2022_taxonomy(site, transactional_db, worms_http):
     assert site.row(label).is_visible()
     assert "flash" in site.row(label).get_attribute("class")
     assert Tree.objects.get(id="NES2022_taxonomy")
+
+
+def test_a_slow_revision_load_does_not_overwrite_a_newer_one(site, taxonomy):
+    ids = ids_by_label("taxonomy")
+    publish(taxonomy, add("new:1", "crate", parent=ids["other"]))
+    page = site.open("/trees/taxonomy/")
+    held = []
+
+    def stall_first(route):
+        if held:
+            route.continue_()
+        else:
+            held.append(route)  # the first rev 2 load stalls
+
+    page.select_option("#rev-picker", "1")
+    page.wait_for_load_state("networkidle")
+    page.route("**/export?rev=2", stall_first)
+    page.select_option("#rev-picker", "2")  # stalls
+    page.wait_for_timeout(300)
+    page.select_option("#rev-picker", "1")
+    page.wait_for_load_state("networkidle")
+    held[0].continue_()  # the stale response arrives last
+    page.wait_for_timeout(500)
+    page.click("text=Expand all")
+    assert site.row("crate").count() == 0  # still revision 1
+
+
+def test_renames_show_their_old_name(site, taxonomy):
+    ids = ids_by_label("taxonomy")
+    publish(taxonomy, edit(ids["box"], label="crate"))
+    page = site.open("/trees/taxonomy/")
+    assert "box: label → crate" in page.inner_text("#revision-changes")
+
+
+def test_picker_shows_the_requested_revision_after_a_sync(site, taxonomy, drafter):
+    ids = ids_by_label("taxonomy")
+    publish(taxonomy, add("new:1", "crate", parent=ids["other"]))
+    site.login(drafter)
+    page = site.open("/trees/taxonomy/")
+    page.select_option("#rev-picker", "1")
+    page.wait_for_load_state("networkidle")
+    page.click("#sync-button")
+    page.click('[data-sync="sync_tree"]')
+    page.wait_for_timeout(500)
+    expect(page.locator("#sync-job")).to_have_count(0, timeout=15000)  # the sync reloaded the view
+    page.wait_for_load_state("networkidle")
+    expect(page.locator("#rev-picker")).to_have_value("1")
+    page.click("text=Expand all")
+    assert site.row("crate").count() == 0

@@ -28,8 +28,13 @@ export default () => ({
     this.error = r.ok ? '' : this.explain(r);
     await this.reload();
   },
+  /** Add a user. The server refuses existing members (409 already_member), so a
+   * stale list can't turn this into a role change. */
   async add() {
-    await this.setRole(this.newUser.trim(), this.newRole);
-    if (!this.error) this.newUser = '';
+    const r = await api('POST', `/orgs/${this.org}/members`, { username: this.newUser.trim(), role: this.newRole });
+    if (r.data?.error === 'already_member') this.error = `${r.data.detail} Change their role in the list.`;
+    else this.error = r.ok ? '' : this.explain(r);
+    if (r.ok) this.newUser = '';
+    await this.reload();
   },
 });
