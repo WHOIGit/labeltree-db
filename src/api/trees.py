@@ -81,8 +81,13 @@ def list_trees(request):
 @router.get("/{tree_id}", auth=None)
 def tree_summary(request, tree_id: str, rev: int | None = None):
     view, header_rev = view_at(tree_id, rev)
+    return respond(request, summary_body(view), rev=header_rev)
+
+
+def summary_body(view: RevisionView) -> dict:
+    """A tree's summary and the metadata of the viewed revision."""
     revision = view.tree.revisions.select_related("changeset").get(number=view.rev)
-    data = {
+    return {
         "id": view.tree.id,
         "title": view.tree.title,
         "description": view.tree.description,
@@ -93,7 +98,6 @@ def tree_summary(request, tree_id: str, rev: int | None = None):
         "num_top_level": len(view.state.child_ids(None)),
         "max_depth": view.state.max_depth(),
     }
-    return respond(request, data, rev=header_rev)
 
 
 @router.get("/{tree_id}/revisions", auth=None)
@@ -136,8 +140,10 @@ PAYLOAD_ORDER = [
 
 
 def ordered_payload(payload: dict) -> dict:
-    """jsonb doesn't keep key order; emit payload fields in the documented order."""
-    return dict(sorted(payload.items(), key=lambda kv: PAYLOAD_ORDER.index(kv[0])))
+    """jsonb doesn't keep key order; emit payload fields in the documented order,
+    unknown ones (in a change being validated) last."""
+    rank = {k: i for i, k in enumerate(PAYLOAD_ORDER)}
+    return dict(sorted(payload.items(), key=lambda kv: (rank.get(kv[0], len(rank)), kv[0])))
 
 
 @router.get("/{tree_id}/revisions/{rev}/changes", auth=None)

@@ -16,14 +16,15 @@ from core.models import Tree
 
 
 class APIError(Exception):
-    def __init__(self, status: int, error: str, detail: str):
+    def __init__(self, status: int, error: str, detail: str, **extra):
         super().__init__(detail)
         self.status = status
         self.error = error
         self.detail = detail
+        self.extra = extra  # more body fields, e.g. a blocked publish's `validation`
 
     def body(self) -> dict:
-        return {"status": self.status, "error": self.error, "detail": self.detail}
+        return {"status": self.status, "error": self.error, "detail": self.detail, **self.extra}
 
 
 def not_found(detail: str) -> APIError:

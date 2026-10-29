@@ -173,17 +173,6 @@ def needed_for_changes(base: TreeState, changes: list[ChangeSpec]) -> set[int]:
     return needed
 
 
-def changed_aphia_ids(changes: list[ChangeSpec]) -> set[int]:
-    """AphiaIDs that `add` and `edit` changes set: publish re-fetches these."""
-    return {
-        c.payload["aphia_id"]
-        for c in changes
-        if c.op in ("add", "edit")
-        and isinstance(c.payload, dict)
-        and isinstance(c.payload.get("aphia_id"), int)
-    }
-
-
 def change_checks(base: TreeState, changes: list[ChangeSpec], records: dict):
     """Per change, the warnings it causes ([{warning, node, detail}]), or
     "unavailable" if a record it needs is missing; plus every node rechecked.

@@ -79,7 +79,7 @@ class ChangeAdmin(ReadOnlyAdmin):
 
 @admin.register(NodeAlias)
 class NodeAliasAdmin(admin.ModelAdmin):
-    """Editable so an operator can correct an alias until the alias API exists."""
+    """Editable for repairs by site admins; curators use the alias endpoints."""
 
     list_display = ["alias", "node", "added_by", "added_at", "removed_by", "removed_at"]
     search_fields = ["alias"]

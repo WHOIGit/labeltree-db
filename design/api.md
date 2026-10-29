@@ -477,7 +477,8 @@ ones again; the whole tree is still re-checked. A job's status:
  retrying: [{aphia_id: 149122, attempt: 2, retries: 4, wait_until: "..."}],
  paused: null,                           # or {reason: "worms_rate_limited", until: "..."}
  failed: [{aphia_id: 148985, reason: "worms_unreachable", detail: "..."}],
- rows_added: null}                       # warning-history rows written, once finished
+ aphia_ids: null,                        # the AphiaIDs asked for, if any
+ checked: []}                            # syncs, once finished: [{tree, rev, rows_added}]
 ```
 
 ### Draft edits and publishing
@@ -500,7 +501,8 @@ publish on a tree is running, other publishes on that tree get `409`
 ### Example: validate
 
 `validate` checks a change list against the latest revision without saving
-anything and without calling WoRMS. A blocked `publish` returns the same body ([Errors](#errors-and-status-codes)).
+anything and without calling WoRMS; for a draft behind the latest revision,
+the result shows what publishing after a rebase would do. A blocked `publish` returns the same body ([Errors](#errors-and-status-codes)).
 
 ```
 POST /trees/taxonomy/validate
@@ -562,8 +564,8 @@ POST /trees/taxonomy/validate
   positions in the submitted `changes` it was built from, so a client can show
   errors and groups against the list the user composed. Errors' `seq` refer to
   `reduced_changes`.
-- `node_changes` is the net change of each affected node, from the base
-  revision to the result: changed `fields` as `[old, new]`, children gained and
+- `node_changes` is the net change of each affected node, from the revision
+  the changes were checked against (the latest) to the result: changed `fields` as `[old, new]`, children gained and
   lost, `successors` if deprecated, the `seqs` that touch it and the `groups`
   of their sources. It doesn't depend on the order of the changes.
 - `warnings` are the [WoRMS warnings](worms.md#the-warnings) the changes would

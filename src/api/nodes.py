@@ -1,12 +1,29 @@
-"""/nodes/{id} read endpoints (spec: node-read-api)."""
+"""/nodes/{id} endpoints (specs: node-read-api, node-aliases, node-descriptions).
 
-from ninja import Router
+Reads are anonymous. Aliases and descriptions are unversioned and change
+directly, outside changesets, by a `drafter` in the node's organization.
+"""
 
+from django.db import IntegrityError, transaction
+from django.http import HttpResponse
+from django.utils import timezone
+from ninja import Router, Schema
+
+from accounts.models import Role
+from accounts.roles import require
 from core.changesets import latest_rev
-from core.models import Node, NodeVersion
+from core.models import Node, NodeAlias, NodeDescription, NodeVersion
 from worms.models import NodeWarnings
 
-from .conventions import bad_parameter, not_found, paginate, parse_depth, resolve_rev, respond
+from .conventions import (
+    APIError,
+    bad_parameter,
+    not_found,
+    paginate,
+    parse_depth,
+    resolve_rev,
+    respond,
+)
 from .serializers import RevisionView, deprecation_record
 
 router = Router(tags=["nodes"])
@@ -124,3 +141,122 @@ def node_warning_history(request, node_id: int, limit: int | None = None, offset
         ],
     }
     return respond(request, data)
+
+
+# --- Aliases and descriptions -----------------------------------------------------------
+
+
+class AliasIn(Schema):
+    alias: str
+
+
+class DescriptionIn(Schema):
+    description: str
+
+
+def changeable_node(request, node_id: int) -> Node:
+    """A node the user may change aliases and descriptions of: `drafter`, and not
+    deprecated (409)."""
+    node = get_node(node_id)
+    require(request.user, node.tree_id, Role.DRAFTER)
+    if node.deprecated_in_rev is not None:
+        raise APIError(
+            409, "node_deprecated",
+            f"Node {node_id} was deprecated in revision {node.deprecated_in_rev}.",
+        )  # fmt: skip
+    return node
+
+
+def alias_body(alias: NodeAlias, history: bool) -> dict:
+    body = {"id": alias.id, "alias": alias.alias}
+    if history:
+        body |= {
+            "added_by": alias.added_by, "added_at": alias.added_at.isoformat(),
+            "removed_by": alias.removed_by,
+            "removed_at": alias.removed_at.isoformat() if alias.removed_at else None,
+        }  # fmt: skip
+    return body
+
+
+@router.get("/{node_id}/aliases", auth=None)
+def node_aliases(
+    request, node_id: int, history: bool = False, limit: int | None = None, offset: int = 0
+):
+    """Current aliases; with history, removed ones too, newest first, paginated."""
+    node = get_node(node_id)
+    aliases = NodeAlias.objects.filter(node=node)
+    if not history:
+        current = aliases.filter(removed_at__isnull=True).order_by("id")
+        return respond(request, {"id": node.id, "aliases": [alias_body(a, False) for a in current]})
+    page, count = paginate(aliases.order_by("-added_at", "-id"), limit, offset)
+    data = {"id": node.id, "count": count, "aliases": [alias_body(a, True) for a in page]}
+    return respond(request, data)
+
+
+@router.post("/{node_id}/aliases")
+def add_alias(request, node_id: int, body: AliasIn):
+    node = changeable_node(request, node_id)
+    text = body.alias.strip()
+    if not text:
+        raise bad_parameter("alias must not be empty.")
+    duplicate = APIError(409, "alias_exists", f"Node {node_id} already has alias {text!r}.")
+    if NodeAlias.objects.filter(node=node, alias=text, removed_at__isnull=True).exists():
+        raise duplicate
+    try:
+        with transaction.atomic():
+            alias = NodeAlias.objects.create(
+                node=node, alias=text, added_by=request.user.get_username(),
+                added_at=timezone.now(),
+            )  # fmt: skip
+    except IntegrityError:  # added concurrently
+        raise duplicate from None
+    response = respond(request, {"id": alias.id, "alias": alias.alias})
+    response.status_code = 201
+    return response
+
+
+@router.delete("/{node_id}/aliases/{alias_id}")
+def remove_alias(request, node_id: int, alias_id: int):
+    node = get_node(node_id)
+    require(request.user, node.tree_id, Role.DRAFTER)
+    removed = NodeAlias.objects.filter(pk=alias_id, node=node, removed_at__isnull=True).update(
+        removed_by=request.user.get_username(), removed_at=timezone.now()
+    )
+    if not removed:
+        raise not_found(f"Node {node_id} has no current alias {alias_id}.")
+    return HttpResponse(status=204)
+
+
+def description_body(entry: NodeDescription) -> dict:
+    return {
+        "description": entry.description, "added_by": entry.added_by,
+        "added_at": entry.added_at.isoformat(),
+    }  # fmt: skip
+
+
+@router.get("/{node_id}/description", auth=None)
+def node_description(
+    request, node_id: int, history: bool = False, limit: int | None = None, offset: int = 0
+):
+    """The current description; with history, every entry, newest first, paginated."""
+    node = get_node(node_id)
+    entries = NodeDescription.objects.filter(node=node).order_by("-added_at", "-id")
+    if not history:
+        newest = entries.first()
+        return respond(
+            request, {"id": node.id, "description": newest.description if newest else ""}
+        )
+    page, count = paginate(entries, limit, offset)
+    data = {"id": node.id, "count": count, "history": [description_body(e) for e in page]}
+    return respond(request, data)
+
+
+@router.put("/{node_id}/description")
+def set_description(request, node_id: int, body: DescriptionIn):
+    """Add a description entry; "" clears the description. Earlier entries are kept."""
+    node = changeable_node(request, node_id)
+    NodeDescription.objects.create(
+        node=node, description=body.description, added_by=request.user.get_username(),
+        added_at=timezone.now(),
+    )  # fmt: skip
+    return respond(request, {"id": node.id, "description": body.description})

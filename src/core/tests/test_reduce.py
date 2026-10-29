@@ -1,6 +1,6 @@
 """Op reduction on save."""
 
-from core.engine import apply_changes, reduce_changes, specs_from_dicts
+from core.engine import apply_changes, check_changes, reduce_changes, specs_from_dicts
 
 from .helpers import add, deprecate, edit, make_state, move, specs
 
@@ -174,3 +174,102 @@ def test_reduction_keeps_existing_errors_and_state():
         apply_changes(base, reduced).state.contents()
         == apply_changes(base, changes).state.contents()
     )
+
+
+# --- Sources: which submitted changes each reduced change was built from ---------------
+
+
+def sources(*changes, base=BASE):
+    return [(c.op, c.node, c.sources) for c in reduce_changes(make_state(base), specs(*changes))]
+
+
+def test_unreduced_changes_keep_their_own_position():
+    assert sources(edit(4, label="a"), move(5, 1, 2)) == [("edit", 4, (1,)), ("move", 5, (2,))]
+
+
+def test_split_then_rename():
+    """An add folded with a later edit is built from both, whatever their groups."""
+    changes = (
+        add("new:1", "x1", parent=1, group="split#1"),
+        add("new:2", "x2", parent=1, group="split#1"),
+        deprecate(4, successors=["new:1", "new:2"], group="split#1"),
+        edit(5, label="y2"),
+        move(5, 1, 2),
+        edit("new:1", label="x_one"),
+    )
+    out = reduce_changes(make_state(BASE), specs(*changes))
+    (folded,) = [c for c in out if c.node == "new:1"]
+    assert (folded.op, folded.group, folded.sources) == ("add", None, (1, 6))
+    assert [c.sources for c in out if c.node == 5] == [(4,), (5,)]
+
+
+def test_label_swap_kept_apart():
+    out = sources(edit(4, label="tmp"), edit(5, label="x"), edit(4, label="y"))
+    assert out == [("edit", 4, (1,)), ("edit", 5, (2,)), ("edit", 4, (3,))]
+
+
+def test_move_undone_by_hand():
+    assert sources(move(4, 1, 2), edit(5, label="z"), move(4, 2, 1)) == [("edit", 5, (2,))]
+    assert sources(move(4, 1, 2), edit(5, label="z"), move(4, 2, 3)) == [
+        ("edit", 5, (2,)), ("move", 4, (1, 3)),
+    ]  # fmt: skip
+
+
+def test_chained_deprecations_keep_both_sources():
+    out = sources(deprecate(4, successors=[5]), deprecate(5, successors=[3]))
+    assert out == [("deprecate", 4, (1, 2)), ("deprecate", 5, (2,))]
+
+
+def test_dropped_changes_leave_no_sources():
+    assert sources(edit(4, label="w"), deprecate(4)) == [("deprecate", 4, (2,))]
+    assert sources(add("new:1", "a"), edit(4, label="w"), deprecate("new:1")) == [("edit", 4, (2,))]
+
+
+# --- Net changes per node ---------------------------------------------------------------
+
+
+def net(*changes, base=BASE):
+    state = make_state(base)
+    submitted = specs(*changes)
+    result = check_changes(state, submitted)
+    return {e["node"]: e for e in result.node_changes}
+
+
+def test_split():
+    # P(1) > A(4) > C1(6), C2(7): split A into new:1 and new:2 under P.
+    base = BASE + [(6, "c1", 4), (7, "c2", 4)]
+    out = net(
+        add("new:1", "x1", parent=1, group="split#1"),
+        add("new:2", "x2", parent=1, group="split#1"),
+        move(6, 4, "new:1", group="split#1"),
+        move(7, 4, "new:2", group="split#1"),
+        deprecate(4, successors=["new:1", "new:2"], group="split#1"),
+        base=base,
+    )
+    assert set(out) == {1, 4, 6, 7, "new:1", "new:2"}
+    assert (out[4]["to"], out[4]["successors"]) == (None, ["new:1", "new:2"])
+    assert out["new:1"]["fields"] == {"label": [None, "x1"], "parent": [None, 1]}
+    assert (out["new:1"]["from"], out["new:1"]["to"]) == (None, 1)
+    assert out["new:1"]["children_gained"] == [6]
+    assert out[1]["children_gained"] == ["new:1", "new:2"] and out[1]["children_lost"] == [4]
+    assert out[6]["fields"] == {"parent": [4, "new:1"]}
+    assert all(e["groups"] == ["split#1"] for e in out.values())
+
+
+def test_temporary_label_hidden():
+    out = net(edit(4, label="tmp"), edit(5, label="x"), edit(4, label="y"))
+    assert out[4]["fields"] == {"label": ["x", "y"]}
+    assert out[5]["fields"] == {"label": ["y", "x"]}
+    assert out[4]["seqs"] == [1, 3]
+
+
+def test_order_does_not_matter():
+    a = net(edit(4, label="w"), move(5, 1, 2))
+    b = net(move(5, 1, 2), edit(4, label="w"))
+    strip = lambda d: {k: {f: v for f, v in e.items() if f != "seqs"} for k, e in d.items()}  # noqa: E731
+    assert strip(a) == strip(b)
+
+
+def test_split_add_renamed_by_hand_keeps_its_group():
+    out = net(add("new:1", "a", parent=2, group="split#1"), edit("new:1", label="b"))
+    assert out["new:1"]["groups"] == ["split#1"] and out["new:1"]["fields"]["label"] == [None, "b"]

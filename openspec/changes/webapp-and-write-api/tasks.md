@@ -3,10 +3,10 @@
 ## 1. Authentication and roles
 
 - [x] 1.1 Add the `ApiToken` model (hashed key shown once, `last_used_at`, revocation) and token and session auth as the API's global default, with the read routes and `/health` opting out; verify a test that walks every API route against the anonymous list (`401` for the rest), plus the revoked-token and script-token scenarios
-- [ ] 1.2 Add `Organization`, `OrgMember` (one ordered role per user and organization, superusers as owner) and `Tree.org` (existing trees into `amplify`), and `require(user, tree, minimum)` through the tree's organization, applied to every changeset, job, lookup, alias, description and member endpoint; verify a role × endpoint matrix covering the `access-control` scenarios, including approvers drafting and publishing their own drafts, members of another organization, and trees added to an organization after a member joined
+- [x] 1.2 Add `Organization`, `OrgMember` (one ordered role per user and organization, superusers as owner) and `Tree.org` (existing trees into `amplify`), and `require(user, tree, minimum)` through the tree's organization, applied to every changeset, job, lookup, alias, description and member endpoint; verify a role × endpoint matrix covering the `access-control` scenarios, including approvers drafting and publishing their own drafts, members of another organization, and trees added to an organization after a member joined
 - [x] 1.3 Implement `GET /orgs`, `GET /orgs/{org}`, `org` in `GET /trees`, and `GET/PUT/DELETE /orgs/{org}/members[/{username}]` with the last-owner rule under a row lock (superusers exempt); verify the trees-by-organization, owner, co-owner, approver-refused and last-owner scenarios
-- [ ] 1.4 Store a new-tree changeset's organization (`new_tree.org`, `--org` for `import_tree`), require `owner` there to create, change, publish or discard it and `reader` to see it, and create the tree in it on publish; verify the drafter-proposes and owner-creates-a-tree scenarios
-- [ ] 1.5 Record authenticated usernames in `author`, `published_by`, alias, description and WoRMS job `started_by` fields; verify the publish-via-token scenario
+- [x] 1.4 Store a new-tree changeset's organization (`new_tree.org`, `--org` for `import_tree`), require `owner` there to create, change, publish or discard it and `reader` to see it, and create the tree in it on publish; verify the drafter-proposes and owner-creates-a-tree scenarios
+- [x] 1.5 Record authenticated usernames in `author`, `published_by`, alias, description and WoRMS job `started_by` fields; verify the publish-via-token scenario
 - [x] 1.6 Register users, tokens, organizations, `OrgMember` and a tree's organization (its only editable field) in Django admin for site admins, and document issuing a token, creating an organization and making an owner in README.md; verify the documented steps produce a working token and owner
 - [x] 1.7 Rate-limit logins (django-axes, per username and address behind the proxy) and add the Apache site config with TLS-aware Django settings; verify lockout, reset and spoofed `X-Forwarded-For` tests
 
@@ -20,17 +20,17 @@
 
 ## 3. Changeset API
 
-- [ ] 3.1 Track `sources` through reduction (union on merge and collapse, kept by renumber); verify the existing reduction tests plus the split-then-rename, label-swap and move-undone examples
-- [ ] 3.2 Compute `node_changes` from base and final states with touching `seq`s and source groups; verify the split and temporary-label scenarios
-- [ ] 3.3 Implement `POST /trees/{tree}/validate` (cache only) returning errors, conflicts (`stale_base` with changed touched nodes), `reduced_changes` with `sources`, `version_changes`, `node_changes`, `warnings`, `warning_changes`, `unchecked`, `worms_missing` and `worms`; verify the validate scenarios and that nothing is stored and WoRMS is not called
-- [ ] 3.4 Implement create (tree and new-tree forms, saved even with structural errors), list by state (paginated) and get with `ETag` and validation; verify the create, draft-with-errors and get scenarios
-- [ ] 3.5 Implement `PUT` (replace and rebase) and `publish` with `If-Match` (`428`, `412`) under a row lock, `201` responses, approver notes, `409`/`422` with `validation`, and `DELETE` discard (`204`); verify every remaining `changeset-api` scenario
+- [x] 3.1 Track `sources` through reduction (union on merge and collapse, kept by renumber); verify the existing reduction tests plus the split-then-rename, label-swap and move-undone examples
+- [x] 3.2 Compute `node_changes` from base and final states with touching `seq`s and source groups; verify the split and temporary-label scenarios
+- [x] 3.3 Implement `POST /trees/{tree}/validate` (cache only) returning errors, conflicts (`stale_base` with changed touched nodes), `reduced_changes` with `sources`, `version_changes`, `node_changes`, `warnings`, `warning_changes`, `unchecked`, `worms_missing` and `worms`; verify the validate scenarios and that nothing is stored and WoRMS is not called
+- [x] 3.4 Implement create (tree and new-tree forms, saved even with structural errors), list by state (paginated) and get with `ETag` and validation; verify the create, draft-with-errors and get scenarios
+- [x] 3.5 Implement `PUT` (replace and rebase) and `publish` with `If-Match` (`428`, `412`) under a row lock, `201` responses, approver notes, `409`/`422` with `validation`, and `DELETE` discard (`204`); verify every remaining `changeset-api` scenario
 
 ## 4. Alias and description endpoints, and cloning
 
-- [ ] 4.1 Implement `POST /nodes/{id}/aliases` (`201`, `409` duplicate, refused on deprecated nodes), `DELETE .../aliases/{alias_id}` (`204`) and `GET .../aliases?history=`; verify the `node-aliases` scenarios
-- [ ] 4.2 Implement `PUT /nodes/{id}/description` (`200`, `409` on deprecated nodes) and `GET .../description?history=`; verify the `node-descriptions` scenarios
-- [ ] 4.3 Implement the server-side clone expander (revision to new-tree changeset with `import#1`) for tests and management use, matching the client expander; verify the clone scenarios
+- [x] 4.1 Implement `POST /nodes/{id}/aliases` (`201`, `409` duplicate, refused on deprecated nodes), `DELETE .../aliases/{alias_id}` (`204`) and `GET .../aliases?history=`; verify the `node-aliases` scenarios
+- [x] 4.2 Implement `PUT /nodes/{id}/description` (`200`, `409` on deprecated nodes) and `GET .../description?history=`; verify the `node-descriptions` scenarios
+- [x] 4.3 Implement the server-side clone expander (revision to new-tree changeset with `import#1`) for tests and management use, matching the client expander; verify the clone scenarios
 
 ## 5. Web app shell
 

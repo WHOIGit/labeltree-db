@@ -164,12 +164,18 @@ def load_state(tree_id: str, rev: int) -> TreeState:
 
 @dataclass
 class ChangeSpec:
-    """One atomic change: op, payload of its arguments, and the macro group it belongs to."""
+    """One atomic change: op, payload of its arguments, and the macro group it belongs to.
+
+    `sources` are the positions (1-based) in the submitted list this change was
+    built from; reduction combines them when it merges changes. Not stored: a
+    saved draft's reduced list is its new submitted list.
+    """
 
     seq: int
     op: str
     payload: dict = field(default_factory=dict)
     group: str | None = None
+    sources: tuple[int, ...] = ()
 
     @property
     def node(self):
@@ -185,12 +191,15 @@ def specs_from_dicts(changes) -> list[ChangeSpec]:
     specs = []
     for seq, change in enumerate(changes, start=1):
         if not isinstance(change, dict):
-            specs.append(ChangeSpec(seq=seq, op=None, payload=None))
+            specs.append(ChangeSpec(seq=seq, op=None, payload=None, sources=(seq,)))
             continue
         payload = {k: v for k, v in change.items() if k not in ("op", "group", "seq")}
         specs.append(
-            ChangeSpec(seq=seq, op=change.get("op"), payload=payload, group=change.get("group"))
-        )
+            ChangeSpec(
+                seq=seq, op=change.get("op"), payload=payload, group=change.get("group"),
+                sources=(seq,),
+            )
+        )  # fmt: skip
     return specs
 
 
@@ -398,6 +407,64 @@ def version_changes(before: TreeState, after: TreeState) -> list[VersionChange]:
     return result
 
 
+def refs_in(change: ChangeSpec) -> set:
+    """Every node a change names: the node, its parents and successors."""
+    p = change.payload if isinstance(change.payload, dict) else {}
+    refs = [p.get(k) for k in ("node", "parent", "from_parent", "to_parent")]
+    if isinstance(p.get("successors"), list):
+        refs += p["successors"]
+    return {r for r in refs if is_node_ref(r)}
+
+
+def node_changes(
+    before: TreeState, after: TreeState, reduced: list[ChangeSpec], submitted: list[ChangeSpec]
+) -> list[dict]:
+    """The net change of each node whose content, parent, children or deprecation
+    differs between two states, whatever the order of the changes in between.
+
+    Each entry: version `from` and `to`, changed `fields` as [old, new] (label,
+    aphia_id, parent), `children_gained` and `children_lost`, `successors` if
+    deprecated, the `seqs` of the reduced changes naming the node, and the
+    `groups` of those changes' sources in `submitted`.
+    """
+    versions = {vc.node: vc for vc in version_changes(before, after)}
+    deprecations = {c.node: c for c in reduced if c.op == "deprecate"}
+    groups_of = {c.seq: c.group for c in submitted}
+    touching_of: dict[NodeRef, list[ChangeSpec]] = {}
+    for c in reduced:
+        for ref in refs_in(c):
+            touching_of.setdefault(ref, []).append(c)
+    entries = []
+    for ref, vc in versions.items():
+        old, new = before.nodes.get(ref), after.nodes.get(ref)
+        fields = {}
+        for name in ("label", "aphia_id", "parent"):
+            was = getattr(old, name) if old else None
+            now = getattr(new, name) if new else None
+            if new is not None and was != now:
+                fields[name] = [was, now]
+        kids_before = before.child_set(ref) if old else frozenset()
+        kids_after = after.child_set(ref) if new else frozenset()
+        touching = touching_of.get(ref, [])
+        groups = []
+        for c in touching:
+            for source in c.sources:
+                group = groups_of.get(source)
+                if group is not None and group not in groups:
+                    groups.append(group)
+        entry = {
+            "node": ref, "from": vc.from_version, "to": vc.to_version, "fields": fields,
+            "children_gained": sorted(kids_after - kids_before, key=ref_sort_key),
+            "children_lost": sorted(kids_before - kids_after, key=ref_sort_key),
+            "seqs": [c.seq for c in touching], "groups": groups,
+        }  # fmt: skip
+        if new is None:
+            dep = deprecations.get(ref)
+            entry["successors"] = list(dep.payload.get("successors", [])) if dep else []
+        entries.append(entry)
+    return entries
+
+
 # --- Reduction -----------------------------------------------------------------
 #
 # Reduction rewrites the change list per node, whatever the groups: groups only
@@ -410,8 +477,13 @@ def _without(changes, *indexes):
     return [c for i, c in enumerate(changes) if i not in drop]
 
 
+def _union(*changes: ChangeSpec) -> tuple[int, ...]:
+    return tuple(sorted({s for c in changes for s in c.sources}))
+
+
 def _merged(changes, i: int, j: int, new: ChangeSpec):
-    """Replace changes i < j with `new`: at j (preferred), then at i."""
+    """Replace changes i < j with `new`, built from both: at j (preferred), then at i."""
+    new = replace(new, sources=_union(changes[i], changes[j]))
     later = list(changes)
     later[j] = new
     del later[i]
@@ -465,7 +537,9 @@ def _collapse_candidates(changes):
                     if r not in expanded and r != c.node:
                         expanded.append(r)
             if expanded != successors:
-                new = replace(c, payload={**c.payload, "successors": expanded})
+                new = replace(
+                    c, payload={**c.payload, "successors": expanded}, sources=_union(c, later)
+                )
                 yield [new if k == i else x for k, x in enumerate(changes)]
 
 
@@ -572,6 +646,7 @@ class CheckResult:
     errors: list[dict]
     state: TreeState
     version_changes: list[VersionChange]
+    node_changes: list[dict] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -596,4 +671,7 @@ def check_changes(base: TreeState, changes: list[ChangeSpec]) -> CheckResult:
                 "detail": "The changeset has no changes left after reduction.",
             }
         )
-    return CheckResult(reduced, errors, result.state, version_changes(base, result.state))
+    return CheckResult(
+        reduced, errors, result.state, version_changes(base, result.state),
+        node_changes(base, result.state, reduced, changes),
+    )  # fmt: skip

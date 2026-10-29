@@ -7,7 +7,9 @@ from django.test import Client
 
 from accounts.models import ApiToken, Organization, OrgMember, Role
 from api.api import api
-from core.tests.helpers import add, publish_new_tree
+from core.changesets import NewTree, create_changeset
+from core.models import NodeAlias
+from core.tests.helpers import add, edit, publish_new_tree
 from worms import sync
 
 from .conftest import call, logged_in, make_user
@@ -25,6 +27,8 @@ ANONYMOUS_ROUTES = {
     "GET /nodes/{node_id}/versions",
     "GET /nodes/{node_id}/versions/{version}",
     "GET /nodes/{node_id}/warning_history",
+    "GET /nodes/{node_id}/aliases",
+    "GET /nodes/{node_id}/description",
     "GET /trees",
     "GET /trees/{tree_id}",
     "GET /trees/{tree_id}/revisions",
@@ -42,7 +46,7 @@ ANONYMOUS_ROUTES = {
 SAMPLE_PARAMS = {
     "tree_id": "taxonomy", "node_id": "1", "version": "1", "rev": "1", "label": "other",
     "username": "someone", "org_id": "amplify", "job_id": "j1", "aphia_id": "148985",
-    "a": "148985", "b": "149122",
+    "a": "148985", "b": "149122", "cs": "1", "alias_id": "1",
 }  # fmt: skip
 
 
@@ -179,6 +183,26 @@ MATRIX = [
     ("get", "/worms/jobs", None, "none"),
     ("get", "/worms/148985", None, "none"),
     ("get", "/worms/148985/lineage", None, "none"),
+    ("post", "/trees/taxonomy/validate", {"base_rev": 1, "changes": []}, "drafter"),
+    ("post", "/trees/taxonomy/changesets", {"base_rev": 1, "changes": []}, "drafter"),
+    ("get", "/trees/taxonomy/changesets", None, "reader"),
+    ("get", "/changesets/{draft}", None, "reader"),
+    ("put", "/changesets/{draft}", {"notes": "x"}, "drafter"),
+    ("post", "/changesets/{draft}/publish", None, "approver"),
+    ("delete", "/changesets/{draft}", None, "drafter"),
+    (
+        "post",
+        "/changesets",
+        {"new_tree": {"id": "t2", "title": "T", "org": "amplify"}, "changes": []},
+        "owner",
+    ),
+    ("get", "/changesets/{new_tree_draft}", None, "reader"),
+    ("put", "/changesets/{new_tree_draft}", {"notes": "x"}, "owner"),
+    ("post", "/changesets/{new_tree_draft}/publish", None, "owner"),
+    ("delete", "/changesets/{new_tree_draft}", None, "owner"),
+    ("post", "/nodes/6/aliases", {"alias": "x"}, "drafter"),
+    ("delete", "/nodes/5/aliases/{alias}", None, "drafter"),
+    ("put", "/nodes/6/description", {"description": "x"}, "drafter"),
 ]
 
 
@@ -193,6 +217,12 @@ def user_with(level: str, org_id="amplify"):
 def test_role_matrix(level, method, path, body, minimum, taxonomy, fake_jobs):
     make_user("target", roles={"amplify": "reader"})
     make_user("other_owner", roles={"amplify": "owner"})
+    draft = create_changeset(author="a", changes=[edit(6, label="x")], tree=taxonomy, base_rev=1)
+    new_tree_draft = create_changeset(
+        author="a", changes=[add("new:1", "a")], new_tree=NewTree("t3", "T", "amplify")
+    )
+    alias = NodeAlias.objects.get(node_id=5)
+    path = path.format(draft=draft.pk, new_tree_draft=new_tree_draft.pk, alias=alias.pk)
     client = logged_in(user_with(level))
     status, _ = call(client, method, path, body)
     allowed = LADDER.index(level) >= LADDER.index(minimum)

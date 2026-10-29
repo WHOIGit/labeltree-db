@@ -10,6 +10,8 @@ makes the affected changes' checks "unavailable" and never blocks; the fetch
 step before validating, or a later sync, fills it in.
 """
 
+import hashlib
+import json
 from dataclasses import dataclass
 
 from django.db import connection, transaction
@@ -74,7 +76,7 @@ def base_state(changeset: Changeset) -> TreeState:
 
 def stored_specs(changeset: Changeset) -> list[ChangeSpec]:
     return [
-        ChangeSpec(seq=c.seq, op=c.op, payload=c.payload, group=c.group)
+        ChangeSpec(seq=c.seq, op=c.op, payload=c.payload, group=c.group, sources=(c.seq,))
         for c in changeset.changes.order_by("seq")
     ]
 
@@ -98,6 +100,23 @@ def records_for(base: TreeState, specs: list[ChangeSpec]) -> dict:
 def _save_reduced(changeset: Changeset, base: TreeState, reduced: list[ChangeSpec]):
     checks, _ = change_checks(base, reduced, records_for(base, reduced))
     _store_changes(changeset, reduced, checks)
+
+
+def changeset_etag(changeset: Changeset) -> str:
+    """Identifies a changeset's current content, for If-Match: a hash of its id,
+    `updated_at`, `base_rev` and stored changes."""
+    changes = list(changeset.changes.order_by("seq").values_list("seq", "op", "group", "payload"))
+    content = [changeset.pk, changeset.updated_at.isoformat(), changeset.base_rev, changes]
+    digest = hashlib.sha256(json.dumps(content, sort_keys=True, default=str).encode())
+    return f'"{digest.hexdigest()}"'
+
+
+def _check_if_match(changeset: Changeset, if_match: str | None):
+    """With `if_match` given, refuse unless it is the (locked) changeset's ETag."""
+    if if_match is not None and if_match != changeset_etag(changeset):
+        raise ChangesetError(
+            "precondition_failed", f"Changeset {changeset.pk} changed since it was fetched."
+        )
 
 
 def _require_draft(changeset: Changeset):
@@ -152,11 +171,18 @@ def create_changeset(
 
 @transaction.atomic
 def update_changeset(
-    changeset: Changeset, *, changes: list[dict] | None = None, notes=None, base_rev=None
+    changeset: Changeset,
+    *,
+    changes: list[dict] | None = None,
+    notes=None,
+    base_rev=None,
+    if_match: str | None = None,
 ) -> Changeset:
-    """Replace a draft's changes, notes or base revision; changes are reduced on save."""
+    """Replace a draft's changes, notes or base revision; changes are reduced on save.
+    With `if_match`, refused (precondition_failed) unless the draft is unchanged."""
     changeset = Changeset.objects.select_for_update().get(pk=changeset.pk)
     _require_draft(changeset)
+    _check_if_match(changeset, if_match)
     if base_rev is not None:
         if changeset.tree_id is None:
             raise ChangesetError("invalid_base_rev", "A new-tree changeset has no base revision.")
@@ -216,10 +242,13 @@ def _rewrite_payload(payload: dict, ids: dict) -> dict:
     return {k: _rewrite(v, ids) if k in refs else v for k, v in payload.items()}
 
 
-def publish_changeset(changeset: Changeset, *, published_by: str, notes=None) -> TreeRevision:
+def publish_changeset(
+    changeset: Changeset, *, published_by: str, notes=None, if_match: str | None = None
+) -> TreeRevision:
     """Publish a draft as its tree's next revision (or a new tree's revision 1).
 
-    Refused with ChangesetError: publish_in_progress, not_draft, tree_exists,
+    Refused with ChangesetError: publish_in_progress, not_draft,
+    precondition_failed (`if_match` given and the draft changed), tree_exists,
     stale_base, or structural (with the per-change errors, including
     empty_changeset). WoRMS warnings never refuse a publish.
     """
@@ -228,6 +257,7 @@ def publish_changeset(changeset: Changeset, *, published_by: str, notes=None) ->
         _take_publish_lock(changeset.tree_key)
         changeset = Changeset.objects.select_for_update().get(pk=changeset.pk)
         _require_draft(changeset)
+        _check_if_match(changeset, if_match)
 
         if changeset.tree_id is None:
             if Tree.objects.filter(pk=changeset.new_tree_id).exists():
