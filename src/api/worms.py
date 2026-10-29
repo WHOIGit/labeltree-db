@@ -13,13 +13,14 @@ Jobs run in the background (worms.sync); clients poll their status.
 from ninja import Router, Schema
 
 from accounts.models import Role
-from accounts.roles import require, require_superuser
+from accounts.roles import require, require_org, require_superuser
 from worms import records, sync
 from worms.client import WormsError
 from worms.models import WormsRecord, current_warnings
 from worms.records import get_record, store_search_hit
 
 from .conventions import APIError, bad_parameter, get_tree, not_found, paginate, respond
+from .orgs import get_org
 from .trees import view_at
 
 router = Router(tags=["worms"])
@@ -31,6 +32,7 @@ router = Router(tags=["worms"])
 class JobIn(Schema):
     kind: str
     tree: str | None = None
+    org: str | None = None
     aphia_ids: list[int] | None = None
 
 
@@ -39,19 +41,25 @@ def start_job(request, body: JobIn):
     """Start a WoRMS job: 202 with its status, or 409 if it overlaps an active sync."""
     if body.kind not in sync.KINDS:
         raise bad_parameter(f"kind must be one of {', '.join(sync.KINDS)}.")
-    if body.kind == "sync_all":
-        if body.tree is not None:
-            raise bad_parameter("sync_all takes no tree.")
+    if body.kind == "fetch":
+        # Only fills the cache, so it belongs to an organization, not a tree, and
+        # serves new-tree drafts too.
+        if body.org is None or body.tree is not None:
+            raise bad_parameter("A fetch job takes an org, not a tree.")
+        if not body.aphia_ids:
+            raise bad_parameter("A fetch job needs aphia_ids.")
+        require_org(request.user, get_org(body.org).id, Role.DRAFTER)
+    elif body.kind == "sync_all":
+        if body.tree is not None or body.org is not None:
+            raise bad_parameter("sync_all takes no tree or org.")
         require_superuser(request.user)
     else:
-        if body.tree is None:
-            raise bad_parameter(f"{body.kind} needs a tree.")
+        if body.tree is None or body.org is not None:
+            raise bad_parameter(f"{body.kind} takes a tree, not an org.")
         require(request.user, get_tree(body.tree).id, Role.DRAFTER)
-    if body.kind == "fetch" and not body.aphia_ids:
-        raise bad_parameter("A fetch job needs aphia_ids.")
     try:
         status = sync.start_job(
-            body.kind, tree=body.tree, started_by=request.user.get_username(),
+            body.kind, tree=body.tree, org=body.org, started_by=request.user.get_username(),
             aphia_ids=body.aphia_ids,
         )  # fmt: skip
     except sync.SyncBusy as exc:
@@ -76,6 +84,8 @@ def job_status(request, job_id: str):
         raise not_found(f"No WoRMS job {job_id} is known; status is kept for 7 days.")
     if status["tree"] is not None:
         require(request.user, status["tree"], Role.READER)
+    elif status.get("org") is not None:
+        require_org(request.user, status["org"], Role.READER)
     return respond(request, status)
 
 

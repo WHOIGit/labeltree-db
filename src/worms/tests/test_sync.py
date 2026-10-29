@@ -180,7 +180,7 @@ def test_try_again(diatoms, worms_http):
 
 def test_fetch_before_validating(diatoms, worms_http):
     worms_http.calls.clear()
-    status = run_job("fetch", tree="diatoms", started_by="alice", aphia_ids=[149122, 110153])
+    status = run_job("fetch", org="amplify", started_by="alice", aphia_ids=[149122, 110153])
     assert (status["total"], status["done"]) == (1, 1)
     assert worms_http.calls == [RECORD.format(110153), LINEAGE.format(110153)]
     assert status["checked"] == [] and not NodeWarnings.objects.exists()
@@ -313,7 +313,7 @@ def test_sync_already_active(diatoms):
         conn.execute("SELECT pg_advisory_lock(hashtext('worms-sync:diatoms'))")
         with pytest.raises(SyncBusy):
             sync_tree()
-        run_job("fetch", tree="diatoms", started_by="a", aphia_ids=[1])  # fetches don't wait
+        run_job("fetch", org="amplify", started_by="a", aphia_ids=[1])  # fetches don't wait
     sync_tree()  # released when that connection closed
 
 

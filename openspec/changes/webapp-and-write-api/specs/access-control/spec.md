@@ -30,7 +30,7 @@ authentication. Unauthenticated API requests SHALL get `401`, and web app pages
 that need a login SHALL redirect to the login page.
 
 #### Scenario: Anonymous validate
-- **WHEN** a request without credentials calls `POST /api/v1/trees/{tree}/validate`
+- **WHEN** a request without credentials calls `POST /api/v1/changesets/validate`
 - **THEN** the API returns `401`
 
 #### Scenario: Anonymous WoRMS search
@@ -104,8 +104,9 @@ organization.
 
 ### Requirement: Drafter permissions
 `drafter` SHALL allow creating, updating, rebasing and discarding any draft on
-the organization's trees, not only one's own, running `validate`, starting fetch, `sync_new`
-and `sync_tree` jobs, adding and removing aliases, and setting descriptions.
+the organization's trees, not only one's own, validating changes to them,
+starting fetch jobs for the organization and `sync_new` and `sync_tree` jobs
+on its trees, adding and removing aliases, and setting descriptions.
 
 #### Scenario: Editing another drafter's draft
 - **WHEN** drafter B updates a draft created by drafter A in the same organization
@@ -166,10 +167,10 @@ able to read a full cache sync's status.
 - **THEN** the API returns `403`
 
 ### Requirement: Creating trees
-Creating, updating, publishing, discarding and seeing a new-tree changeset
-(`base_rev: null`) SHALL require the role it names in its `new_tree.org`:
-`owner` to change or publish it, `reader` to see it. Publishing it SHALL create
-the tree in that organization.
+Validating, creating, updating, publishing, discarding and seeing a new-tree
+changeset (`base_rev: null`) SHALL require a role in the organization named in
+its `new_tree.org`: `owner` to validate, change or publish it, `reader` to see
+it. Publishing it SHALL create the tree in that organization.
 
 #### Scenario: Drafter proposes a new tree
 - **WHEN** a user who is `drafter` in `amplify` creates a changeset with `base_rev: null` and `new_tree.org` `amplify`

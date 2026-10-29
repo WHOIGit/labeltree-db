@@ -4,6 +4,7 @@ worms-records, worms-sync).
 | kind        | fetches                                              | then              |
 |-------------|------------------------------------------------------|-------------------|
 | `fetch`     | the given AphiaIDs without a complete cached record  | nothing           |
+|             | (for an organization, not a tree)                    |                   |
 | `sync_new`  | the tree's AphiaIDs without a complete cached record | re-check the tree |
 | `sync_tree` | every AphiaID in the tree's latest revision          | re-check the tree |
 | `sync_all`  | every cached AphiaID and every tree's AphiaIDs       | re-check all trees|
@@ -173,9 +174,9 @@ def clear_jobs() -> int:
 class _Job:
     """A running job's status, saved to the cache on every change."""
 
-    def __init__(self, job_id, kind, tree_id, started_by, aphia_ids, total):
+    def __init__(self, job_id, kind, tree_id, org_id, started_by, aphia_ids, total):
         self.status = {
-            "id": job_id, "kind": kind, "tree": tree_id, "started_by": started_by,
+            "id": job_id, "kind": kind, "tree": tree_id, "org": org_id, "started_by": started_by,
             "started_at": _now().isoformat(), "finished_at": None, "state": "running",
             "aphia_ids": aphia_ids, "total": total, "done": 0, "failed": [],
             "retrying": [], "paused": None, "checked": [],
@@ -369,6 +370,7 @@ def run_job(
     kind: str,
     *,
     tree: str | None = None,
+    org: str | None = None,
     started_by: str,
     aphia_ids: list[int] | None = None,
     scheduled: bool = False,
@@ -396,7 +398,7 @@ def run_job(
             held.append((key, shared))
 
         ids = ids_to_fetch(kind, tree, aphia_ids)
-        job = _Job(job_id, kind, tree, started_by, aphia_ids, len(ids))
+        job = _Job(job_id, kind, tree, org, started_by, aphia_ids, len(ids))
         pointer_tree = None if kind == "sync_all" else tree
         if kind in SYNC_KINDS:
             _set_pointer(pointer_tree, active=job_id)
@@ -426,7 +428,9 @@ def run_job(
             _unlock(key, shared=shared)
 
 
-def start_job(kind: str, *, tree=None, started_by: str, aphia_ids=None, wait=10.0) -> dict:
+def start_job(
+    kind: str, *, tree=None, org=None, started_by: str, aphia_ids=None, wait=10.0
+) -> dict:
     """Start a job on a background thread and return its first status. Raises
     SyncBusy if an overlapping sync is active."""
     started = threading.Event()
@@ -438,7 +442,7 @@ def start_job(kind: str, *, tree=None, started_by: str, aphia_ids=None, wait=10.
 
     def work():
         try:
-            run_job(kind, tree=tree, started_by=started_by, aphia_ids=aphia_ids,
+            run_job(kind, tree=tree, org=org, started_by=started_by, aphia_ids=aphia_ids,
                     on_started=on_started)  # fmt: skip
         except SyncBusy:
             pass

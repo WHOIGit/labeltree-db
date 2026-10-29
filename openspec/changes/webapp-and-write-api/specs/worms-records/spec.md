@@ -19,18 +19,19 @@ SHALL NOT call WoRMS; they use cached records only.
 ## ADDED Requirements
 
 ### Requirement: WoRMS fetch jobs
-`POST /worms/jobs` with `{kind: "fetch", tree, aphia_ids[]}` SHALL start
-a job that fetches, record and lineage, each listed AphiaID that has no complete
-cached record, and return `202` with the job's status. A fetch job SHALL only
-fill the cache; it SHALL NOT write warnings. Fetch jobs SHALL NOT exclude each
-other or sync jobs.
+`POST /worms/jobs` with `{kind: "fetch", org, aphia_ids[]}` SHALL start a job
+that fetches, record and lineage, each listed AphiaID that has no complete
+cached record, and return `202` with the job's status. It SHALL need `drafter`
+in the organization, whose members (`reader`) see its status. A fetch job SHALL
+only fill the cache; it SHALL NOT write warnings. Fetch jobs SHALL NOT exclude
+each other or sync jobs.
 
 #### Scenario: Fetch before validating
 - **WHEN** a drafter starts a fetch job for AphiaIDs 149122 and 148985, and only 149122 is cached
 - **THEN** the API returns `202`, the job fetches 148985 only, and its total is 1
 
 ### Requirement: WoRMS job status
-`GET /worms/jobs/{job}` SHALL return a job's `kind`, `tree`, `started_by`,
+`GET /worms/jobs/{job}` SHALL return a job's `kind`, `tree` or `org`, `started_by`,
 `started_at`, `finished_at`, `state` (`running`, `finished` or
 `interrupted`), `total` and `done` AphiaIDs, and the `failed` AphiaIDs with
 their `reason` and `detail`. Status SHALL be visible to every server process,

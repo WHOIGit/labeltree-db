@@ -155,7 +155,7 @@ def fake_jobs(monkeypatch):
     """Jobs don't run; returns who started them. Job j1 is a sync on taxonomy."""
     started = []
 
-    def start_job(kind, *, tree=None, started_by, aphia_ids=None):
+    def start_job(kind, *, tree=None, org=None, started_by, aphia_ids=None):
         started.append(started_by)
         return {"kind": kind, "tree": tree}
 
@@ -176,16 +176,21 @@ MATRIX = [
     ("delete", "/orgs/amplify/members/target", None, "owner"),
     ("get", "/worms/jobs?tree=taxonomy", None, "reader"),
     ("get", "/worms/jobs/j1", None, "reader"),
-    ("post", "/worms/jobs", {"kind": "fetch", "tree": "taxonomy", "aphia_ids": [1]}, "drafter"),
+    ("post", "/worms/jobs", {"kind": "fetch", "org": "amplify", "aphia_ids": [1]}, "drafter"),
     ("post", "/worms/jobs", {"kind": "sync_new", "tree": "taxonomy"}, "drafter"),
     ("post", "/worms/jobs", {"kind": "sync_tree", "tree": "taxonomy"}, "drafter"),
     ("post", "/worms/jobs", {"kind": "sync_all"}, "superuser"),
     ("get", "/worms/jobs", None, "none"),
     ("get", "/worms/148985", None, "none"),
     ("get", "/worms/148985/lineage", None, "none"),
-    ("post", "/trees/taxonomy/validate", {"base_rev": 1, "changes": []}, "drafter"),
-    ("post", "/trees/taxonomy/changesets", {"base_rev": 1, "changes": []}, "drafter"),
-    ("get", "/trees/taxonomy/changesets", None, "reader"),
+    ("post", "/changesets/validate", {"tree": "taxonomy", "base_rev": 1, "changes": []}, "drafter"),
+    (
+        "post",
+        "/changesets/validate",
+        {"new_tree": {"id": "t2", "title": "T", "org": "amplify"}, "changes": []},
+        "owner",
+    ),
+    ("post", "/changesets", {"tree": "taxonomy", "base_rev": 1, "changes": []}, "drafter"),
     ("get", "/changesets/{draft}", None, "reader"),
     ("put", "/changesets/{draft}", {"notes": "x"}, "drafter"),
     ("post", "/changesets/{draft}/publish", None, "approver"),

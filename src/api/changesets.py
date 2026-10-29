@@ -1,5 +1,9 @@
 """Validate and changeset endpoints (spec: changeset-api).
 
+Every endpoint is under /changesets. Validating and creating take either an
+existing tree (`{tree, base_rev, ...}`) or a new one (`{new_tree, ...}`), so
+new-tree drafts are handled like any other.
+
 Thin wrappers around the engine: `validate` and a draft's validation share
 core.validation; saves, updates and publishes go through core.changesets, which
 reads cached WoRMS records only. `PUT` and `publish` need `If-Match` with the
@@ -15,11 +19,11 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_slug
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from ninja import Router, Schema
 
-from accounts.models import Organization, Role
+from accounts.models import OrgMember, Role
 from accounts.roles import require, require_org
 from core.changesets import (
     ChangesetError,
@@ -36,6 +40,7 @@ from core.models import Change, Changeset
 from core.validation import validate
 
 from .conventions import APIError, bad_parameter, get_tree, not_found, paginate, respond
+from .orgs import get_org
 from .serializers import RevisionView
 from .trees import ordered_payload, summary_body
 
@@ -49,17 +54,6 @@ STATUS = {
 }  # fmt: skip
 
 
-class ValidateIn(Schema):
-    base_rev: int | None = None
-    changes: list[Any]
-
-
-class CreateIn(Schema):
-    base_rev: int | None = None
-    changes: list[Any]
-    notes: str = ""
-
-
 class NewTreeIn(Schema):
     id: str
     title: str
@@ -67,9 +61,16 @@ class NewTreeIn(Schema):
     org: str
 
 
-class CreateNewTreeIn(Schema):
-    new_tree: NewTreeIn
+class ChangesIn(Schema):
+    """An existing tree (`tree`, `base_rev`) or a new one (`new_tree`)."""
+
+    tree: str | None = None
+    base_rev: int | None = None
+    new_tree: NewTreeIn | None = None
     changes: list[Any]
+
+
+class CreateIn(ChangesIn):
     notes: str = ""
 
 
@@ -176,74 +177,95 @@ def refused(exc: ChangesetError, changeset: Changeset | None = None) -> APIError
     return APIError(STATUS.get(exc.error, 409), exc.error, exc.detail, **extra)
 
 
-# --- Validate ------------------------------------------------------------------------------
+# --- Validate, create and list -------------------------------------------------------------
 
 
-@router.post("/trees/{tree_id}/validate")
-def validate_changes(request, tree_id: str, body: ValidateIn):
-    tree = get_tree(tree_id)
-    require(request.user, tree.id, Role.DRAFTER)
-    try:
-        result = validate(specs_from_dicts(body.changes), tree_id=tree.id, base_rev=body.base_rev)
-    except ChangesetError as exc:
-        raise refused(exc) from None
-    return respond(request, validation_body(result))
-
-
-# --- Create and list -------------------------------------------------------------------------
-
-
-@router.post("/trees/{tree_id}/changesets")
-def create(request, tree_id: str, body: CreateIn):
-    tree = get_tree(tree_id)
-    require(request.user, tree.id, Role.DRAFTER)
-    try:
-        changeset = create_changeset(
-            author=request.user.get_username(), changes=body.changes, tree=tree,
-            base_rev=body.base_rev, notes=body.notes,
-        )  # fmt: skip
-    except ChangesetError as exc:
-        raise refused(exc) from None
-    return with_etag(changeset, status=201)
-
-
-@router.post("/changesets")
-def create_new_tree(request, body: CreateNewTreeIn):
+def target(request, body: ChangesIn):
+    """(tree, new_tree) of a validate or create body, after the role check: `drafter`
+    on an existing tree, `owner` of a new tree's organization."""
+    if (body.tree is None) == (body.new_tree is None):
+        raise bad_parameter("Give either `tree` (with `base_rev`) or `new_tree`.")
+    if body.tree is not None:
+        tree = get_tree(body.tree)
+        require(request.user, tree.id, Role.DRAFTER)
+        return tree, None
     new = body.new_tree
-    if not Organization.objects.filter(pk=new.org).exists():
-        raise not_found(f"Organization {new.org} does not exist.")
-    require_org(request.user, new.org, Role.OWNER)
+    require_org(request.user, get_org(new.org).id, Role.OWNER)
     try:
         validate_slug(new.id)
     except ValidationError:
         raise bad_parameter("new_tree.id must be a slug: letters, digits, `_` and `-`.") from None
     if not new.title.strip():
         raise bad_parameter("new_tree.title is required.")
-    changeset = create_changeset(
-        author=request.user.get_username(), changes=body.changes,
-        new_tree=NewTree(new.id, new.title, new.org, new.description), notes=body.notes,
-    )  # fmt: skip
+    return None, NewTree(new.id, new.title, new.org, new.description)
+
+
+@router.post("/changesets/validate")
+def validate_changes(request, body: ChangesIn):
+    tree, new_tree = target(request, body)
+    try:
+        result = validate(
+            specs_from_dicts(body.changes), tree_id=tree and tree.id, base_rev=body.base_rev,
+            new_tree_id=new_tree and new_tree.id,
+        )  # fmt: skip
+    except ChangesetError as exc:
+        raise refused(exc) from None
+    return respond(request, validation_body(result))
+
+
+@router.post("/changesets")
+def create(request, body: CreateIn):
+    tree, new_tree = target(request, body)
+    try:
+        changeset = create_changeset(
+            author=request.user.get_username(), changes=body.changes, tree=tree,
+            base_rev=body.base_rev if tree else None, new_tree=new_tree, notes=body.notes,
+        )  # fmt: skip
+    except ChangesetError as exc:
+        raise refused(exc) from None
     return with_etag(changeset, status=201)
 
 
-@router.get("/trees/{tree_id}/changesets")
+def visible(user):
+    """Changesets the user may see: those on their organizations' trees and new-tree
+    drafts for their organizations; all for site admins."""
+    if user.is_superuser:
+        return Changeset.objects.all()
+    orgs = OrgMember.objects.filter(user=user).values("org_id")
+    return Changeset.objects.filter(
+        Q(tree__org__in=orgs) | Q(tree__isnull=True, new_tree_org__in=orgs)
+    )
+
+
+@router.get("/changesets")
 def list_changesets(
-    request, tree_id: str, state: str | None = None, limit: int | None = None, offset: int = 0
-):
-    tree = get_tree(tree_id)
-    require(request.user, tree.id, Role.READER)
+    request, state: str | None = None, tree: str | None = None, org: str | None = None,
+    limit: int | None = None, offset: int = 0,
+):  # fmt: skip
     if state is not None and state not in STATES:
         raise bad_parameter(f"state must be one of {', '.join(STATES)}.")
-    changesets = Changeset.objects.filter(tree=tree).annotate(num_changes=Count("changes"))
+    changesets = visible(request.user)
     if state is not None:
         changesets = changesets.filter(state=state)
-    page, count = paginate(changesets.order_by("-id"), limit, offset)
+    if tree is not None:
+        changesets = changesets.filter(tree=get_tree(tree))
+    if org is not None:
+        org_id = get_org(org).id
+        changesets = changesets.filter(
+            Q(tree__org_id=org_id) | Q(tree__isnull=True, new_tree_org_id=org_id)
+        )
+    changesets = (
+        changesets.select_related("tree").annotate(num_changes=Count("changes")).order_by("-id")
+    )
+    page, count = paginate(changesets, limit, offset)
     data = {
-        "tree": tree.id,
         "count": count,
         "changesets": [
             {
                 "id": c.pk,
+                "tree": c.tree_id,
+                "new_tree": c.new_tree_id,
+                "org": c.tree.org_id if c.tree_id else c.new_tree_org_id,
                 "state": c.state,
                 "base_rev": c.base_rev,
                 "author": c.author,

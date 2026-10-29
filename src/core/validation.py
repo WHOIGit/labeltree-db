@@ -3,7 +3,7 @@
 `validate` reduces and checks changes against the tree's latest revision, so a
 stale draft shows what publishing after a rebase would do, and reports the
 stale base as a conflict. WoRMS checks use cached records only. The result is
-what `POST /trees/{tree}/validate` returns, and what `GET /changesets/{cs}`
+what `POST /changesets/validate` returns, and what `GET /changesets/{cs}`
 reports for a draft.
 """
 

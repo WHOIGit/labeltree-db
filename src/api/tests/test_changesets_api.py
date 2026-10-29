@@ -6,7 +6,7 @@ from django.db import connection
 from django.test import Client
 
 from core.models import Changeset, Tree
-from core.tests.helpers import add, deprecate, edit, move, publish
+from core.tests.helpers import add, deprecate, edit, move, publish, publish_new_tree
 from worms.records import get_records
 
 from .conftest import call, logged_in, make_user
@@ -40,8 +40,8 @@ def raw(client_user, method, path, body=None, **headers):
 
 def save(as_user, *changes, base_rev=1, notes=""):
     status, body = as_user(
-        "post", "/trees/taxonomy/changesets",
-        {"base_rev": base_rev, "changes": list(changes), "notes": notes},
+        "post", "/changesets",
+        {"tree": "taxonomy", "base_rev": base_rev, "changes": list(changes), "notes": notes},
     )  # fmt: skip
     assert status == 201, body
     return body
@@ -54,9 +54,8 @@ def etag_of(cs_id, user="drafter1"):
 
 
 def validate(as_user, *changes, base_rev=1):
-    return as_user(
-        "post", "/trees/taxonomy/validate", {"base_rev": base_rev, "changes": list(changes)}
-    )
+    body = {"tree": "taxonomy", "base_rev": base_rev, "changes": list(changes)}
+    return as_user("post", "/changesets/validate", body)
 
 
 # --- Validate ------------------------------------------------------------------------------
@@ -154,13 +153,36 @@ def test_draft_with_errors(drafter, taxonomy):
 def test_drafts_awaiting_approval(drafter, approver, taxonomy):
     first = save(drafter, edit(4, label="a"))
     save(drafter, edit(6, label="b"), move(5, 4, 6))
-    status, body = approver("get", "/trees/taxonomy/changesets?state=draft")
+    status, body = approver("get", "/changesets?state=draft&tree=taxonomy")
     assert status == 200 and body["count"] == 2
     listed = {c["id"]: c for c in body["changesets"]}
-    assert (listed[first["id"]]["author"], listed[first["id"]]["base_rev"]) == ("drafter1", 1)
+    first = listed[first["id"]]
+    assert (first["author"], first["base_rev"], first["tree"], first["org"]) == (
+        "drafter1", 1, "taxonomy", "amplify",
+    )  # fmt: skip
     assert sorted(c["num_changes"] for c in body["changesets"]) == [1, 2]
-    assert approver("get", "/trees/taxonomy/changesets?state=published")[1]["count"] == 1
-    assert approver("get", "/trees/taxonomy/changesets?state=open")[0] == 400
+    assert approver("get", "/changesets?state=published")[1]["count"] == 1
+    assert approver("get", "/changesets?state=open")[0] == 400
+    assert approver("get", "/changesets?tree=nope")[0] == 404
+
+
+def test_only_visible_changesets(drafter, taxonomy):
+    save(drafter, edit(4, label="a"))  # on amplify's tree
+    publish_new_tree("lab_tree", add("new:1", "a"), org_id="lab_a")
+    lab_owner = logged_in(make_user("lab_owner", roles={"lab_a": "owner"}))
+    lab_draft = call(
+        lab_owner,
+        "post",
+        "/changesets",
+        {"tree": "lab_tree", "base_rev": 1, "changes": [edit(7, label="b")]},
+    )[1]
+    new_tree_draft = call(lab_owner, "post", "/changesets", new_tree(org="lab_a"))[1]
+    body = call(lab_owner, "get", "/changesets?state=draft")[1]
+    assert {c["id"] for c in body["changesets"]} == {lab_draft["id"], new_tree_draft["id"]}
+    assert call(lab_owner, "get", "/changesets?org=lab_a&state=draft")[1]["count"] == 2
+    assert call(lab_owner, "get", "/changesets?org=amplify")[1]["count"] == 0
+    admin = logged_in(make_user("admin", superuser=True))
+    assert call(admin, "get", "/changesets?state=draft")[1]["count"] == 3
 
 
 def test_published_changeset(drafter, approver, taxonomy):
@@ -186,6 +208,24 @@ def new_tree(org="amplify", tree_id="lab_tags"):
     }
 
 
+def test_validate_a_new_tree(taxonomy):
+    owner = logged_in(make_user("owner1", roles={"amplify": "owner"}))
+    status, body = call(owner, "post", "/changesets/validate", new_tree())
+    assert status == 200 and body["ok"] and body["latest_rev"] is None
+    assert body["tree"] == "lab_tags" and body["reduced_changes"][0]["sources"] == [1]
+    assert not Changeset.objects.filter(new_tree_id="lab_tags").exists()
+    drafter = logged_in(make_user("drafter2", roles={"amplify": "drafter"}))
+    assert call(drafter, "post", "/changesets/validate", new_tree())[0] == 403
+
+
+def test_tree_or_new_tree(drafter, taxonomy):
+    both = {**new_tree(), "tree": "taxonomy", "base_rev": 1}
+    assert drafter("post", "/changesets/validate", both)[0] == 400
+    assert drafter("post", "/changesets", {"changes": []})[0] == 400
+    status, body = drafter("post", "/changesets", {"tree": "taxonomy", "changes": []})
+    assert (status, body["error"]) == (422, "invalid_base_rev")
+
+
 def test_drafter_proposes_a_new_tree(drafter, taxonomy):
     status, body = drafter("post", "/changesets", new_tree())
     assert status == 403
@@ -203,7 +243,7 @@ def test_owner_creates_a_tree(taxonomy):
     assert Tree.objects.get(id="lab_tags").org_id == "amplify"
     # every member of amplify has their role on it
     reader = logged_in(make_user("reader1", roles={"amplify": "reader"}))
-    assert call(reader, "get", "/trees/lab_tags/changesets")[0] == 200
+    assert call(reader, "get", "/changesets?tree=lab_tags")[0] == 200
 
 
 def owner_user():

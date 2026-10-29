@@ -66,7 +66,7 @@ def test_start_a_sync(drafter, taxonomy):
 @pytest.mark.django_db(transaction=True)
 def test_fetch_before_validating(drafter, taxonomy):
     body = drafter(
-        "post", "/worms/jobs", {"kind": "fetch", "tree": "taxonomy", "aphia_ids": [149122, 110153]}
+        "post", "/worms/jobs", {"kind": "fetch", "org": "amplify", "aphia_ids": [149122, 110153]}
     )[1]
     assert body["total"] == 1  # 149122 is cached
     assert wait_for(drafter, body["id"])["done"] == 1
@@ -86,8 +86,10 @@ def test_sync_already_active(drafter, taxonomy):
     [
         {"kind": "refresh", "tree": "taxonomy"},
         {"kind": "sync_tree"},
-        {"kind": "fetch", "tree": "taxonomy"},
-        {"kind": "fetch", "tree": "taxonomy", "aphia_ids": []},
+        {"kind": "sync_tree", "tree": "taxonomy", "org": "amplify"},
+        {"kind": "fetch", "org": "amplify"},
+        {"kind": "fetch", "org": "amplify", "aphia_ids": []},
+        {"kind": "fetch", "tree": "taxonomy", "aphia_ids": [1]},
         {"kind": "sync_all", "tree": "taxonomy"},
     ],
 )
@@ -99,6 +101,8 @@ def test_bad_job_requests(drafter, taxonomy, body):
 @pytest.mark.django_db
 def test_unknown_tree_or_job(drafter):
     assert drafter("post", "/worms/jobs", {"kind": "sync_tree", "tree": "nope"})[0] == 404
+    fetch = {"kind": "fetch", "org": "nope", "aphia_ids": [1]}
+    assert drafter("post", "/worms/jobs", fetch)[0] == 404
     assert drafter("get", "/worms/jobs?tree=nope")[0] == 404
     assert drafter("get", "/worms/jobs/0123abcd")[0] == 404
 
@@ -156,6 +160,15 @@ def test_full_sync_shows_on_every_tree(drafter, taxonomy):
         # any logged-in user may see a full sync
         other = logged_in(make_user("outsider"))
         assert call(other, "get", "/worms/jobs/all1")[0] == 200
+
+
+@pytest.mark.django_db
+def test_fetch_status_is_seen_by_organization_members(taxonomy):
+    cache.set("worms-job:f1", running("f1", tree=None, kind="fetch", org="amplify"))
+    reader = logged_in(make_user("reader1", roles={"amplify": "reader"}))
+    assert call(reader, "get", "/worms/jobs/f1")[0] == 200
+    outsider = logged_in(make_user("outsider", roles={"lab_a": "owner"}))
+    assert call(outsider, "get", "/worms/jobs/f1")[0] == 403
 
 
 @pytest.mark.django_db

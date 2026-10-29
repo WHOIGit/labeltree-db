@@ -88,9 +88,9 @@ of scope: nothing here needs expiry flows or third-party login.
   |---|---|
   | none | tree, node and organization reads, warnings report |
   | `reader` | drafts (list, get), job status, members list, WoRMS lookups |
-  | `drafter` | save, rebase and discard drafts, `validate`, fetch, `sync_new` and `sync_tree` jobs, aliases, descriptions |
+  | `drafter` | validate, save, rebase and discard drafts, fetch jobs (per organization), `sync_new` and `sync_tree` jobs, aliases, descriptions |
   | `approver` | publish |
-  | `owner` | change members; create, change, publish and discard new-tree changesets in the organization |
+  | `owner` | change members; validate, create, change, publish and discard new-tree changesets in the organization |
   | superuser | `sync_all`; create organizations and move trees between them (Django admin) |
 
   WoRMS lookups and job status for `sync_all` aren't tree-scoped: any
@@ -140,15 +140,16 @@ the three re-fetching kinds are **syncs**.
 
 | Kind | Fetches | Then | Lock |
 |---|---|---|---|
-| `fetch` | given AphiaIDs without a complete cached row | nothing (cache only) | none |
+| `fetch` | given AphiaIDs without a complete cached row; scoped to an organization, not a tree, so new-tree drafts can use it | nothing (cache only) | none |
 | `sync_new` | the tree's AphiaIDs without a complete cached row | re-check tree, write warnings | `worms-sync:<tree>` |
 | `sync_tree` | every AphiaID in the tree (today's drift run) | re-check tree, write warnings | `worms-sync:<tree>` |
 | `sync_all` | every cached AphiaID and every tree's AphiaIDs | re-check every tree | `worms-sync:all`; refused while any `worms-sync:<tree>` is held, and tree syncs are refused while it is held |
 
 - **Endpoints**, all under `/worms`, since jobs aren't tree content and
   `sync_all` has no tree:
-  - `POST /worms/jobs {kind, tree?, aphia_ids?}` (`tree` required except for
-    `sync_all`) returns `202` with the job's status, or `409 sync_in_progress`;
+  - `POST /worms/jobs {kind, tree?, org?, aphia_ids?}` (`org` for `fetch`,
+    `tree` for `sync_new` and `sync_tree`, neither for `sync_all`) returns
+    `202` with the job's status, or `409 sync_in_progress`;
   - `GET /worms/jobs/{job}`;
   - `GET /worms/jobs?tree=` returns the tree's active and last sync, or, without
     `tree`, the active and last `sync_all`;
@@ -199,7 +200,7 @@ cache.
         worms_missing empty? --yes--> show result, enable Save
                  | no
                  v
-          POST worms/jobs {kind: fetch, aphia_ids: worms_missing}
+          POST worms/jobs {kind: fetch, org, aphia_ids: worms_missing}
           poll GET /worms/jobs/{job} ~1 s: job bar, retry bars, pause bar
                  |
            failed empty? --no--> list failures: [Try again] | [Proceed anyway]
@@ -216,13 +217,18 @@ publish.
 
 ### Changeset endpoints
 
+Every changeset endpoint lives under `/changesets`: `POST /changesets/validate`
+and `POST /changesets` take either `{tree, base_rev, ...}` or `{new_tree:
+{id, title, description, org}, ...}`, and `GET /changesets?state=&tree=&org=`
+lists what the user may see (changesets on their organizations' trees and
+new-tree drafts for their organizations; everything for site admins). A
+new-tree draft is thus validated, listed and saved like any other.
+
 These are thin wrappers around the engine. The `ETag` of a draft is a hash of
 `(id, updated_at, base_rev, changes)`. `PUT` and `publish` compare `If-Match`
 inside a `SELECT ... FOR UPDATE` on the changeset row, so the `412` check and
 the write are atomic. `validate` runs the same path as save, without the final
 write, and `GET /changesets/{cs}` computes the same result for a stored draft.
-New-tree changesets live at `POST /changesets` because they have no tree in the
-path.
 
 ### Change provenance (`sources`)
 
@@ -277,7 +283,7 @@ from that view would act on a list the user can't see in order.
   colour. The link
   is `https://www.marinespecies.org/aphia.php?p=taxdetails&id=<id>`.
 - **Sync menu and progress** share one progress component with Validate's
-  fetch step; the menu polls `GET /trees/{tree}/worms/jobs` while open, so a
+  fetch step; the menu polls `GET /worms/jobs?tree=` while open, so a
   cron run is visible.
 - Merge, split, import, clone and Add from WoRMS are client-side expanders that
   produce grouped change lists, with no endpoints of their own. Import parsing

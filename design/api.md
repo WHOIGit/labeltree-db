@@ -392,15 +392,18 @@ edited directly, outside changesets.
 
 ```
 # Checking (no side effects)
-POST   /trees/{tree}/validate           {base_rev, changes[]} → errors, conflicts, reduced
-                                        changes with sources, version bumps, net changes
-                                        per node, WoRMS warnings and warning changes from
-                                        cached records, AphiaIDs missing from the cache
+POST   /changesets/validate             {tree, base_rev, changes[]}, or
+                                        {new_tree: {id, title, description, org}, changes[]}
+                                        → errors, conflicts, reduced changes with sources,
+                                        version bumps, net changes per node, WoRMS warnings
+                                        and warning changes from cached records, AphiaIDs
+                                        missing from the cache
 
 # Changesets
-GET    /trees/{tree}/changesets?state=  list changesets, e.g. drafts awaiting approval
-POST   /trees/{tree}/changesets         {base_rev, changes[], notes} → new draft
-POST   /changesets                      {new_tree: {id, title, description, org}, changes[], notes}
+GET    /changesets?state=&tree=&org=    the changesets you may see, newest first, e.g.
+                                        drafts awaiting approval
+POST   /changesets                      {tree, base_rev, changes[], notes} → new draft (drafter),
+                                        or {new_tree: {...}, changes[], notes}
                                         → new-tree draft (owner of org)
 PUT    /changesets/{cs}                 replace a draft's changes, notes and base_rev (If-Match)
 GET    /changesets/{cs}                 a changeset's atomic changes, plus validation results if a draft
@@ -451,11 +454,12 @@ Alias ids for `DELETE` come from a detailed node's `aliases` or from
 Anything that fetches from WoRMS in bulk is an asynchronous
 [job](worms.md#worms-jobs-and-syncs). Jobs aren't tree content, and a full
 cache sync spans every tree, so they live under `/worms` with the tree as a
-parameter.
+parameter. A fetch job only fills the cache, so it belongs to an organization
+rather than a tree, and also serves new-tree drafts.
 
 ```
 POST   /worms/jobs                      start a job; 202 Accepted with its status
-         {kind: "fetch", tree, aphia_ids[]}       cache the given AphiaIDs not yet cached (drafter)
+         {kind: "fetch", org, aphia_ids[]}        cache the given AphiaIDs not yet cached (drafter)
          {kind: "sync_new" | "sync_tree", tree, aphia_ids?}
                                                   sync the tree (drafter, approver, admin);
                                                   409 sync_in_progress if one overlaps
@@ -470,7 +474,7 @@ GET    /worms/warnings?tree=            nodes in the latest revision that curren
 ones again; the whole tree is still re-checked. A job's status:
 
 ```
-{id: "8b0f...", kind: "sync_tree", tree: "NES2022_taxonomy",
+{id: "8b0f...", kind: "sync_tree", tree: "NES2022_taxonomy", org: null,   # org: fetch jobs
  started_by: "curator1", started_at: "...", finished_at: null,
  state: "running",                       # running | finished | interrupted
  total: 175, done: 120,
@@ -505,8 +509,8 @@ anything and without calling WoRMS; for a draft behind the latest revision,
 the result shows what publishing after a rebase would do. A blocked `publish` returns the same body ([Errors](#errors-and-status-codes)).
 
 ```
-POST /trees/taxonomy/validate
-{base_rev: 37,
+POST /changesets/validate
+{tree: "taxonomy", base_rev: 37,
  changes: [
    {op: "add",  node: "new:1", label: "Chaetoceros_curvisetus", parent: 402, aphia_id: 149122},
    {op: "edit", node: 431, label: "Chaetoceros_didymus_sl"},
@@ -636,7 +640,7 @@ and add `count` (the total) to the response.
 |---|---|
 | `GET /trees/{tree}/search?q=` | `limit`, default 20, max 100. No `offset`: it's a typeahead. |
 | `GET /trees/{tree}/revisions` | paginated; default `limit` 100 |
-| `GET /trees/{tree}/changesets` | paginated; default `limit` 100 |
+| `GET /changesets` | paginated; default `limit` 100 |
 | `GET /nodes/{id}/warning_history` | paginated; default `limit` 100 |
 | `GET /nodes/{id}/aliases?history=true` | paginated; default `limit` 100 |
 | `GET /nodes/{id}/description?history=true` | paginated; default `limit` 100 |

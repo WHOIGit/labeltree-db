@@ -9,11 +9,16 @@ publish exactly what was reviewed.
 ## ADDED Requirements
 
 ### Requirement: Validate without side effects
-`POST /trees/{tree}/validate` with `{base_rev, changes[]}` SHALL reduce and
-check the changes against the tree's latest revision without storing anything
-and without calling WoRMS, and return `{tree, base_rev, latest_rev, ok, errors,
-conflicts, reduced_changes, version_changes, node_changes, warnings,
-warning_changes, unchecked, worms_missing, worms}`.
+`POST /changesets/validate` with `{tree, base_rev, changes[]}` SHALL reduce and
+check the changes against the tree's latest revision, and with `{new_tree: {id,
+title, description, org}, changes[]}` against an empty new tree, without
+storing anything and without calling WoRMS. It SHALL return `{tree, base_rev,
+latest_rev, ok, errors, conflicts, reduced_changes, version_changes,
+node_changes, warnings, warning_changes, unchecked, worms_missing, worms}`.
+
+#### Scenario: New tree
+- **WHEN** an owner of `amplify` validates `{new_tree: {id: "lab_tags", org: "amplify", ...}, changes}`
+- **THEN** the changes are checked against an empty tree, `latest_rev` is null, and nothing is saved
 
 #### Scenario: Errors and warnings
 - **WHEN** a change list adds a label already in use and a node with a duplicate AphiaID whose record is cached
@@ -88,13 +93,13 @@ not run because of them. `worms` SHALL be `ok` when `unchecked` is empty and
 - **THEN** `worms_missing` and `unchecked` are empty and `worms` is `ok`
 
 ### Requirement: Create and list changesets
-`POST /trees/{tree}/changesets` with `{base_rev, changes[], notes}` SHALL save a
+`POST /changesets` with `{tree, base_rev, changes[], notes}`, or `{new_tree:
+{id, title, description, org}, changes[], notes}` for a new tree, SHALL save a
 new draft, reducing its changes, and return `201` with it. Saving SHALL store
 only the reduced changes, SHALL succeed even when the changes have structural
-errors, and SHALL NOT call WoRMS.
-`GET /trees/{tree}/changesets?state=` SHALL list the tree's changesets filtered
-by state, paginated. A new-tree changeset SHALL be created at `POST
-/changesets` with `{new_tree: {id, title, description, org}, changes[], notes}`.
+errors, and SHALL NOT call WoRMS. `GET /changesets` SHALL list the changesets
+the user may see, newest first and paginated, filtered by optional `state`,
+`tree` and `org`.
 
 #### Scenario: New draft
 - **WHEN** a drafter posts a draft with two renames of the same node
@@ -105,8 +110,12 @@ by state, paginated. A new-tree changeset SHALL be created at `POST
 - **THEN** the API returns `201` and the draft's validation reports `cycle`
 
 #### Scenario: Drafts awaiting approval
-- **WHEN** an approver requests `changesets?state=draft`
+- **WHEN** an approver requests `changesets?state=draft&tree=NES2022_taxonomy`
 - **THEN** every open draft of the tree is listed with its author, `base_rev` and change count
+
+#### Scenario: Only visible changesets
+- **WHEN** a member of `lab_a` only requests `changesets?state=draft`
+- **THEN** drafts on `lab_a`'s trees and new-tree drafts for `lab_a` are listed, and no others
 
 ### Requirement: Get a changeset
 `GET /changesets/{cs}` SHALL return the changeset's state, `base_rev`, author,
