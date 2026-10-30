@@ -260,3 +260,8 @@ def test_new_tree_button_for_owners_only():
     assert drafter.get("/orgs/lab_a/new-tree/").status_code == 403
     assert Client().get("/orgs/lab_a/new-tree/")["Location"].startswith("/login/")
     assert owner.get("/orgs/nope/new-tree/").status_code == 404
+
+
+def test_favicon(tree):
+    page = Client().get("/trees/taxonomy/").content.decode()
+    assert '<link rel="icon" href="/static/app/favicon.svg" type="image/svg+xml">' in page
