@@ -5,7 +5,7 @@ import io
 
 from django.db import connection
 from django.db.models import Count
-from ninja import Router
+from ninja import Query, Router
 
 from core.changesets import latest_rev
 from core.models import Change, Node, NodeAlias, NodeVersion, Tree, TreeRevision
@@ -42,16 +42,6 @@ def revision_meta(revision: TreeRevision) -> dict:
         "notes": revision.notes,
         "changeset": revision.changeset_id,
     }
-
-
-def int_param(request, name: str) -> int:
-    raw = request.GET.get(name)
-    if raw is None:
-        raise bad_parameter(f"`{name}` is required.")
-    try:
-        return int(raw)
-    except ValueError:
-        raise bad_parameter(f"`{name}` must be an integer, not {raw!r}.") from None
 
 
 # --- Tree info and history -------------------------------------------------------------
@@ -168,9 +158,9 @@ def revision_changes(request, tree_id: str, rev: int):
 
 
 @router.get("/{tree_id}/diff", auth=None)
-def tree_diff(request, tree_id: str):
+def tree_diff(request, tree_id: str, frm: int = Query(..., alias="from"), to: int = Query(...)):
+    """Net difference between revisions `from` and `to` (both required)."""
     tree = get_tree(tree_id)
-    frm, to = int_param(request, "from"), int_param(request, "to")
     resolve_rev(tree.id, frm)
     resolve_rev(tree.id, to)
     if frm > to:
@@ -390,6 +380,8 @@ def search(
     rev: int | None = None,
     dropempty: bool = False,
 ):
+    """Give exactly one of `q` (ranked typeahead on labels and aliases; `method`
+    one of exact, prefix, substring, fuzzy) or `aphia_id` (every node with it)."""
     if (q is None) == (aphia_id is None):
         raise bad_parameter("Give exactly one of `q` or `aphia_id`.")
     if method is not None and method not in SEARCH_METHODS:

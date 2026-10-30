@@ -502,3 +502,20 @@ def test_readme_setup_through_the_api(token_for):
     assert script("post", "/users", {"username": "curator1", "password": STRONG})[0] == 201
     assert script("put", "/orgs/lab_a/members/curator1", {"role": "owner"})[0] == 200
     assert role_on("curator1", "lab_a") == "owner"
+
+
+def test_required_query_parameters_are_in_the_schema():
+    """Parameters an endpoint refuses to do without are marked required in OpenAPI."""
+    paths = api.get_openapi_schema()["paths"]
+    required = {
+        (path, p["name"])
+        for path, ops in paths.items()
+        for p in ops.get("get", {}).get("parameters", [])
+        if p["in"] == "query" and p.get("required")
+    }
+    assert {
+        ("/api/v1/worms/warnings", "tree"),
+        ("/api/v1/worms/search", "name"),
+        ("/api/v1/trees/{tree_id}/diff", "from"),
+        ("/api/v1/trees/{tree_id}/diff", "to"),
+    } <= required

@@ -15,7 +15,8 @@ the service pushes no notifications or events.
 
 Published trees are open: the [read endpoints](#read-endpoints), including
 organizations, alias and description history, the WoRMS warnings report and
-`/health` need no credentials, so consumers such as roi-db and datasetman read anonymously.
+`/health` (`{"status": "ok"}`, for monitoring) need no credentials, so consumers
+such as roi-db and datasetman read anonymously.
 Everything else needs a logged-in user and returns `401` without one:
 
 - Django users and sessions for the web app (CSRF-checked). The CSRF secret is
@@ -46,7 +47,8 @@ uses.
 
 ### Nodes
 
-Node endpoints accept `?rev=N`, a tree revision (default: latest). A node id
+Node endpoints accept `?rev=N`, a tree revision (default: latest), except
+where noted below. A node id
 identifies its tree, so `N` is a revision of that node's tree. Every response
 is the tree as it was at that revision, including nodes that were deprecated
 later.
@@ -210,21 +212,27 @@ shows `num_children: 0`, so a client can tell it's a leaf.
 
 ### Trees
 
-All tree endpoints accept `?rev=N` (default: latest), except where noted.
+The endpoints that return nodes or a tree's state accept `?rev=N` (default:
+latest) and `?dropempty=true` (see [Nodes](#nodes)). `GET /trees`, `revisions`,
+`revisions/{r}/changes` and `diff` don't take `rev`; `export_flat` takes `rev`
+but not `dropempty`. In the list below, `{x}` in a query string marks a
+required parameter.
 
 ```
 GET /trees                                   list of trees
 GET /trees/{tree}                            tree summary and revision metadata at ?rev
 GET /trees/{tree}/revisions                  all revisions, newest first
 GET /trees/{tree}/revisions/{r}/changes      the atomic changes published in revision r
-GET /trees/{tree}/diff?from={a}&to={b}       net difference between two revisions
+GET /trees/{tree}/diff?from={a}&to={b}       net difference between two revisions (both required)
 GET /trees/{tree}/nodes_as_tree?depth={d}    top-level nodes as nested content nodes; depth=all (default)
 GET /trees/{tree}/export?parents=false       whole tree as nested detailed nodes (JSON)
 GET /trees/{tree}/export_flat                whole tree as CSV, one detailed node per row
 GET /trees/{tree}/nodes/{label}              detailed node with that label
 GET /trees/{tree}/nodes?ids=&labels=         detailed nodes for a list of ids and/or labels
-GET /trees/{tree}/search?q=&method=&limit=   ranked typeahead (default: exact → prefix → substring → fuzzy)
-GET /trees/{tree}/search?aphia_id=           every node with that AphiaID
+GET /trees/{tree}/search?q={q}&method=&limit=
+                                             ranked typeahead (default: exact → prefix → substring → fuzzy)
+GET /trees/{tree}/search?aphia_id={a}        every node with that AphiaID. Give exactly one
+                                             of q and aphia_id
 ```
 
 #### Tree info
@@ -416,7 +424,7 @@ POST   /changesets/{cs}/publish {notes} approver; draft → new tree revision (I
 DELETE /changesets/{cs}                 discard a draft (kept, with state "discarded")
 
 # WoRMS lookups (server-side cache; the browser never calls WoRMS directly)
-GET    /worms/search?name=              candidate WoRMS records
+GET    /worms/search?name={n}           candidate WoRMS records; name is required
 GET    /worms/{aphia_id}                the WoRMS record alone
 GET    /worms/{aphia_id}/lineage        the record's WoRMS ancestors, top-level first
 GET    /worms/{a}/between/{b}           all records on the lineage path between a and b, inclusive.
@@ -482,7 +490,8 @@ POST   /worms/jobs                      start a job; 202 Accepted with its statu
 GET    /worms/jobs/{job}                a job's status
 GET    /worms/jobs?tree=                the tree's active sync, if any, and its last finished one;
                                         without tree, the active and last sync_all
-GET    /worms/warnings?tree=            nodes in the latest revision that currently have WoRMS warnings
+GET    /worms/warnings?tree={t}         nodes in the latest revision that currently have WoRMS
+                                        warnings; tree is required
 ```
 
 `aphia_ids` on a sync restricts its fetching to those AphiaIDs, to try failed

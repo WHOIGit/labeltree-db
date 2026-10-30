@@ -132,7 +132,10 @@ def test_diff(get, taxonomy):
 
 
 def test_diff_parameters(get, taxonomy):
-    assert get("/trees/taxonomy/diff?from=1")[0] == 400
+    status, body, _ = get("/trees/taxonomy/diff?from=1")
+    assert (status, body["error"]) == (400, "bad_parameter") and "to" in body["detail"]
+    status, body, _ = get("/trees/taxonomy/diff?from=x&to=1")
+    assert (status, body["error"]) == (400, "bad_parameter") and "from" in body["detail"]
     assert get("/trees/taxonomy/diff?from=1&to=9")[0] == 404
     publish(taxonomy, edit(6, aphia_id=1))
     assert get("/trees/taxonomy/diff?from=2&to=1")[0] == 400

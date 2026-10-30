@@ -93,7 +93,7 @@ def job_status(request, job_id: str):
 
 
 @router.get("/warnings", auth=None)
-def warnings_report(request, tree: str = "", limit: int | None = None, offset: int = 0):
+def warnings_report(request, tree: str, limit: int | None = None, offset: int = 0):
     """Nodes in the tree's latest revision that currently have WoRMS warnings."""
     if not tree:
         raise bad_parameter("`tree` is required.")
@@ -146,7 +146,7 @@ def entry(item: dict) -> dict:
 
 
 @router.get("/search")
-def search(request, name: str = "", limit: int = 20):
+def search(request, name: str, limit: int = 20):
     if not name.strip():
         raise bad_parameter("`name` is required.")
     if not 1 <= limit <= 100:
