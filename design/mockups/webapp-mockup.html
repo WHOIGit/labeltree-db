@@ -235,10 +235,16 @@
             <div class="small text-muted mt-1">Syncs refresh cached WoRMS records and re-check warnings. Cron runs them nightly.</div>
           </div>
         </div>
-        <button class="btn btn-sm btn-outline-secondary" @click="openClone()"
-                :disabled="!has('owner') || latest === 0"
-                :title="!has('owner') ? 'Needs owner role' : (latest === 0 ? 'Tree has no revisions' : 'Start a new tree from revision ' + viewRev)">
-          Clone as new tree…</button>
+        <div class="dropdown" x-data="{ open: false }" @click.outside="open = false">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle" @click="open = !open"
+                  :disabled="!has('owner')" :title="has('owner') ? 'Start a new tree, as a draft' : 'Needs owner role'">New tree</button>
+          <div class="dropdown-menu dropdown-menu-end" :class="{ show: open }" style="right: 0">
+            <button class="dropdown-item" @click="open = false; openClone('empty')">Empty tree…</button>
+            <button class="dropdown-item" @click="open = false; openClone('import')">From an import file…</button>
+            <button class="dropdown-item" :class="{ disabled: latest === 0 }" @click="open = false; openClone('clone')"
+                    x-text="'From this revision (' + viewRev + ')…'"></button>
+          </div>
+        </div>
         <button class="btn btn-sm btn-link" @click="openOrg()">AMPLIfy members</button>
         <button class="btn btn-sm btn-link" @click="openSetup()" title="What a site admin sees on a new instance">New-instance setup</button>
       </div>
@@ -922,16 +928,24 @@
   </div>
 </template>
 
-<!-- Clone -->
+<!-- New tree: empty, from an import file, or from the shown revision (clone) -->
 <template x-if="modal === 'clone'">
   <div class="modal d-block" tabindex="-1" @click.self="closeModal()">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" x-text="'Clone ' + treeId + ' @ revision ' + viewRev"></h5>
+          <h5 class="modal-title" x-text="f.kind === 'clone' ? 'New tree from ' + treeId + ' @ revision ' + viewRev : (f.kind === 'import' ? 'New tree from an import file' : 'New empty tree')"></h5>
           <button class="btn-close" @click="closeModal()"></button>
         </div>
         <div class="modal-body">
+          <div class="mb-2">
+            <template x-for="k in ['empty', 'import', 'clone']" :key="k">
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" :id="'nt-' + k" :value="k" x-model="f.kind" :disabled="k === 'clone' && latest === 0">
+                <label class="form-check-label" :for="'nt-' + k" x-text="{ empty: 'Empty', import: 'From an import file', clone: 'From this revision' }[k]"></label>
+              </div>
+            </template>
+          </div>
           <div class="mb-2">
             <label class="form-label">New tree id</label>
             <input class="form-control" x-model="f.id" :class="{ 'is-invalid': f.id && cloneError }">
@@ -941,15 +955,23 @@
             <label class="form-label">Title</label>
             <input class="form-control" x-model="f.title">
           </div>
+          <template x-if="f.kind === 'import'">
+            <div class="mb-2">
+              <input class="form-control form-control-sm mb-2" type="file" accept=".json" disabled title="Loads the file into the box below">
+              <textarea class="form-control font-monospace" rows="6" x-model="f.text" placeholder="…or paste the file here"></textarea>
+            </div>
+          </template>
+          <div class="text-danger small" x-text="f.error"></div>
           <p class="form-text mb-0">
-            Creates an empty tree and a first draft (<code>import#1</code>, no base revision) holding this
-            revision's nodes and AphiaIDs, with their current descriptions and aliases. The nodes get new ids.
-            An approver then publishes it as revision 1. See webapp.md, "Cloning a tree".
+            Creates a new-tree draft (no base revision) and opens it in the editor. From an import file or this
+            revision, the nodes form one <code>import#1</code> group; a clone copies this revision's nodes and AphiaIDs
+            with their current descriptions and aliases, under new ids. An owner publishes it as revision 1.
+            The organization page offers the same for its owners. See webapp.md, "New trees".
           </p>
         </div>
         <div class="modal-footer">
           <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
-          <button class="btn btn-primary" :disabled="!!cloneError" @click="doClone()">Create tree and draft</button>
+          <button class="btn btn-primary" :disabled="!!cloneError" @click="doClone()">Create draft</button>
         </div>
       </div>
     </div>
@@ -1831,21 +1853,31 @@ document.addEventListener('alpine:init', () => Alpine.data('app', () => ({
     this.refresh();
     this.toast(`Published revision ${this.latest}`);
   },
-  openClone() { this.f = { id: '', title: '' }; this.modal = 'clone'; },
+  openClone(kind = 'clone') { this.f = { kind, id: '', title: '', text: '', error: '' }; this.modal = 'clone'; },
   get cloneError() {
     if (!LABEL_RE.test(this.f.id || '')) return 'Use letters, digits, _ . -';
     if (DB.trees[this.f.id]) return 'A tree with this id exists';
+    if (this.f.kind === 'import' && !this.f.text.trim()) return 'Paste an import file';
     return '';
   },
   doClone() {
-    const id = this.f.id, src = CUR.state, kids = CUR.kids;
+    const id = this.f.id, src = CUR.state, kids = CUR.kids, kind = this.f.kind;
     const toNested = pid => (kids.get(pid) || []).filter(k => !src.get(k).dep).map(k => {
       const n = src.get(k);
       return { label: n.label, aphia_id: n.aphia_id, description: descOf(k, n), aliases: DB.aliases[k] || [], children: toNested(k) };
     });
+    let nested = [];
+    if (kind === 'clone') nested = toNested(null);
+    if (kind === 'import') {
+      try { nested = JSON.parse(this.f.text).nodes; } catch (e) { this.f.error = 'Not valid JSON: ' + e.message; return; }
+      const bad = (list, path) => (list || []).map((n, i) => typeof n?.label !== 'string' ? `${path}[${i}]: node has no \`label\`` : bad(n.children, `${path}[${i}].children`)).find(Boolean);
+      const problem = Array.isArray(nested) ? bad(nested, 'nodes') : 'file: expected an object with a `nodes` list';
+      if (problem) { this.f.error = problem; return; }
+    }
     DB.trees[id] = { id, title: this.f.title || id, revs: [] };
-    const cs = { id: DB.nextCs++, tree: id, base_rev: null, changes: importChanges(toNested(null), 'import#1'),
-                 notes: `Clone of ${this.treeId} @ revision ${this.viewRev}`, state: 'draft', author: 'you',
+    const notes = { clone: `Clone of ${this.treeId} @ revision ${this.viewRev}`, import: 'Import of pasted JSON', empty: 'New tree' }[kind];
+    const cs = { id: DB.nextCs++, tree: id, base_rev: null, changes: importChanges(nested, 'import#1'),
+                 notes, state: 'draft', author: 'you',
                  created_at: new Date().toISOString().slice(0, 10) };
     DB.changesets[cs.id] = cs;
     this.ver++;

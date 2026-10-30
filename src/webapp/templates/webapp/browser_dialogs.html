@@ -349,24 +349,38 @@
   </div>
 </template>
 
-<!-- Clone -->
-<template x-if="modal === 'clone'">
-  <div class="modal d-block" tabindex="-1" id="clone-dialog" @click.self="closeModal()">
-    <div class="modal-dialog"><div class="modal-content">
-      <div class="modal-header"><h5 class="modal-title" x-text="'Clone ' + treeId + ' at revision ' + viewRev"></h5><button class="btn-close" @click="closeModal()"></button></div>
+<!-- New tree: empty, from an import file, or from the shown revision -->
+<template x-if="modal === 'newTree'">
+  <div class="modal d-block" tabindex="-1" id="new-tree-dialog" @click.self="cancelNewTree()">
+    <div class="modal-dialog modal-lg"><div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title" x-text="newTreeTitle"></h5><button class="btn-close" @click="cancelNewTree()"></button></div>
       <div class="modal-body">
-        <div class="mb-2"><label class="form-label" for="clone-org">Organization</label>
-          <select class="form-select" id="clone-org" x-model="f.org"><template x-for="o in ownedOrgs" :key="o.id"><option :value="o.id" x-text="o.name"></option></template></select></div>
-        <div class="mb-2"><label class="form-label" for="clone-id">New tree id</label>
-          <input class="form-control" id="clone-id" x-model="f.id" :class="{ 'is-invalid': f.id && cloneError }"><div class="invalid-feedback" x-text="cloneError"></div></div>
-        <div class="mb-2"><label class="form-label" for="clone-title">Title</label><input class="form-control" id="clone-title" x-model="f.title"></div>
-        <div class="mb-2"><label class="form-label" for="clone-desc">Description</label><input class="form-control" id="clone-desc" x-model="f.description"></div>
-        <div class="text-danger small" x-text="f.error"></div>
-        <p class="form-text mb-0">Creates a new-tree draft (<code>import#1</code>) holding this revision's nodes and AphiaIDs with their current descriptions and aliases. The nodes get new ids; an owner publishes it as revision 1.</p>
+        <div class="mb-2" id="new-tree-kind">
+          <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="nt-empty" value="empty" x-model="f.kind"><label class="form-check-label" for="nt-empty">Empty</label></div>
+          <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="nt-import" value="import" x-model="f.kind"><label class="form-check-label" for="nt-import">From an import file</label></div>
+          <template x-if="canClone">
+            <div class="form-check form-check-inline"><input class="form-check-input" type="radio" id="nt-clone" value="clone" x-model="f.kind"><label class="form-check-label" for="nt-clone" x-text="'From ' + treeId + ' revision ' + viewRev"></label></div>
+          </template>
+        </div>
+        <div class="mb-2"><label class="form-label" for="new-tree-org">Organization</label>
+          <select class="form-select" id="new-tree-org" x-model="f.org"><template x-for="o in ownedOrgs" :key="o.id"><option :value="o.id" :selected="o.id === f.org" x-text="o.name"></option></template></select></div>
+        <div class="mb-2"><label class="form-label" for="new-tree-id">New tree id</label>
+          <input class="form-control" id="new-tree-id" x-model="f.id" :class="{ 'is-invalid': f.id && newTreeError }"><div class="invalid-feedback" x-text="newTreeError"></div></div>
+        <div class="mb-2"><label class="form-label" for="new-tree-title">Title</label><input class="form-control" id="new-tree-title" x-model="f.title"></div>
+        <div class="mb-2"><label class="form-label" for="new-tree-desc">Description</label><input class="form-control" id="new-tree-desc" x-model="f.description"></div>
+        <template x-if="f.kind === 'import'">
+          <div class="mb-2">
+            <p class="small mb-1">An import file is <code>{"nodes": [{"label", "aphia_id", "description", "aliases", "children"}]}</code>; only <code>label</code> is required.</p>
+            <input class="form-control form-control-sm mb-2" id="new-tree-file" type="file" accept=".json,application/json" @change="readNewTreeFile($event)">
+            <textarea class="form-control font-monospace" id="new-tree-text" rows="8" x-model="f.text" placeholder="…or paste the file here"></textarea>
+          </div>
+        </template>
+        <div class="text-danger small" id="new-tree-error" x-text="f.error"></div>
+        <p class="form-text mb-0">Creates a new-tree draft in the organization and opens it in the editor<span x-show="f.kind !== 'empty'">, with the nodes as one <code>import#1</code> group</span><span x-show="f.kind === 'clone'"> (new ids; this revision's labels and AphiaIDs, with the current descriptions and aliases)</span>. An owner publishes it as revision 1.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-outline-secondary" @click="closeModal()">Cancel</button>
-        <button class="btn btn-primary" id="clone-submit" :disabled="!!cloneError" @click="submitClone()">Create draft</button>
+        <button class="btn btn-outline-secondary" id="new-tree-cancel" @click="cancelNewTree()">Cancel</button>
+        <button class="btn btn-primary" id="new-tree-submit" :disabled="!!newTreeError" @click="submitNewTree()">Create draft</button>
       </div>
     </div></div>
   </div>

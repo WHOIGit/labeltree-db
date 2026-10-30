@@ -13,7 +13,7 @@ is sent to a server; "saving" and "publishing" only change in-page state.
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │ Tree: [NES2022_taxonomy ▾]  Revision: [3 ▾]  Status: Published (frozen)      │
-│                                        [Edit ▾] [Clone as new tree…]         │
+│                                        [Edit ▾] [New tree ▾]                 │
 ├───────────────────────────────────────────┬──────────────────────────────────┤
 │ Tree              [filter...] [+ New node]│ Changes                          │
 │ ▾ Chromista  WoRMS 7                  ⋮   │  summary: errors / warnings      │
@@ -64,15 +64,18 @@ changes asks for confirmation.
 
 | State | Buttons |
 |---|---|
-| Static | **Edit ▾**, **WoRMS sync ▾**, **Clone as new tree…** (owner), **AMPLIfy members**; anonymous visitors see only **Log in to edit** |
+| Static | **Edit ▾**, **WoRMS sync ▾**, **New tree ▾** (owner), **AMPLIfy members**; anonymous visitors see only **Log in to edit** |
 | Edit (`None`, unsaved, saved) | **Validate**, **Save Draft** (enabled once the current list is validated), **Publish Revision** (approver; enabled when saved, validated and free of errors), **Discard Draft** (saved drafts), **Exit** |
 | Discarded (frozen) | **Exit** |
 
 The revision picker lists each revision with its publish date and author.
 
 **Publish Revision** asks for notes, then creates revision `latest + 1` and
-returns to static mode on that revision. **Clone as new tree…** is described in
-[webapp.md](../webapp.md#cloning-a-tree).
+returns to static mode on that revision. **New tree ▾** offers **Empty
+tree…**, **From an import file…** (pasted JSON; malformed files are reported)
+and **From this revision…** (a clone), in one dialog with the kind as radio
+buttons; each creates a new-tree draft and opens it. See
+[webapp.md](../webapp.md#new-trees).
 
 The mockup's top bar also has a **Role** selector (`anonymous`, `reader`,
 `drafter`, `approver`, `owner`: the user's role in the tree's organization,

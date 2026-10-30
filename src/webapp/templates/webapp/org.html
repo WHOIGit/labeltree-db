@@ -5,6 +5,9 @@
   <h1 class="h4">{{ org.name }} <small class="text-muted">{{ org.id }}</small></h1>
   <h2 class="h6 mt-3">Trees</h2>
   <ul id="org-trees">{% for t in trees %}<li><a href="{% url 'tree' t.id %}">{{ t.id }}</a> {{ t.title }}</li>{% empty %}<li class="text-muted">No trees yet.</li>{% endfor %}</ul>
+  {% if is_owner %}
+    <p><a class="btn btn-sm btn-outline-primary" id="org-new-tree" href="{% url 'new_tree' org.id %}">New tree…</a></p>
+  {% endif %}
 
   {% if is_member %}
     {{ page|json_script:"page-data" }}

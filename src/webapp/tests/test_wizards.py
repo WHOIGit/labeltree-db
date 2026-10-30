@@ -1,12 +1,11 @@
-"""Merge and split wizards, import, Add from WoRMS, aliases, descriptions and
-clone (spec: webapp)."""
+"""Merge and split wizards, import, Add from WoRMS, aliases and descriptions
+(spec: webapp). Starting new trees, including clones, is in test_new_tree_ui."""
 
 import json
 
 import pytest
 from playwright.sync_api import expect
 
-from accounts.models import Organization
 from api.tests.conftest import make_user
 from core.changesets import latest_rev
 from core.models import Changeset, NodeAlias, NodeDescription
@@ -277,26 +276,6 @@ def test_description_of_a_new_node_goes_in_its_add(site, taxonomy, drafter):
     page.click("#description-save")
     assert not NodeDescription.objects.exists()
     assert page.inner_text("#status") == "Draft (unsaved)"
-
-
-def test_clone_flow(site, taxonomy):
-    Organization.objects.create(id="lab_a", name="Lab A")
-    owner = make_user("lab_owner", roles={"lab_a": "owner"})
-    site.login(owner)
-    page = site.open("/trees/taxonomy/")
-    page.click("#clone-button")
-    expect(page.locator("#clone-org")).to_have_value("lab_a")
-    page.fill("#clone-id", "lab_taxonomy")
-    page.fill("#clone-title", "Lab taxonomy")
-    page.click("#clone-submit")
-    expect(page.locator("#status")).to_have_text("Draft (saved)")
-    assert "lab_taxonomy" in page.inner_text(".topbar")
-    group = page.locator('[data-group="import#1"]')
-    expect(group).to_contain_text("7 changes")
-    assert page.locator("#tab-edited .crow").count() == 0  # one collapsed group
-    draft = Changeset.objects.get(new_tree_id="lab_taxonomy")
-    assert (draft.new_tree_org_id, draft.base_rev) == ("lab_a", None)
-    expect(site.row("Chromista")).to_be_visible()
 
 
 def test_merge_alias_failure_leaves_the_editor_frozen(site, taxonomy):

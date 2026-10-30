@@ -101,8 +101,16 @@
                 </template>
               </div>
             </div>
-            <button class="btn btn-sm btn-outline-secondary" id="clone-button" @click="openClone()"
-                    :disabled="!!cloneHint" :title="cloneHint || 'Start a new tree from revision ' + viewRev">Clone as new tree…</button>
+            <div class="menu-wrap" @click.outside="newTreeOpen = false">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" id="new-tree-button" @click="newTreeOpen = !newTreeOpen"
+                      :disabled="!!newTreeHint" :title="newTreeHint || 'Start a new tree, as a draft'">New tree</button>
+              <div class="dropdown-menu" id="new-tree-menu" :class="{ show: newTreeOpen }">
+                <button class="dropdown-item" data-new-tree="empty" @click="openNewTree('empty')">Empty tree…</button>
+                <button class="dropdown-item" data-new-tree="import" @click="openNewTree('import')">From an import file…</button>
+                <button class="dropdown-item" data-new-tree="clone" @click="openNewTree('clone')" :class="{ disabled: !canClone }"
+                        x-text="'From this revision (' + viewRev + ')…'"></button>
+              </div>
+            </div>
           </div>
         </template>
       </div>

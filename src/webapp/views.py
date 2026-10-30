@@ -64,22 +64,42 @@ def setup(request):
     return render(request, "webapp/setup.html", context)
 
 
-def _browser(request, *, tree: Tree | None, draft: Changeset | None):
+def _browser(request, *, tree: Tree | None, draft: Changeset | None, new_tree_org=None):
+    """The tree browser and editor: on a tree, on a draft, or (new_tree_org) with
+    only the new-tree dialog open for that organization."""
+    if tree is not None:
+        org = tree.org_id
+    elif draft is not None:
+        org = draft.new_tree_org_id
+    else:
+        org = new_tree_org
     data = {
         "user": user_info(request.user),
         "trees": tree_list(),
         "orgs": [{"id": o.id, "name": o.name} for o in Organization.objects.order_by("name")],
         "tree": tree.id if tree else None,
-        "org": tree.org_id if tree else draft.new_tree_org_id,
+        "org": org,
         "latest_rev": latest_rev(tree.id) if tree else None,
         "draft": draft.pk if draft else None,
         "new_tree": None,
+        "start_new_tree": new_tree_org,
     }
     if draft is not None and draft.tree_id is None:
         data["new_tree"] = {
             "id": draft.new_tree_id, "title": draft.new_tree_title, "org": draft.new_tree_org_id,
         }  # fmt: skip
     return render(request, "webapp/browser.html", {"page": data, "user_info": data["user"]})
+
+
+@login_required
+def new_tree_page(request, org_id: str):
+    """Start a new tree in an organization (owners), e.g. one with no trees yet."""
+    org = get_object_or_404(Organization, pk=org_id)
+    try:
+        require_org(request.user, org.id, Role.OWNER)
+    except Forbidden as exc:
+        return forbidden(request, exc)
+    return _browser(request, tree=None, draft=None, new_tree_org=org.id)
 
 
 def tree_page(request, tree_id: str):
@@ -230,6 +250,7 @@ def org_page(request, org_id: str):
         "org": org,
         "trees": org.trees.order_by("id"),
         "is_member": role is not None,
+        "is_owner": role == Role.OWNER,
         "page": page,
         "user_info": user_info(request.user),
     }

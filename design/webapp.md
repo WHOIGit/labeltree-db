@@ -30,7 +30,8 @@ An interactive mockup of the tree browser and draft editor is in
   into `_` and characters that aren't machine-safe dropped
   (`Chaetoceros (Hyalochaete) debilis` → `Chaetoceros_Hyalochaete_debilis`).
 - **Organization:** an organization's trees and, for its members, its members
-  and their roles. Owners add users, change roles and remove members here. A
+  and their roles. Owners add users, change roles, remove members and
+  [start new trees](#new-trees) here. A
   role applies to every tree of the organization. The tree picker groups
   trees by organization, and each user's own page lists their organizations
   and roles and links to changing their password.
@@ -341,14 +342,26 @@ So every revision, including revision 1, comes from a published changeset. The
 [example trees](backend.md#example-trees) are loaded this way, through the
 `import_tree` management command or the [setup wizard](#setting-up-a-new-instance).
 
+In the web app, owners start new trees from the tree browser's **New tree**
+menu: **Empty tree**, **From an import file** (pasted, or loaded from a file
+into a text box) and **From this revision** ([cloning](#cloning-a-tree)). The
+organization page has a **New tree** button for its owners too, for empty and
+imported trees, so an organization with no trees yet can start one. One
+dialog asks for the organization (those the user owns), the tree id, title
+and description. It creates the new-tree draft, with an imported file's nodes
+as one `import#1` group, and opens it in the editor. A malformed import file
+is reported in the dialog and creates nothing. An empty draft can be saved
+but not published until it has nodes.
+
 ### Cloning a tree
 
 Cloning converts a published revision of an existing tree into a stand-alone
 new-tree changeset. It is the [new tree](#new-trees) flow with the import taken
 from that revision:
 
-1. An owner of an organization picks it and enters the new tree's id, title
-   and description.
+1. An owner of an organization chooses **New tree → From this revision**,
+   picks the organization and enters the new tree's id, title and
+   description.
 2. The source revision's nodes become an `import#1` draft with
    `base_rev: null`, as if its `/export` output had been imported. Labels and
    AphiaIDs at that revision, and the current descriptions and aliases, are

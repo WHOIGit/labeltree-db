@@ -3,6 +3,7 @@
 import pytest
 from django.test import Client
 
+from accounts.models import Organization
 from api.tests.conftest import make_user
 from core.changesets import create_changeset
 from core.models import Tree
@@ -243,3 +244,19 @@ def test_csrf_token_is_in_the_page_not_a_cookie(tree):
     response = client.get("/trees/taxonomy/")
     assert b'<meta name="csrf-token" content="' in response.content
     assert "csrftoken" not in response.cookies and "csrftoken" not in client.cookies
+
+
+# --- New tree from the organization page ---------------------------------------------------------
+
+
+def test_new_tree_button_for_owners_only():
+    Organization.objects.create(id="lab_a", name="Lab A")
+    owner = logged_in(make_user("owner1", roles={"lab_a": "owner"}))
+    drafter = logged_in(make_user("drafter1", roles={"lab_a": "drafter"}))
+    assert b'id="org-new-tree"' in owner.get("/orgs/lab_a/").content
+    assert b'id="org-new-tree"' not in drafter.get("/orgs/lab_a/").content
+    page = owner.get("/orgs/lab_a/new-tree/")
+    assert page.status_code == 200 and b'"start_new_tree": "lab_a"' in page.content
+    assert drafter.get("/orgs/lab_a/new-tree/").status_code == 403
+    assert Client().get("/orgs/lab_a/new-tree/")["Location"].startswith("/login/")
+    assert owner.get("/orgs/nope/new-tree/").status_code == 404

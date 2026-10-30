@@ -41,6 +41,7 @@ export default () => ({
   tab: 'edited', seen: {}, tabs: TABS,
   syncOpen: false, syncs: null, syncJob: null, syncFailed: null, syncKind: null,
   warningsOpen: false, warningsList: [], editOpen: false, drafts: { open: [], discarded: [] },
+  newTreeOpen: false, startNewTree: null,
   aliasFailures: [], aliasError: null,
 
   async init() {
@@ -50,7 +51,10 @@ export default () => ({
     setInterval(() => { if (this.job || this.syncJob) this.now = Date.now(); }, 250);
     window.addEventListener('beforeunload', e => { if (this.dirty) { e.preventDefault(); e.returnValue = ''; } });
     try {
-      if (page.draft) await this.openDraft(page.draft);
+      if (page.start_new_tree) {  // /orgs/{org}/new-tree/: only the dialog
+        this.startNewTree = page.start_new_tree;
+        this.openNewTree('empty', page.start_new_tree);
+      } else if (page.draft) await this.openDraft(page.draft);
       else if (this.treeId) { await this.loadRevisions(); await this.loadRev(this.latestRev); }
     } finally {
       this.loading = false;
@@ -272,6 +276,7 @@ export default () => ({
   },
   onEscape() {
     if (this.conf) this.conf = null;
+    else if (this.modal === 'newTree') this.cancelNewTree();
     else if (this.modal) this.closeModal();
     else if (this.menu) this.menu = null;
     else if (this.pick) { this.pick = null; this.refresh(); }
@@ -660,7 +665,7 @@ export default () => ({
     return `After publishing, the deprecated nodes' labels and aliases are copied into the aliases of ${this.f.repl ? 'the new node' : this.lbl(this.survivor())}.`;
   },
 
-  // ---- import, Add from WoRMS, clone --------------------------------------------------------
+  // ---- import, Add from WoRMS ----------------------------------------------------------------
   openImport() { this.f = { text: '', under: '', error: '' }; this.modal = 'import'; },
   readImportFile(ev) {
     const file = ev.target.files[0];
@@ -713,22 +718,55 @@ export default () => ({
     if (!this.loggedIn) return [];
     return this.orgs.filter(o => roleIn(this.user, o.id) === 'owner');
   },
-  get cloneHint() { return this.loggedIn ? (this.ownedOrgs.length ? '' : 'Needs the owner role in an organization') : 'Log in to edit'; },
-  openClone() { this.f = { org: this.ownedOrgs[0]?.id ?? '', id: '', title: '', description: '', error: '' }; this.modal = 'clone'; },
-  get cloneError() {
+  // ---- new tree: empty, from an import file, or from the shown revision (clone) ----------------
+  get newTreeHint() { return this.loggedIn ? (this.ownedOrgs.length ? '' : 'Needs the owner role in an organization') : 'Log in to edit'; },
+  get canClone() { return !!this.treeId && this.viewRev != null; },
+  openNewTree(kind, org = null) {
+    this.newTreeOpen = false;
+    this.f = { kind, org: org ?? this.ownedOrgs[0]?.id ?? '', id: '', title: '', description: '', text: '', file: '', error: '' };
+    this.modal = 'newTree';
+  },
+  get newTreeTitle() {
+    if (this.f.kind === 'clone') return `New tree from ${this.treeId} revision ${this.viewRev}`;
+    return this.f.kind === 'import' ? 'New tree from an import file' : 'New empty tree';
+  },
+  get newTreeError() {
     if (!X.LABEL_RE.test(this.f.id || '') || /[.]/.test(this.f.id)) return 'Use letters, digits, _ and -';
     if (this.trees.some(g => g.trees.some(t => t.id === this.f.id))) return 'A tree with this id exists';
     if (!this.f.title.trim()) return 'A title is needed';
+    if (this.f.kind === 'import' && !this.f.text.trim()) return 'Paste or load an import file';
     return '';
   },
-  async submitClone() {
-    const changes = X.expandImport(X.cloneData(BASE), { group: 'import#1' });
+  readNewTreeFile(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { this.f.text = reader.result; this.f.file = file.name; };
+    reader.readAsText(file);
+  },
+  /** The new tree's changes and notes; throws with a message for a bad import file. */
+  newTreeChanges() {
+    const f = this.f;
+    if (f.kind === 'empty') return { changes: [], notes: 'New tree.' };
+    if (f.kind === 'clone') {
+      return { changes: X.expandImport(X.cloneData(BASE), { group: 'import#1' }), notes: `Clone of ${this.treeId} revision ${this.viewRev}.` };
+    }
+    let data;
+    try { data = JSON.parse(f.text); } catch (e) { throw new Error(`Not valid JSON: ${e.message}`); }
+    return { changes: X.expandImport(data, { group: 'import#1' }), notes: `Import of ${f.file || 'pasted JSON'}.` };
+  },
+  async submitNewTree() {
+    let body;
+    try { body = this.newTreeChanges(); } catch (e) { this.f.error = e.message; return; }
     const r = await api('POST', '/changesets', {
-      new_tree: { id: this.f.id, title: this.f.title, description: this.f.description, org: this.f.org },
-      changes, notes: `Clone of ${this.treeId} revision ${this.viewRev}.`,
+      new_tree: { id: this.f.id, title: this.f.title, description: this.f.description, org: this.f.org }, ...body,
     });
     if (!r.ok) { this.f.error = problem(r); return; }
     window.location.href = `/changesets/${r.data.id}/edit/`;
+  },
+  cancelNewTree() {
+    if (this.startNewTree) { window.location.href = `/orgs/${this.startNewTree}/`; return; }
+    this.closeModal();
   },
 
   // ---- validate ----------------------------------------------------------------------------------
