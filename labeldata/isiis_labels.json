@@ -1,0 +1,85 @@
+{
+  "tree": "isiis_labels",
+  "nodes": [
+    {"label": "arthropod", "aphia_id": 1065, "children": [
+      {"label": "amphipod", "aphia_id": 1135},
+      {"label": "copepod", "aphia_id": 1080, "children": [
+        {"label": "copepod_euph_missclass"},
+        {"label": "copepod_small"},
+        {"label": "mf_amphipod"}
+      ]},
+      {"label": "decapod", "aphia_id": 1130},
+      {"label": "euphasid_ambiguous"},
+      {"label": "euphausid", "aphia_id": 1128},
+      {"label": "stomatopod", "aphia_id": 14355}
+    ]},
+    {"label": "artifact", "children": [
+      {"label": "center_spot_line"}
+    ]},
+    {"label": "chordate", "aphia_id": 1821, "children": [
+      {"label": "appendicularian", "aphia_id": 146421, "children": [
+        {"label": "appendicularian_house"}
+      ]},
+      {"label": "doliolid", "aphia_id": 137212},
+      {"label": "fish"},
+      {"label": "salpa_aspera", "aphia_id": 137270, "children": [
+        {"label": "salp_broken_chain"},
+        {"label": "salp_chain"},
+        {"label": "salp_solitary"}
+      ]}
+    ]},
+    {"label": "cnidaria", "aphia_id": 1267, "children": [
+      {"label": "medusa", "aphia_id": 1740301, "children": [
+        {"label": "medusa_aegina", "aphia_id": 116994},
+        {"label": "medusa_skinny_star_squiggly"},
+        {"label": "medusa_solmaris", "aphia_id": 117239}
+      ]},
+      {"label": "siphonophore", "aphia_id": 1371, "children": [
+        {"label": "physonect", "aphia_id": 135335},
+        {"label": "siphonophore_bract"},
+        {"label": "siphonophore_diphyid", "aphia_id": 135338},
+        {"label": "siphonophore_lilyopsis", "aphia_id": 135372},
+        {"label": "siphonophore_sphaeronectes", "aphia_id": 135381}
+      ]}
+    ]},
+    {"label": "ctenophore", "aphia_id": 1248, "children": [
+      {"label": "beroe", "aphia_id": 1434803},
+      {"label": "cestid", "aphia_id": 22584},
+      {"label": "cydippid", "aphia_id": 1251},
+      {"label": "lobate", "aphia_id": 1258}
+    ]},
+    {"label": "cyanobacteriota", "children": [
+      {"label": "trichodesmium", "aphia_id": 177604}
+    ]},
+    {"label": "fecal_pellet", "children": [
+      {"label": "fecal_pellet_blob"},
+      {"label": "fecal_pellet_long"}
+    ]},
+    {"label": "mollusca", "aphia_id": 51, "children": [
+      {"label": "pteropod", "aphia_id": 325345},
+      {"label": "veliger"}
+    ]},
+    {"label": "other", "children": [
+      {"label": "detritus"},
+      {"label": "marine_snow"},
+      {"label": "tentacles"}
+    ]},
+    {"label": "protozoa", "children": [
+      {"label": "diatom_chain"},
+      {"label": "foraminifera_calcarina", "aphia_id": 112119},
+      {"label": "radiolarian", "aphia_id": 582421, "children": [
+        {"label": "acantharia_bushy_star", "aphia_id": 586732},
+        {"label": "acantharian_skinny_star_straight", "aphia_id": 586732},
+        {"label": "radiolarian_colony"}
+      ]}
+    ]},
+    {"label": "save"},
+    {"label": "worm", "children": [
+      {"label": "chaetognath", "aphia_id": 2081},
+      {"label": "polychaete", "aphia_id": 883, "children": [
+        {"label": "polychaete_tomopteris", "aphia_id": 129715},
+        {"label": "polychaete_type2"}
+      ]}
+    ]}
+  ]
+}

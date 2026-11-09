@@ -313,7 +313,7 @@ they run.
 
 ## Example trees
 
-`labeldata/` holds two example trees, for reference and as sample
+`labeldata/` holds three example trees, for reference and as sample
 [import](webapp.md#import) files. Each is loaded as a
 [new tree](webapp.md#new-trees) with the `import_tree` management command,
 which checks the import changeset, then saves and publishes it as revision 1
@@ -323,3 +323,4 @@ only if it has no errors.
 |---|---|---|
 | `labeldata/NES2022_taxonomy.json` | `NES2022_taxonomy` | 245 nodes. Top level: `Chromista`, `Protozoa`, `Plantae`, `Animalia`, `Bacteria`, `other` |
 | `labeldata/NES2022_tags.json` | `NES2022_tags` | 18 nodes. Tag categories: `interaction`, `morphology`, `organism_state`, `parasite`, and `external_detritus` |
+| `labeldata/isiis_labels.json` | `isiis_labels` | 62 nodes. ISIIS classes from the archived Tator project 1 (`ISIIS.Classes.*`). Top level: `arthropod`, `artifact`, `chordate`, `cnidaria`, `ctenophore`, `cyanobacteriota`, `fecal_pellet`, `mollusca`, `other`, `protozoa`, `save`, `worm` |
