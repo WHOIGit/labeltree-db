@@ -11,7 +11,7 @@ it is used:
 | `04-node-merge-and-split-options/04a–d` | [webapp.md](../webapp.md#merge-and-split) |
 | `05-consumer-lookups.mmd` | [api.md](../api.md#consumer-guide) |
 | `06-worms-sync.mmd` | [worms.md](../worms.md#worms-jobs-and-syncs) |
-| `07-quick-add.mmd` | [api.md](../api.md#quick-add-planned) |
+| `07-quick-add.mmd` | [api.md](../api.md#quick-add) |
 
 Colour key used throughout: **green** = new node, **yellow** = node version
 increased or warning raised, **grey dashed** = deprecated node, **blue** =

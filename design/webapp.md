@@ -38,6 +38,8 @@ An interactive mockup of the tree browser and draft editor is in
 - **Setup wizard:** on a new instance, guides a site admin through its first
   organization, users and trees; see
   [Setting up a new instance](#setting-up-a-new-instance).
+- **Quick add** (`/trees/{tree}/quick-add/`, approvers): adds one node and
+  publishes it straight away, with a preview first; see [Quick add](#quick-add).
 
 Anyone can browse trees, revisions and node pages without logging in; the top
 bar then shows **Log in to edit** instead of the edit and sync controls. Roles
@@ -369,3 +371,27 @@ from that revision:
 3. Publishing it creates the new tree with revision 1.
 
 The new tree's nodes get new ids, and nothing links them to the source nodes.
+
+## Quick add
+
+The Quick add page is a proof of concept for the
+[quick add endpoint](api.md#quick-add), and uses it as any other application
+would. Approvers reach it with **Quick add…** in the tree browser's toolbar.
+Others don't see the button, and get the "not allowed" page at its URL.
+
+1. Search WoRMS and pick a record, or type a label, or both. The parent is
+   **Work it out from WoRMS** by default. It can be set to **Top level**, or
+   to a node found by label or alias.
+2. **Preview** shows the label and parent that would be added and the
+   revision it would make, plus the plan's issues. Each issue's options, such
+   as **Use the accepted name** or **Under Chaetoceros (node 812)**, change
+   the form and preview again.
+3. **Confirm and publish** sends the previewed request with its key. On
+   success the page says which revision added the node, and links to the node
+   and the tree.
+
+Confirm always publishes what was previewed. If the form changed since the
+preview, Confirm is disabled until the next preview. If the tree changed in a
+way that alters the result, the page shows the new preview and says why
+instead of publishing. Errors, such as a label in use, are shown next to their
+field, with no Confirm.

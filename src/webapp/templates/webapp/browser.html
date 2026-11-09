@@ -101,6 +101,10 @@
                 </template>
               </div>
             </div>
+            <template x-if="canQuickAdd">
+              <a class="btn btn-sm btn-outline-success" id="quick-add-button" :href="'/trees/' + treeId + '/quick-add/'"
+                 title="Add one node, from WoRMS or by label, and publish it">Quick add…</a>
+            </template>
             <div class="menu-wrap" @click.outside="newTreeOpen = false">
               <button class="btn btn-sm btn-outline-secondary dropdown-toggle" id="new-tree-button" @click="newTreeOpen = !newTreeOpen"
                       :disabled="!!newTreeHint" :title="newTreeHint || 'Start a new tree, as a draft'">New tree</button>

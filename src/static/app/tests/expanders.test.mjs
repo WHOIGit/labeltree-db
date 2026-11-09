@@ -68,11 +68,11 @@ test('split without replacement leaves unassigned children', () => {
   assert.deepEqual(out.map(c => [c.op, c.node]), [['add', 'new:8'], ['move', 4]]);
 });
 
+// Shared with worms/tests/test_placement.py, so the server's quick add derives the same labels.
+const labelCases = JSON.parse(readFileSync(join(here, '../../../worms/tests/label_cases.json'), 'utf8'));
+
 test('labels from WoRMS names', () => {
-  assert.equal(X.wormsLabel('Chaetoceros debilis'), 'Chaetoceros_debilis');
-  assert.equal(X.wormsLabel('Chaetoceros (Hyalochaete) debilis'), 'Chaetoceros_Hyalochaete_debilis');
-  assert.equal(X.wormsLabel('Chaetoceros cf. debilis'), 'Chaetoceros_cf._debilis');
-  assert.equal(X.wormsLabel('×Anthus hybrid'), 'Anthus_hybrid');
+  for (const [name, label] of labelCases) assert.equal(X.wormsLabel(name), label, name);
 });
 
 test('suggested parent is the deepest anchored lineage node', () => {

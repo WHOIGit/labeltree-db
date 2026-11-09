@@ -265,3 +265,14 @@ def test_new_tree_button_for_owners_only():
 def test_favicon(tree):
     page = Client().get("/trees/taxonomy/").content.decode()
     assert '<link rel="icon" href="/static/app/favicon.svg" type="image/svg+xml">' in page
+
+
+def test_quick_add_page_for_approvers(tree):
+    approver = logged_in(make_user("approver1", roles={"amplify": "approver"}))
+    drafter = logged_in(make_user("drafter1", roles={"amplify": "drafter"}))
+    page = approver.get("/trees/taxonomy/quick-add/")
+    assert page.status_code == 200 and b'x-data="quickAdd"' in page.content
+    refused = drafter.get("/trees/taxonomy/quick-add/")
+    assert refused.status_code == 403 and b"needs the approver role" in refused.content
+    assert Client().get("/trees/taxonomy/quick-add/")["Location"].startswith("/login/")
+    assert approver.get("/trees/nope/quick-add/").status_code == 404

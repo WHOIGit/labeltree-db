@@ -25,6 +25,7 @@ urlpatterns = [
     path("orgs/<slug:org_id>/new-tree/", views.new_tree_page, name="new_tree"),
     path("trees/<slug:tree_id>/", views.tree_page, name="tree"),
     path("trees/<slug:tree_id>/drafts/", views.drafts_page, name="drafts"),
+    path("trees/<slug:tree_id>/quick-add/", views.quick_add_page, name="quick_add"),
     path("changesets/<int:cs>/", views.review_page, name="review"),
     path("changesets/<int:cs>/edit/", views.edit_page, name="edit"),
     path("nodes/<int:node_id>/", views.node_page, name="node"),

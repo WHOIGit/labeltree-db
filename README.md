@@ -139,6 +139,19 @@ Scripts that write authenticate with an API token:
 The token acts with its user's roles. To revoke it, select it in **Api
 tokens** and run **Revoke selected tokens**.
 
+An approver's script can add one node with [quick add](design/api.md#quick-add):
+the first call previews it, and sending the same body again with the preview's
+`confirm` key publishes it:
+
+```sh
+curl -H "Authorization: Token <key>" -H "Content-Type: application/json" \
+     -d '{"aphia_id": 149219}' https://labeltree.example.org/api/v1/trees/taxonomy/quick_add
+# → 200 {"status": "preview", "plan": {"label": "Chaetoceros_debilis", ...}, "issues": [], "confirm": "<k>"}
+curl -H "Authorization: Token <key>" -H "Content-Type: application/json" \
+     -d '{"aphia_id": 149219, "confirm": "<k>"}' https://labeltree.example.org/api/v1/trees/taxonomy/quick_add
+# → 201 {"status": "published", "node": {"id": ..., "label": "Chaetoceros_debilis", ...}, "rev": ...}
+```
+
 ## WoRMS syncs
 
 A [sync](design/worms.md#worms-jobs-and-syncs) re-fetches a tree's AphiaIDs

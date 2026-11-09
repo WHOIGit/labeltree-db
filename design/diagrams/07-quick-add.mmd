@@ -40,6 +40,6 @@ sequenceDiagram
     Note over APP,W: 4 · Accidental quick-add resubmit
     APP->>LT: POST /trees/T/quick_add<br>{aphia_id: 149130, parent: 812, confirm: K2}
     LT->>LT: re-plan on R8: now duplicate_aphia<br>and label taken, so plan hash differs
-    LT-->>APP: 422 {errors: [label_exists]}<br>no key, nothing published
+    LT-->>APP: 422 {errors: [label_in_use]}<br>no key, nothing published
 
     Note over APP,W: Errors never get a key: unknown parent, bad or taken label (422),<br>no WoRMS record (404), WoRMS unreachable (503), not an approver (403)

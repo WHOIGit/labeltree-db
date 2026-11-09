@@ -1,0 +1,110 @@
+{% extends "webapp/base.html" %}
+{% block title %}Quick add · {{ tree.id }} · labeltree{% endblock %}
+{% block nav %}<a href="{% url 'tree' tree.id %}">{{ tree.id }}</a> · quick add{% endblock %}
+{% block content %}
+{{ page|json_script:"page-data" }}
+<main class="container narrow py-4" x-data="quickAdd">
+  <h1 class="h4">Quick add <small class="text-muted">{{ tree.title }}</small></h1>
+  <p class="text-muted small">Adds one node to the latest revision and publishes it. You see what will be added before anything is published.</p>
+
+  <template x-if="published">
+    <div class="alert alert-success" id="qa-published">
+      <div>Added <strong x-text="published.node.label"></strong> in revision <span x-text="published.rev"></span>.</div>
+      <a :href="'/nodes/' + published.node.id + '/'" id="qa-node-link">Open the node</a> ·
+      <a :href="'/trees/' + page.tree + '/'">Back to the tree</a> ·
+      <button class="btn btn-link btn-sm p-0 align-baseline" id="qa-another" @click="reset()">Add another</button>
+    </div>
+  </template>
+
+  <template x-if="!published">
+    <div>
+      <section class="mb-3">
+        <label class="form-label" for="qa-q">WoRMS record</label>
+        <form class="input-group mb-2" @submit.prevent="searchWorms()">
+          <input class="form-control" id="qa-q" x-model="q" placeholder="Scientific name, e.g. Chaetoceros debilis">
+          <button class="btn btn-outline-secondary" id="qa-search" :disabled="!canSearch">Search</button>
+        </form>
+        <div class="text-danger small" x-text="searchError"></div>
+        <div class="picker mb-2" x-show="results.length" id="qa-results">
+          <template x-for="rec in results" :key="rec.AphiaID">
+            <label :data-aphia="rec.AphiaID"><input type="radio" name="qa-pick" @change="pick(rec)">
+              <span x-text="rec.scientificname"></span><span class="path" x-text="rec.rank + ' · ' + rec.status + ' · ' + rec.AphiaID"></span></label>
+          </template>
+        </div>
+        <div class="small" id="qa-aphia" x-show="aphia">
+          AphiaID <strong x-text="aphia"></strong> <span x-text="pickedName"></span>
+          <button class="btn btn-link btn-sm p-0 align-baseline" @click="clearAphia()">remove</button>
+        </div>
+      </section>
+
+      <div class="row g-2 mb-3">
+        <div class="col-md-6">
+          <label class="form-label" for="qa-label">Label</label>
+          <input class="form-control" id="qa-label" x-model="label" :class="{ 'is-invalid': labelError }" :placeholder="labelPlaceholder">
+          <div class="invalid-feedback" id="qa-label-error" x-text="labelError"></div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="qa-parent-mode">Parent</label>
+          <select class="form-select" id="qa-parent-mode" x-model="parentMode" :class="{ 'is-invalid': parentError }">
+            <option value="auto">Work it out from WoRMS</option>
+            <option value="top">Top level</option>
+            <option value="node">A node…</option>
+          </select>
+          <div class="invalid-feedback" x-text="parentError"></div>
+          <template x-if="parentMode === 'node'">
+            <div class="mt-2">
+              <form class="input-group input-group-sm" @submit.prevent="searchParent()">
+                <input class="form-control" id="qa-parent-q" x-model="parentQ" placeholder="Label or alias">
+                <button class="btn btn-outline-secondary" id="qa-parent-search" :disabled="!parentQ.trim()">Find</button>
+              </form>
+              <div class="picker mt-1" x-show="parentResults.length" id="qa-parent-results">
+                <template x-for="n in parentResults" :key="n.id">
+                  <label :data-node="n.id"><input type="radio" name="qa-parent-pick" @change="chooseParent(n)">
+                    <span x-text="n.label"></span><span class="path" x-text="n.path"></span></label>
+                </template>
+              </div>
+              <div class="small mt-1" id="qa-parent" x-show="parent" x-text="parentText"></div>
+            </div>
+          </template>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="qa-notes">Notes <small class="text-muted">(optional, for the revision)</small></label>
+          <input class="form-control" id="qa-notes" x-model="notes" placeholder="Quick add">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" id="qa-preview" @click="previewIt()" :disabled="!!previewBlock" :title="previewBlock">Preview</button>
+      <div class="alert alert-danger py-2 mt-3" id="qa-error" x-show="error" x-text="error"></div>
+
+      <template x-if="preview">
+        <section class="card mt-3" id="qa-plan">
+          <div class="card-body">
+            <div class="alert alert-info py-2" id="qa-reason" x-show="reason" x-text="reason"></div>
+            <h2 class="h6">Will add, in revision <span x-text="preview.rev + 1"></span></h2>
+            <dl class="row mb-2">
+              <dt class="col-sm-3 text-muted fw-normal">Label</dt><dd class="col-sm-9" id="qa-plan-label" x-text="preview.plan.label"></dd>
+              <dt class="col-sm-3 text-muted fw-normal">Parent</dt><dd class="col-sm-9" id="qa-plan-parent" x-text="preview.plan.parent ? preview.plan.parent.label : '(top level)'"></dd>
+              <dt class="col-sm-3 text-muted fw-normal">AphiaID</dt><dd class="col-sm-9" x-text="preview.plan.aphia_id || 'none'"></dd>
+            </dl>
+            <div class="small text-muted mb-2" x-show="preview.worms === 'unavailable'">Some WoRMS checks couldn't run: WoRMS didn't answer.</div>
+            <template x-for="issue in preview.issues" :key="issue.code">
+              <div class="alert alert-warning py-2" :data-issue="issue.code">
+                <div><strong x-text="issue.code"></strong>: <span x-text="issue.message"></span></div>
+                <div class="d-flex gap-2 flex-wrap mt-1" x-show="issue.options.length">
+                  <template x-for="option in issue.options" :key="option.label">
+                    <button class="btn btn-sm btn-outline-secondary" @click="applyOption(option)" x-text="option.label"></button>
+                  </template>
+                </div>
+              </div>
+            </template>
+            <div class="d-flex gap-2 align-items-center">
+              <button class="btn btn-success" id="qa-confirm" @click="confirm()" :disabled="!!confirmBlock" :title="confirmBlock">Confirm and publish</button>
+              <span class="small text-muted" x-text="confirmBlock"></span>
+            </div>
+          </div>
+        </section>
+      </template>
+    </div>
+  </template>
+</main>
+{% endblock %}

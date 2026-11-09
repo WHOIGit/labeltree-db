@@ -43,7 +43,7 @@ leading punctuation removed, which is the rule the web app's Add from WoRMS
 uses. A given `label` SHALL be used as is.
 
 #### Scenario: Derived label
-- **WHEN** a quick add gives AphiaID 149128, whose name is `Chaetoceros debilis`, and no label
+- **WHEN** a quick add gives AphiaID 149219, whose name is `Chaetoceros debilis`, and no label
 - **THEN** the plan's label is `Chaetoceros_debilis`
 
 #### Scenario: Unsafe characters
@@ -58,7 +58,7 @@ in the tree, the parent SHALL be the top level. Without an `aphia_id`, a missing
 `parent` SHALL be the top level.
 
 #### Scenario: Nearest anchored ancestor
-- **WHEN** the tree has `Bacillariophyceae` and, below it, `Chaetoceros` anchored to their AphiaIDs, and a quick add gives AphiaID 149128 with no parent
+- **WHEN** the tree has `Bacillariophyceae` and, below it, `Chaetoceros` anchored to their AphiaIDs, and a quick add gives AphiaID 149219 with no parent
 - **THEN** the plan's parent is `Chaetoceros`
 
 #### Scenario: Nothing anchored
@@ -99,7 +99,7 @@ SHALL return `200` with `status: "preview"`, the `rev` it was planned on, the
 `confirm_status`, and a `confirm` key.
 
 #### Scenario: First call
-- **WHEN** an approver posts `{aphia_id: 149128}` without `confirm`
+- **WHEN** an approver posts `{aphia_id: 149219}` without `confirm`
 - **THEN** the response is `200` with the plan, its issues, `confirm_status: "none"` and a confirm key, and the tree's latest revision is unchanged
 
 ### Requirement: Quick add issues
@@ -110,8 +110,8 @@ suggested request edits, each with a `label` and the fields to `set`. Issues
 SHALL NOT prevent a confirm key.
 
 #### Scenario: Unaccepted AphiaID
-- **WHEN** a quick add gives AphiaID 149128, which WoRMS lists as unaccepted with accepted AphiaID 149130
-- **THEN** the preview has an `unaccepted_aphia` issue with an option that sets `aphia_id` to 149130, and still has a confirm key
+- **WHEN** a quick add gives AphiaID 148942 (`Thalassiosira rotula`), which WoRMS lists as a synonym of accepted AphiaID 149102
+- **THEN** the preview has an `unaccepted_aphia` issue with an option that sets `aphia_id` to 149102, and still has a confirm key
 
 #### Scenario: Ambiguous parent options
 - **WHEN** the preview has an `ambiguous_parent` issue for nodes 812 and 977

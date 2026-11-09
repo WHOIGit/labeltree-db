@@ -423,6 +423,10 @@ GET    /changesets/{cs}                 a changeset's atomic changes, plus valid
 POST   /changesets/{cs}/publish {notes} approver; draft → new tree revision (If-Match)
 DELETE /changesets/{cs}                 discard a draft (kept, with state "discarded")
 
+# Quick add (approver; see below)
+POST   /trees/{tree}/quick_add          {aphia_id?, label?, parent?, ...} → preview with a
+                                        confirm key; the same request with the key → published
+
 # WoRMS lookups (server-side cache; the browser never calls WoRMS directly)
 GET    /worms/search?name={n}           candidate WoRMS records; name is required
 GET    /worms/{aphia_id}                the WoRMS record alone
@@ -526,24 +530,91 @@ rebased with a `PUT` that sets `base_rev` to the latest revision. While one
 publish on a tree is running, other publishes on that tree get `409`
 `publish_in_progress` at once.
 
-### Quick add (planned)
+### Quick add
 
-Not built yet. `POST /trees/{tree}/quick_add` will let an approver add one node
-and publish it in a single step, for other applications that have just found an
-AphiaID with `GET /worms/search`. The body is `{aphia_id?, label?, parent?,
-description?, aliases?, notes?, confirm?}`. With an `aphia_id`, a missing
-`label` is derived from the WoRMS name, and a missing `parent` is the deepest
-live node anchored to the record's lineage. Without either, the node goes at
-the top level, and so does an ambiguous parent.
+`POST /trees/{tree}/quick_add` adds one node and publishes it in a single
+confirmed step. It is meant for other applications that have just found an
+AphiaID with `GET /worms/search`. It needs `approver` (or `owner`) in the tree's
+organization.
 
-The first call is a preview: it publishes nothing and returns the plan, its
-issues and a signed `confirm` key. The key binds that request to that result.
-Sending the same request again with its key publishes it (`201`). A changed
-request, a result changed by later publishes, or an expired key gets a fresh
-preview and a new key instead, with `confirm_status` saying why. Errors never
-get a key.
+```
+POST /trees/{tree}/quick_add
+{aphia_id?, label?, parent?, description?, aliases?, notes?, confirm?}
+```
+
+- `aphia_id`: the WoRMS record to anchor the node to. Its record comes from the
+  cache and is fetched from WoRMS on a miss.
+- `label`: when missing, derived from the record's scientific name (spaces to
+  `_`, characters that aren't machine-safe dropped, leading punctuation
+  removed). Without an `aphia_id` it is required.
+- `parent`: a node id. When missing, it is the live node anchored to the deepest
+  AphiaID of the record's lineage that the tree has. If several nodes tie for
+  that AphiaID, or nothing in the lineage is in the tree, or there is no
+  `aphia_id`, the node goes at the top level. `null` means the top level.
+- `notes`: the revision's notes; `Quick add` when missing. It can change between
+  preview and confirm.
+
+**Preview.** Without a valid `confirm` key, nothing is stored or published. The
+response is `200`:
+
+```
+{status: "preview", confirm_status: "none", tree, rev: 7,
+ plan: {label: "Chaetoceros_debilis", parent: {id: 812, label: "Chaetoceros"},
+        aphia_id: 149219, description: "", aliases: []},
+ issues: [{code, message, options: [{label, set: {...}}]}],
+ worms: "ok",                       # or "unavailable": placement checks couldn't run
+ confirm: "<key>"}
+```
+
+`rev` is the revision the plan was made on. Issues don't block the key:
+
+| Issue | Options (fields to change in the request) |
+|---|---|
+| `ambiguous_parent` | `{parent: id}` for each tied node, and `{parent: null}` |
+| `unaccepted_aphia` | `{aphia_id: <accepted AphiaID>}` |
+| `out_of_lineage` | `{parent: <the parent from the lineage>}`, if there is one |
+| `duplicate_aphia` | none; not confirming is how to cancel |
+
+To pick an option, change the request and send it again without the key, or
+with the old one, which is then ignored. That returns a new preview.
+
+**Confirm.** Send the same request again with `confirm` set to the preview's
+key. The request is planned again on the latest revision. If the request and
+the plan with its issues still match the key, the node is published as one
+changeset, with the caller as author and publisher, and the response is
+`201`:
+
+```
+{status: "published", confirm_status: "accepted", tree, rev: 8, changeset: 412,
+ node: {id: 9031, label: "Chaetoceros_debilis",
+        parent: {id: 812, label: "Chaetoceros"}, aphia_id: 149219},
+ warnings: [...]}                   # the issues, as previewed
+```
+
+Otherwise nothing is published, and the response is a fresh preview whose
+`confirm_status` says why:
+
+| `confirm_status` | Why |
+|---|---|
+| `body_changed` | the request differs from the previewed one (`notes` aside) |
+| `plan_changed` | the tree changed since the preview in a way that changes the plan or its issues; a publish that doesn't affect them is fine |
+| `expired` | the key is older than 15 minutes |
+| `invalid` | the key is malformed, altered, or was issued to another user or tree |
+
+Keys are signed by the server, so they can't be forged. Nothing is stored
+between the two calls. A confirm that is retried after it published adds
+nothing: the label is then taken (`422` `label_in_use`).
+
+**Errors** never return a key: `400` with neither `aphia_id` nor `label`;
+`422` `structural`, with `errors` such as `invalid_label`, `label_in_use` or
+`parent_not_in_tree`; `404` for an AphiaID WoRMS has no record of; `503` when
+the record isn't cached and WoRMS can't be reached; and `409`
+`publish_in_progress`.
 
 ![Quick add](diagrams/07-quick-add.png)
+
+The diagram follows one app through a preview, a changed request, a confirm
+and a retried confirm.
 
 ### Example: validate
 
@@ -656,7 +727,7 @@ Errors have one body shape:
 | Status | When |
 |---|---|
 | `200` | Success. A deprecated node requested at a later revision is a `200` with its [deprecation record](#deprecated-nodes), not an error. Also: description set. |
-| `201` | Created: new draft, published revision, added alias. |
+| `201` | Created: new draft, published revision (including a confirmed quick add), added alias. |
 | `202` | Accepted: WoRMS job started. |
 | `204` | No content: draft discarded, alias removed. |
 | `304` | Not modified, after `If-None-Match` ([Caching](#caching)). |
@@ -666,9 +737,9 @@ Errors have one body shape:
 | `404` | Unknown tree, node, label, changeset or AphiaID. Also a node that didn't exist yet at `?rev`, or a `?rev` later than the tree's latest. |
 | `409` | Publish blocked by `stale_base`, or refused with `publish_in_progress` while another publish on the tree runs. Also: updating or publishing a changeset that isn't a draft, publishing a new-tree changeset whose tree id exists (`tree_exists`), adding an alias the node already has or adding one to a deprecated node, setting the description of a deprecated node, or starting a sync that overlaps an active one (`sync_in_progress`), or removing or demoting an organization's last owner (`last_owner`), or adding an existing member (`already_member`), or creating an organization or user that exists (`org_exists`, `user_exists`). |
 | `412` | `If-Match` didn't match: the draft changed since it was fetched. |
-| `422` | Request body invalid, or publish blocked by structural errors. |
+| `422` | Request body invalid, or publish blocked by structural errors. Also a quick add whose plan has structural errors. |
 | `428` | `If-Match` missing on `PUT` or `publish` of a changeset. |
-| `503` | WoRMS failed and the record isn't cached (WoRMS lookup endpoints only); `error` is `worms_unreachable`, `worms_rate_limited` or `worms_error`. |
+| `503` | WoRMS failed and the record isn't cached (WoRMS lookup endpoints and quick add only); `error` is `worms_unreachable`, `worms_rate_limited` or `worms_error`. |
 
 A blocked publish (`409` or `422`) adds `validation`, holding the full
 [validate response](#example-validate), to the error body.

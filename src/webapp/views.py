@@ -106,6 +106,20 @@ def tree_page(request, tree_id: str):
     return _browser(request, tree=get_object_or_404(Tree, pk=tree_id), draft=None)
 
 
+@login_required
+def quick_add_page(request, tree_id: str):
+    """Add one node and publish it through the quick add endpoint (approvers)."""
+    tree = get_object_or_404(Tree, pk=tree_id)
+    try:
+        require(request.user, tree.id, Role.APPROVER)
+    except Forbidden:
+        reason = f"Quick add publishes, so it needs the approver role in {tree.org.name}."
+        return forbidden(request, Forbidden(reason))
+    page = {"tree": tree.id, "title": tree.title}
+    context = {"tree": tree, "page": page, "user_info": user_info(request.user)}
+    return render(request, "webapp/quick_add.html", context)
+
+
 def _changeset(cs: int) -> Changeset:
     return get_object_or_404(Changeset.objects.select_related("tree"), pk=cs)
 

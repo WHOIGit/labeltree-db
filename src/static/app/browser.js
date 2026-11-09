@@ -65,6 +65,7 @@ export default () => ({
   get role() { return roleIn(this.user, this.org); },
   can(minimum) { return atLeast(this.role, minimum); },
   hint(minimum) { return needs(this.user, this.org, minimum); },
+  get canQuickAdd() { return !!this.treeId && this.can('approver'); },
   get loggedIn() { return !!this.user?.username; },
   get frozen() { return this.mode === 'static' || this.draft?.state !== 'draft'; },
   get editable() { return !this.frozen && this.can(this.newTree ? 'owner' : 'drafter'); },
