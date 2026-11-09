@@ -9,9 +9,11 @@ from django.test import Client
 
 from api import quick_add
 from core.changesets import ChangesetError
+from core.engine import load_state
 from core.models import Changeset, TreeRevision
-from core.tests.helpers import add, publish
+from core.tests.helpers import add, move, publish
 from worms.client import worms_url
+from worms.records import get_records
 
 from .conftest import call
 
@@ -73,7 +75,8 @@ def test_label_only_goes_at_the_top_level(qa):
     status, body = qa({"label": "detritus"})
     assert status == 200
     assert body["plan"] == {"label": "detritus", "parent": None, "aphia_id": None,
-                            "worms_url": None, "description": "", "aliases": []}  # fmt: skip
+                            "worms_url": None, "description": "", "aliases": [],
+                            "moves": []}  # fmt: skip
     assert body["issues"] == [] and body["confirm_status"] == "none" and body["rev"] == 1
 
 
@@ -207,6 +210,71 @@ def test_preview_stores_nothing(qa):
     assert Changeset.objects.count() == before and TreeRevision.objects.count() == 1
 
 
+# --- Cross-node updates -------------------------------------------------------------------
+
+FAMILY = 148984  # Chaetocerotaceae, in the lineage of Chaetoceros (148985)
+
+
+@pytest.fixture
+def family(qa, ids):
+    """A quick add of the Chaetocerotaceae family under the unanchored
+    `Chaetocerotaceae` node, beside anchored Chaetoceros, whose lineage is cached."""
+    get_records([148985])
+    return {"aphia_id": FAMILY, "label": "family", "parent": ids("taxonomy")["Chaetocerotaceae"]}
+
+
+def test_cross_node_updates_not_allowed(qa, ids, family):
+    status, body = qa(family)
+    assert status == 200 and body["plan"]["moves"] == []
+    [issue] = [i for i in body["issues"] if i["code"] == "misplaced_lineage_ancestor"]
+    assert f"Chaetoceros ({ids('taxonomy')['Chaetoceros']})" in issue["message"]
+    assert [o["set"] for o in issue["options"]] == [{"allow_cross_node_updates": True}]
+
+
+def test_cross_node_updates_allowed(qa, ids, family):
+    body = qa({**family, "allow_cross_node_updates": True})[1]
+    chaetoceros = ids("taxonomy")["Chaetoceros"]
+    assert body["plan"]["moves"] == [{"id": chaetoceros, "label": "Chaetoceros"}]
+    assert "misplaced_lineage_ancestor" not in [i["code"] for i in body["issues"]]
+
+
+def test_only_direct_children_move(qa, taxonomy, ids, family):
+    ref = ids("taxonomy")
+    publish(taxonomy, add("new:1", "group", parent=ref["Chaetocerotaceae"]),
+            move(ref["Chaetoceros"], ref["Chaetocerotaceae"], "new:1"))  # fmt: skip
+    body = qa({**family, "allow_cross_node_updates": True})[1]
+    assert body["plan"]["moves"] == []
+    assert "misplaced_lineage_ancestor" not in [i["code"] for i in body["issues"]]
+    assert qa(family)[1]["issues"] == []
+
+
+def test_toggling_cross_node_updates_changes_the_request(qa, family):
+    key = qa(family)[1]["confirm"]
+    status, body = qa({**family, "allow_cross_node_updates": True, "confirm": key})
+    assert (status, body["confirm_status"]) == (200, "body_changed")
+
+
+def test_confirmed_with_moves(qa, ids, family):
+    status, body = confirmed(qa, {**family, "allow_cross_node_updates": True})
+    ref = ids("taxonomy")
+    assert status == 201 and body["moved"] == [{"id": ref["Chaetoceros"], "label": "Chaetoceros"}]
+    changeset = Changeset.objects.get(pk=body["changeset"])
+    assert [c.op for c in changeset.changes.order_by("seq")] == ["add", "move"]
+    assert load_state("taxonomy", body["rev"]).nodes[ref["Chaetoceros"]].parent == ref["family"]
+
+
+def test_node_to_adopt_added_since_the_preview(qa, taxonomy, ids, family):
+    request = {**family, "allow_cross_node_updates": True}
+    key = qa(request)[1]["confirm"]
+    get_records([DEBILIS])
+    publish(taxonomy, add("new:1", "debilis", parent=ids("taxonomy")["Chaetocerotaceae"],
+                          aphia_id=DEBILIS))  # fmt: skip
+    status, body = qa({**request, "confirm": key})
+    assert (status, body["confirm_status"]) == (200, "plan_changed")
+    assert [m["label"] for m in body["plan"]["moves"]] == ["Chaetoceros", "debilis"]
+    assert TreeRevision.objects.filter(tree_id="taxonomy").count() == 2
+
+
 # --- Confirming -----------------------------------------------------------------------------
 
 
@@ -329,8 +397,8 @@ def test_in_the_openapi_schema():
     schema = operation["requestBody"]["content"]["application/json"]["schema"]
     fields = api.get_openapi_schema()["components"]["schemas"][schema["$ref"].split("/")[-1]]
     assert set(fields["properties"]) == {
-        "aphia_id", "label", "parent", "lowercase_label", "description", "aliases", "notes",
-        "confirm",
+        "aphia_id", "label", "parent", "lowercase_label", "allow_cross_node_updates",
+        "description", "aliases", "notes", "confirm",
     }  # fmt: skip
     assert "required" not in fields
 

@@ -11,8 +11,17 @@
   "Dactyliosolen_fragilissimus": [
     "unaccepted_aphia"
   ],
+  "Dictyocysta": [
+    "misplaced_lineage_ancestor"
+  ],
   "Emiliania_huxleyi": [
     "unaccepted_aphia"
+  ],
+  "Eutintinnus": [
+    "misplaced_lineage_ancestor"
+  ],
+  "Favella": [
+    "misplaced_lineage_ancestor"
   ],
   "Guinardia_delicatula": [
     "unaccepted_aphia"
@@ -23,7 +32,12 @@
   "Guinardia_striata": [
     "unaccepted_aphia"
   ],
+  "Helicostomella_subulata": [
+    "misplaced_lineage_ancestor"
+  ],
   "Heterocapsa_triquetra": [
+    "misplaced_lineage_ancestor",
+    "misplaced_lineage_ancestor",
     "unaccepted_aphia"
   ],
   "Leptocylindrus_mediterraneus": [
@@ -32,10 +46,20 @@
   "Lingulodinium_polyedra": [
     "unaccepted_aphia"
   ],
+  "Parvicorbicula_socialis": [
+    "misplaced_lineage_ancestor"
+  ],
+  "Stenosemella": [
+    "misplaced_lineage_ancestor"
+  ],
   "Thalassiosira_rotula": [
     "unaccepted_aphia"
   ],
   "Tintinnidium_mucicola": [
+    "misplaced_lineage_ancestor",
     "unaccepted_aphia"
+  ],
+  "Tintinnopsis": [
+    "misplaced_lineage_ancestor"
   ]
 }

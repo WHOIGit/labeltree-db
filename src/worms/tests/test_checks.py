@@ -1,8 +1,8 @@
 """Placement checks and recheck scope (spec: worms-placement-checks), in memory."""
 
 from core.engine import NodeState, TreeState, apply_changes, specs_from_dicts
-from core.tests.helpers import deprecate, edit, move
-from worms.checks import check_nodes, needed_aphia_ids, recheck_scope
+from core.tests.helpers import add, deprecate, edit, move
+from worms.checks import Lineages, change_checks, check_nodes, needed_aphia_ids, recheck_scope
 from worms.client import WormsClient
 
 from .fixtures import FixtureTransport
@@ -143,6 +143,78 @@ def test_unknown_ancestor_does_not_put_children_out_of_lineage():
 def test_unknown_and_duplicate():
     s = state((1, "a", None, 999999999), (2, "b", None, 999999999))
     assert codes(check_nodes(s, [1], records_for(s))[1]) == ["unknown_aphia", "duplicate_aphia"]
+
+
+# --- misplaced_lineage_ancestor ------------------------------------------------------------
+
+
+def misplaced(warnings):
+    return [w["detail"] for w in warnings if w["warning"] == "misplaced_lineage_ancestor"]
+
+
+def test_family_beside_its_genus():
+    s = state((2, "Bacillariophyceae", None, 148899), (3, "Chaetocerotaceae", 2, 148984),
+              (4, "Chaetoceros", 2, 148985))  # fmt: skip
+    result = check_nodes(s, [3, 4], records_for(s))
+    assert result[3] == []
+    (warning,) = result[4]
+    assert warning["warning"] == "misplaced_lineage_ancestor"
+    assert warning["detail"].startswith("Chaetocerotaceae (Chaetocerotaceae, 148984) is in")
+    assert "between Bacillariophyceae and it" in warning["detail"]
+
+
+def test_ancestor_elsewhere_in_the_tree():
+    s = state((2, "Bacillariophyceae", None, 148899), (4, "Chaetoceros", None, 148985))
+    (detail,) = misplaced(check_nodes(s, [4], records_for(s))[4])
+    assert detail.startswith("Bacillariophyceae (Bacillariophyceae, 148899)")
+
+
+def test_already_under_it():
+    s = state(*DIATOMS)
+    assert misplaced(check_nodes(s, [4, 6], records_for(s))[4]) == []
+
+
+def test_missing_two_ancestors():
+    s = state((1, "Chromista", None, 7), (2, "Bacillariophyceae", 1, 148899),
+              (3, "Chaetocerotaceae", 2, 148984), (4, "Chaetoceros", 1, 148985))  # fmt: skip
+    details = misplaced(check_nodes(s, [4], records_for(s))[4])
+    assert [d.split(" ")[0] for d in details] == ["Bacillariophyceae", "Chaetocerotaceae"]
+
+
+def test_synonym_node_matches_through_its_accepted_aphia_id():
+    s = state((2, "Bacillariophyceae", None, 148899), (3, "old_family", 2, 901),
+              (4, "Chaetoceros", 2, 148985))  # fmt: skip
+    synonym = {"AphiaID": 901, "valid_AphiaID": 148984, "status": "unaccepted",
+               "lineage": [{"AphiaID": 901}]}  # fmt: skip
+    records = records_for(s, a901=synonym)
+    assert misplaced(check_nodes(s, [4], records)[4]) == []  # not cached as a synonym
+    (detail,) = misplaced(check_nodes(s, [4], records, Lineages(records))[4])
+    assert detail.startswith("old_family (Chaetocerotaceae, 148984)")
+
+
+def test_no_misplaced_warning_when_out_of_lineage():
+    s = state((1, "Dinophyceae", None, 19542), (2, "Chaetoceros", 1, 148985),
+              (3, "Chaetocerotaceae", None, 148984))  # fmt: skip
+    assert codes(check_nodes(s, [2], records_for(s))[2]) == ["out_of_lineage"]
+
+
+def test_adding_an_ancestor_taxon_warns_its_would_be_children():
+    s = state((2, "Bacillariophyceae", None, 148899), (4, "Chaetoceros", 2, 148985),
+              (5, "Chaetoceros_didymus", 4, 149122))  # fmt: skip
+    family = state((3, "Chaetocerotaceae", None, 148984))
+    records = {**records_for(s), **records_for(family)}
+    lineages = Lineages(records)
+    (spec,) = specs_from_dicts([add("new:1", "Chaetocerotaceae", parent=2, aphia_id=148984)])
+    after = apply_changes(s, [spec]).state
+    assert recheck_scope(s, after, spec, lineages) == {"new:1", 4, 5}
+    assert recheck_scope(s, after, spec) == {"new:1"}  # without cached lineages
+    [checks], _ = change_checks(s, [spec], records, lineages)
+    assert [(w["warning"], w["node"]) for w in checks] == [("misplaced_lineage_ancestor", 4)]
+
+    (gone,) = specs_from_dicts([deprecate("new:1")])
+    [cleared], _ = change_checks(after, [gone], records, lineages)
+    assert cleared == []
+    assert check_nodes(apply_changes(after, [gone]).state, [4], records, lineages) == {4: []}
 
 
 # --- 2.2 recheck scope ----------------------------------------------------------------

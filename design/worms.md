@@ -52,6 +52,7 @@ such as `morphotype1` or `artifact`, as if they weren't there.
 | `unaccepted_aphia` | WoRMS points this AphiaID to a different accepted AphiaID, whatever its status (`unaccepted`, `superseded combination`, a synonym, or `unassessed` with an accepted name given). The accepted AphiaID is suggested. | A species renamed in WoRMS since it was added. |
 | `unknown_aphia` | WoRMS has no record for this AphiaID. | A mistyped AphiaID. |
 | `duplicate_aphia` | Another node in the same tree has the same AphiaID. | The same species added twice under different labels. |
+| `misplaced_lineage_ancestor` | Another node of the tree has an AphiaID from the node's WoRMS lineage that lies between the node and its nearest anchored ancestor (anywhere in the lineage if it has none), so the node could sit under that one. One warning per such AphiaID. | *Chaetoceros* beside *Chaetocerotaceae*, both under *Bacillariophyceae*; or a genus at the top level while its class is elsewhere in the tree. |
 
 "WoRMS ancestors" means the node's lineage from WoRMS
 (`AphiaClassificationByAphiaID`). WoRMS lineages contain accepted names only, so
@@ -59,6 +60,13 @@ if the nearest anchored ancestor has an unaccepted AphiaID, its `valid_AphiaID`
 is compared instead; otherwise every descendant of a synonym would get an
 `out_of_lineage` warning. A node with no anchored ancestor gets no
 `out_of_lineage` check.
+
+`misplaced_lineage_ancestor` is on the node that is out of place, not on its
+would-be ancestor, and a node with `out_of_lineage` doesn't get it. Other nodes
+are matched by AphiaID, and a node whose cached record is a synonym also by its
+accepted AphiaID. Only cached records are used for that matching and for
+finding which nodes an edit can warn, so what isn't cached yet is filled in by
+the next sync.
 
 ### When checks run
 
@@ -77,8 +85,10 @@ rechecks:
   nearest anchored ancestor may have changed. Nodes further down keep the same
   nearest anchored ancestor.
 - any other node in the tree with the same AphiaID
+- any node whose cached lineage holds the node's AphiaID, which it may now be
+  missing from its ancestors (`misplaced_lineage_ancestor`)
 
-Ancestors don't need rechecking.
+Ancestors don't otherwise need rechecking.
 
 If a record the checks need isn't cached (never fetched, or every fetch
 failed), the affected changes record "checks unavailable" and publishing is

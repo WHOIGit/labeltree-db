@@ -16,6 +16,7 @@ from datetime import datetime
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from .checks import Lineages
 from .client import WormsClient, WormsError
 from .models import WormsRecord
 
@@ -50,6 +51,11 @@ def cached_records(aphia_ids) -> dict:
     """{aphia_id: record or None} from complete cached rows, for checks. AphiaIDs
     without one are absent, which makes the checks that need them unavailable."""
     return {a: row.record for a, row in newest_rows(aphia_ids).items() if row.complete}
+
+
+def cached_lineages(aphia_ids) -> Lineages:
+    """The `Lineages` of a tree's AphiaIDs, from cached records only."""
+    return Lineages(cached_records(aphia_ids))
 
 
 def store(aphia_id: int, record: dict | None, now=None) -> WormsRecord:

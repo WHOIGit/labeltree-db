@@ -175,12 +175,13 @@ def test_warnings_panel_on_nes2022_taxonomy(site, transactional_db, worms_http):
         "import_tree", str(LABELDATA / "NES2022_taxonomy.json"), tree="NES2022_taxonomy",
         title="NES2022 taxonomy", org=org(), stdout=StringIO(), stderr=StringIO(),
     )  # fmt: skip
-    expected = json.loads(EXPECTED.read_text())  # the 13 unaccepted_aphia nodes
+    # 13 unaccepted_aphia nodes and 7 more with only misplaced_lineage_ancestor
+    expected = json.loads(EXPECTED.read_text())
     page = site.open("/trees/NES2022_taxonomy/")
     page.click("#warnings-toggle")
     page.wait_for_selector("#warnings-panel .crow")
     entries = page.locator("#warnings-panel .crow")
-    assert entries.count() == 13
+    assert entries.count() == len(expected) == 20
     shown = page.eval_on_selector_all(
         "#warnings-panel .crow .txt > div:first-child", "es => es.map(e => e.textContent)"
     )

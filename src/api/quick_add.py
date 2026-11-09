@@ -11,6 +11,10 @@ shown. Anything else gets a fresh preview, saying why the key wasn't used.
 Nothing is stored between the two calls. Planning reuses validate(), and
 publishing reuses create_changeset() and publish_changeset(), so a quick add
 is an ordinary changeset and revision.
+
+Existing direct children of the parent that belong under the new node (it would
+give them `misplaced_lineage_ancestor`) are an issue; with
+`allow_cross_node_updates` the plan also moves all of them under it.
 """
 
 import hashlib
@@ -48,6 +52,7 @@ class QuickAddIn(Schema):
     label: str | None = None
     parent: int | None = None  # missing: work it out; null: the top level
     lowercase_label: bool = True  # for a label derived from the WoRMS name
+    allow_cross_node_updates: bool = False  # move the nodes the new one should adopt
     description: str = ""
     aliases: list[str] = []
     notes: str | None = None
@@ -108,25 +113,44 @@ class Plan:
             change["description"] = body.description
         if body.aliases:
             change["aliases"] = body.aliases
-        self.change = change
-
         # The records the placement checks need, fetched if missing; a failure
         # leaves those checks unavailable, as when saving a draft.
         get_records({a for a in (body.aphia_id, _anchor(state, parent)) if a is not None})
-        result = validate(specs_from_dicts([change]), tree_id=tree.id, base_rev=self.rev)
-        if result["errors"]:
-            raise APIError(
-                422, "structural", f"The quick add has {len(result['errors'])} error(s).",
-                errors=result["errors"],
-            )  # fmt: skip
+        result = self._validate([change])
+        # Every misplaced_lineage_ancestor the add causes on an existing node is
+        # about the new node; the direct children of its parent can move under it.
+        adopt = sorted({
+            w["node"] for w in result["warnings"]
+            if w["warning"] == "misplaced_lineage_ancestor" and w["node"] != PLACEHOLDER
+            and state.nodes[w["node"]].parent == parent
+        })  # fmt: skip
+        moves = adopt if body.allow_cross_node_updates else []
+        self.changes = [change] + [
+            {"op": "move", "node": ref, "from_parent": parent, "to_parent": PLACEHOLDER}
+            for ref in moves
+        ]
+        if moves:
+            result = self._validate(self.changes)
 
         self.plan = {
             "label": label, "parent": _node(state, parent),
             "aphia_id": body.aphia_id, "worms_url": worms_url(body.aphia_id),
             "description": body.description, "aliases": body.aliases,
+            "moves": [_node(state, ref) for ref in moves],
         }  # fmt: skip
         self.issues = self._issues(state, record, result, parent, suggested, candidates)
+        if adopt and not moves:
+            self.issues.append(_adopt_issue(state, label, adopt))
         self.worms = result["worms"]
+
+    def _validate(self, changes: list[dict]) -> dict:
+        result = validate(specs_from_dicts(changes), tree_id=self.tree.id, base_rev=self.rev)
+        if result["errors"]:
+            raise APIError(
+                422, "structural", f"The quick add has {len(result['errors'])} error(s).",
+                errors=result["errors"],
+            )  # fmt: skip
+        return result
 
     def _issues(self, state, record, result, parent, suggested, candidates) -> list[dict]:
         issues = []
@@ -151,7 +175,8 @@ class Plan:
                 name = record.get("valid_name") or f"AphiaID {valid}"
                 options.append({"label": f"Use the accepted name, {name} ({valid})",
                                  "set": {"aphia_id": valid}})  # fmt: skip
-            elif code == "out_of_lineage" and suggested is not None and suggested != parent:
+            elif (code in ("out_of_lineage", "misplaced_lineage_ancestor")
+                  and suggested is not None and suggested != parent):  # fmt: skip
                 options.append({"label": f"Under {state.nodes[suggested].label} (node "
                                          f"{suggested}), from the WoRMS lineage",
                                 "set": {"parent": suggested}})  # fmt: skip
@@ -160,6 +185,17 @@ class Plan:
 
     def digest(self) -> str:
         return _digest({"plan": self.plan, "issues": self.issues})
+
+
+def _adopt_issue(state: TreeState, label: str, adopt: list) -> dict:
+    names = ", ".join(f"{state.nodes[ref].label} ({ref})" for ref in adopt)
+    return {
+        "code": "misplaced_lineage_ancestor",
+        "message": f"In WoRMS, {label} is in the lineage of {names}, which would sit "
+                   f"beside it. Allowing updates to other nodes moves them under {label}.",
+        "options": [{"label": f"Move {len(adopt)} node{'s' if len(adopt) > 1 else ''} "
+                              f"under {label}", "set": {"allow_cross_node_updates": True}}],
+    }  # fmt: skip
 
 
 def _key(user, tree, request_digest: str, plan: Plan) -> str:
@@ -189,7 +225,7 @@ def _publish(user, tree, plan: Plan, notes: str | None):
     username = user.get_username()
     with transaction.atomic():
         changeset = create_changeset(
-            author=username, changes=[plan.change], tree=tree, base_rev=plan.rev,
+            author=username, changes=plan.changes, tree=tree, base_rev=plan.rev,
             notes=notes or DEFAULT_NOTES,
         )  # fmt: skip
         revision = publish_changeset(changeset, published_by=username)
@@ -228,7 +264,7 @@ def quick_add(request, tree_id: str, body: QuickAddIn):
             "rev": revision.number, "changeset": changeset.pk,
             "node": {"id": node, "label": plan.plan["label"], "parent": plan.plan["parent"],
                      "aphia_id": plan.plan["aphia_id"], "worms_url": plan.plan["worms_url"]},
-            "warnings": plan.issues,
+            "moved": plan.plan["moves"], "warnings": plan.issues,
         }, status=201, json_dumps_params={"ensure_ascii": False})  # fmt: skip
 
     return JsonResponse({

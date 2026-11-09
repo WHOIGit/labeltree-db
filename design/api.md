@@ -539,7 +539,8 @@ organization.
 
 ```
 POST /trees/{tree}/quick_add
-{aphia_id?, label?, parent?, lowercase_label?, description?, aliases?, notes?, confirm?}
+{aphia_id?, label?, parent?, lowercase_label?, allow_cross_node_updates?,
+ description?, aliases?, notes?, confirm?}
 ```
 
 - `aphia_id`: the WoRMS record to anchor the node to. Its record comes from the
@@ -553,6 +554,11 @@ POST /trees/{tree}/quick_add
   AphiaID of the record's lineage that the tree has. If several nodes tie for
   that AphiaID, or nothing in the lineage is in the tree, or there is no
   `aphia_id`, the node goes at the top level. `null` means the top level.
+- `allow_cross_node_updates`: `false` when missing. When `true`, the quick add
+  also moves under the new node every direct child of its parent (every
+  top-level node, for the top level) that would otherwise get
+  `misplaced_lineage_ancestor` because of it, in the same changeset. Which nodes
+  move is the server's decision; they are listed in the plan's `moves`.
 - `notes`: the revision's notes; `Quick add` when missing. It can change between
   preview and confirm.
 
@@ -564,7 +570,8 @@ response is `200`:
  plan: {label: "chaetoceros_debilis", parent: {id: 812, label: "Chaetoceros"},
         aphia_id: 149219,
         worms_url: "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149219",
-        description: "", aliases: []},
+        description: "", aliases: [],
+        moves: []},                 # [{id, label}] with allow_cross_node_updates
  issues: [{code, message, options: [{label, set: {...}}]}],
  worms: "ok",                       # or "unavailable": placement checks couldn't run
  confirm: "<key>"}
@@ -578,6 +585,7 @@ page (`null` without an AphiaID). Issues don't block the key:
 | `ambiguous_parent` | `{parent: id}` for each tied node, and `{parent: null}` |
 | `unaccepted_aphia` | `{aphia_id: <accepted AphiaID>}` |
 | `out_of_lineage` | `{parent: <the parent from the lineage>}`, if there is one |
+| `misplaced_lineage_ancestor` | For the new node: `{parent: <the parent from the lineage>}`, if there is one. For the direct children of its parent that belong under it (one issue naming them): `{allow_cross_node_updates: true}` |
 | `duplicate_aphia` | none; not confirming is how to cancel |
 
 To pick an option, change the request and send it again without the key, or
@@ -594,6 +602,7 @@ changeset, with the caller as author and publisher, and the response is
  node: {id: 9031, label: "chaetoceros_debilis",
         parent: {id: 812, label: "Chaetoceros"}, aphia_id: 149219,
         worms_url: "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149219"},
+ moved: [],                         # the plan's moves, now under the new node
  warnings: [...]}                   # the issues, as previewed
 ```
 

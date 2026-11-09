@@ -47,7 +47,7 @@ from core.engine import load_state
 from core.models import NodeVersion, Tree
 
 from . import records
-from .checks import check_nodes
+from .checks import Lineages, check_nodes
 from .client import JOB_BACKOFF, SCHEDULED_BACKOFF, RateLimited, WormsError
 from .models import WormsRecord
 from .records import cached_records, newest_rows, store
@@ -359,7 +359,7 @@ def _write_warnings(tree_id: str, failed: set[int]) -> dict:
         state = load_state(tree_id, rev)
         aphia_ids = {n.aphia_id for n in state.nodes.values() if n.aphia_id is not None}
         known = cached_records(aphia_ids - failed)
-        rows = record_warnings(check_nodes(state, state.nodes, known))
+        rows = record_warnings(check_nodes(state, state.nodes, known, Lineages(known)))
     return {"tree": tree_id, "rev": rev, "rows_added": rows}
 
 

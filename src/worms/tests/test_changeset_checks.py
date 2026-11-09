@@ -18,7 +18,7 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture
 def diatoms():
     """Chromista > Bacillariophyceae > Chaetocerotaceae > Chaetoceros > Chaetoceros_didymus;
-    plus Dinophyceae (19542) at the top level."""
+    plus Dinophyceae (19542) under Chromista."""
     publish_new_tree(
         "diatoms",
         add("new:1", "Chromista", aphia_id=7),
@@ -26,7 +26,7 @@ def diatoms():
         add("new:3", "Chaetocerotaceae", parent="new:2", aphia_id=148984),
         add("new:4", "Chaetoceros", parent="new:3", aphia_id=148985),
         add("new:5", "Chaetoceros_didymus", parent="new:4", aphia_id=149122),
-        add("new:6", "Dinophyceae", aphia_id=19542),
+        add("new:6", "Dinophyceae", parent="new:1", aphia_id=19542),
     )
     return Tree.objects.get(id="diatoms")
 
@@ -117,6 +117,24 @@ def test_warnings_clear(diatoms):
     assert warnings_of("Chaetoceros") == []
 
 
+def test_misplaced_lineage_ancestor_is_recorded_and_clears(diatoms):
+    chaetoceros = ids()["Chaetoceros"]
+    family, klass = ids()["Chaetocerotaceae"], ids()["Bacillariophyceae"]
+    revision = publish(diatoms, move(chaetoceros, family, klass))  # beside its family
+    assert revision.number == 2
+    assert warnings_of("Chaetoceros") == ["misplaced_lineage_ancestor"]
+    (change,) = Change.objects.filter(changeset=revision.changeset)
+    assert [(w["warning"], w["node"]) for w in change.checks] == [
+        ("misplaced_lineage_ancestor", chaetoceros)
+    ]
+    publish(diatoms, move(chaetoceros, klass, family))
+    rows = NodeWarnings.objects.filter(node_id=chaetoceros).order_by("-computed_at")
+    assert [[w["warning"] for w in r.warnings] for r in rows] == [
+        [],
+        ["misplaced_lineage_ancestor"],
+    ]
+
+
 def test_quiet_recheck_adds_no_row(diatoms):
     chaetoceros, dino = ids()["Chaetoceros"], ids()["Dinophyceae"]
     publish(
@@ -153,7 +171,8 @@ def test_publish_without_worms(diatoms, worms_http):
     revision = publish_changeset(cs, published_by="b")
     assert revision.number == 2 and worms_http.calls == []
     assert warnings_of("Chaetoceros") == ["out_of_lineage"]
-    assert warnings_of("dup") == ["duplicate_aphia"]
+    # Under Chromista, above Bacillariophyceae, Chaetocerotaceae and Chaetoceros.
+    assert warnings_of("dup") == ["misplaced_lineage_ancestor"] * 3 + ["duplicate_aphia"]
 
 
 def test_publish_uses_the_cached_record(diatoms, worms_http):

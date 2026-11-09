@@ -3,8 +3,9 @@
 import pytest
 from playwright.sync_api import expect
 
+from core.engine import load_state
 from core.models import TreeRevision
-from core.tests.helpers import add, publish
+from core.tests.helpers import add, deprecate, ids_by_label, move, publish
 from worms.tests.fixtures import load
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -129,3 +130,27 @@ def test_editing_after_preview_needs_a_new_preview(site, taxonomy, approver):
     expect(page.locator("#qa-confirm")).to_be_enabled()
     page.fill("#qa-label", "detritus2")
     expect(page.locator("#qa-confirm")).to_be_disabled()
+
+
+def test_moving_the_nodes_that_belong_under_it(site, taxonomy, approver, searchable):
+    ref = ids_by_label("taxonomy")
+    # Chaetoceros beside where its family will go, and no family node yet.
+    publish(taxonomy, move(ref["Chaetoceros"], ref["Chaetocerotaceae"], ref["Bacillariophyceae"]),
+            deprecate(ref["Chaetocerotaceae"]))  # fmt: skip
+    searchable("Chaetocerotaceae", 148984)
+    page = open_page(site, approver)
+    find(page, "Chaetocerotaceae", 148984)
+    page.click("#qa-preview")
+    issue = page.locator('[data-issue="misplaced_lineage_ancestor"]')
+    expect(issue).to_contain_text("Chaetoceros")
+    expect(page.locator("#qa-cross-node")).not_to_be_checked()
+    issue.get_by_role("button").click()
+    expect(page.locator("#qa-cross-node")).to_be_checked()
+    expect(page.locator("#qa-plan-moves")).to_have_text("Chaetoceros")
+    expect(page.locator('[data-issue="misplaced_lineage_ancestor"]')).to_have_count(0)
+    page.click("#qa-confirm")
+    expect(page.locator("#qa-published")).to_contain_text("Added chaetocerotaceae")
+    expect(page.locator("#qa-moved")).to_contain_text("Chaetoceros")
+    after = ids_by_label("taxonomy")
+    assert load_state("taxonomy", 3).nodes[after["Chaetoceros"]].parent == after["chaetocerotaceae"]
+    assert site.console.errors == []

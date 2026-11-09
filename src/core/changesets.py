@@ -18,8 +18,8 @@ from django.db import connection, transaction
 from django.db.models import Max
 from django.utils import timezone
 
-from worms.checks import change_checks, check_nodes, needed_for_changes
-from worms.records import cached_records
+from worms.checks import Lineages, change_checks, check_nodes, needed_for_changes, tree_aphia_ids
+from worms.records import cached_lineages, cached_records
 from worms.warnings import record_warnings
 
 from .engine import (
@@ -92,13 +92,15 @@ def _store_changes(changeset: Changeset, specs: list[ChangeSpec], checks: list):
     )  # fmt: skip
 
 
-def records_for(base: TreeState, specs: list[ChangeSpec]) -> dict:
-    """The cached WoRMS records checking `specs` needs; uncached ones are absent."""
-    return cached_records(needed_for_changes(base, specs))
+def records_for(base: TreeState, specs: list[ChangeSpec]) -> tuple[dict, Lineages]:
+    """The cached WoRMS records checking `specs` needs (uncached ones are absent),
+    and the tree's cached lineages."""
+    lineages = cached_lineages(tree_aphia_ids(base, specs))
+    return cached_records(needed_for_changes(base, specs, lineages)), lineages
 
 
 def _save_reduced(changeset: Changeset, base: TreeState, reduced: list[ChangeSpec]):
-    checks, _ = change_checks(base, reduced, records_for(base, reduced))
+    checks, _ = change_checks(base, reduced, *records_for(base, reduced))
     _store_changes(changeset, reduced, checks)
 
 
@@ -281,10 +283,12 @@ def publish_changeset(
                 result.errors,
             )
         records = records_for(base, result.reduced)
-        return _write_revision(changeset, base, result, number, published_by, notes, records)
+        return _write_revision(changeset, base, result, number, published_by, notes, *records)
 
 
-def _write_revision(changeset, base, result: CheckResult, number, published_by, notes, records):
+def _write_revision(
+    changeset, base, result: CheckResult, number, published_by, notes, records, lineages
+):
     now = timezone.now()
     if changeset.tree_id is None:
         tree = Tree.objects.create(
@@ -359,12 +363,12 @@ def _write_revision(changeset, base, result: CheckResult, number, published_by, 
         for alias in dict.fromkeys(c.payload.get("aliases", []))
     )
 
-    checks, rechecked = change_checks(base, result.reduced, records)
+    checks, rechecked = change_checks(base, result.reduced, records, lineages)
     published_checks = [
         c if c == "unavailable" else [{**w, "node": real(w["node"])} for w in c] for c in checks
     ]
     _store_changes(changeset, published, published_checks)
-    final_warnings = check_nodes(final, rechecked, records)
+    final_warnings = check_nodes(final, rechecked, records, lineages)
     record_warnings({real(ref): ws for ref, ws in final_warnings.items()}, now)
 
     changeset.tree = tree

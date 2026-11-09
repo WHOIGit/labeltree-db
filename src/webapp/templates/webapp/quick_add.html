@@ -11,6 +11,8 @@
     <div class="alert alert-success" id="qa-published">
       <div>Added <strong x-text="published.node.label"></strong> in revision <span x-text="published.rev"></span>.</div>
       <div x-show="published.node.worms_url">WoRMS: <a id="qa-published-worms" :href="published.node.worms_url" target="_blank" rel="noopener" x-text="published.node.worms_url"></a></div>
+      <div x-show="published.moved.length" id="qa-moved">Moved under it:
+        <span x-text="movedText"></span></div>
       <a :href="'/nodes/' + published.node.id + '/'" id="qa-node-link">Open the node</a> ·
       <a :href="'/trees/' + page.tree + '/'">Back to the tree</a> ·
       <button class="btn btn-link btn-sm p-0 align-baseline" id="qa-another" @click="reset()">Add another</button>
@@ -72,6 +74,10 @@
           </template>
         </div>
         <div class="col-12">
+          <div class="form-check"><input class="form-check-input" type="checkbox" id="qa-cross-node" x-model="crossNode">
+            <label class="form-check-label" for="qa-cross-node">Allow updates to other nodes <span class="text-muted small">(move the nodes that belong under the new one)</span></label></div>
+        </div>
+        <div class="col-12">
           <label class="form-label" for="qa-notes">Notes <small class="text-muted">(optional, for the revision)</small></label>
           <input class="form-control" id="qa-notes" x-model="notes" placeholder="Quick add">
         </div>
@@ -88,6 +94,12 @@
             <dl class="row mb-2">
               <dt class="col-sm-3 text-muted fw-normal">Label</dt><dd class="col-sm-9" id="qa-plan-label" x-text="preview.plan.label"></dd>
               <dt class="col-sm-3 text-muted fw-normal">Parent</dt><dd class="col-sm-9" id="qa-plan-parent" x-text="preview.plan.parent ? preview.plan.parent.label : '(top level)'"></dd>
+              <template x-if="preview.plan.moves.length">
+                <dt class="col-sm-3 text-muted fw-normal">Moves under it</dt>
+              </template>
+              <template x-if="preview.plan.moves.length">
+                <dd class="col-sm-9" id="qa-plan-moves" x-text="movesText"></dd>
+              </template>
               <dt class="col-sm-3 text-muted fw-normal">AphiaID</dt><dd class="col-sm-9" x-text="preview.plan.aphia_id || 'none'"></dd>
               <template x-if="preview.plan.worms_url">
                 <dt class="col-sm-3 text-muted fw-normal">WoRMS</dt>

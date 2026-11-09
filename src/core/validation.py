@@ -8,9 +8,9 @@ reports for a draft.
 """
 
 from core.engine import ChangeSpec, TreeState, check_changes, load_state, ref_sort_key, refs_in
-from worms.checks import change_checks, check_nodes, needed_for_changes
+from worms.checks import change_checks, check_nodes, needed_for_changes, tree_aphia_ids
 from worms.models import current_warnings
-from worms.records import cached_records
+from worms.records import cached_lineages, cached_records
 
 from .changesets import ChangesetError, latest_rev
 from .models import Node, NodeVersion, Tree
@@ -43,9 +43,10 @@ def validate(
     if tree_id is not None and base_rev < latest:
         conflicts.append(_stale_base(result.reduced, base_rev, latest))
 
-    needed = needed_for_changes(base, result.reduced)
+    lineages = cached_lineages(tree_aphia_ids(base, result.reduced))
+    needed = needed_for_changes(base, result.reduced, lineages)
     records = cached_records(needed)
-    checks, rechecked = change_checks(base, result.reduced, records)
+    checks, rechecked = change_checks(base, result.reduced, records, lineages)
     warnings = [
         {"seq": change.seq, **warning}
         for change, check in zip(result.reduced, checks, strict=True)
@@ -66,7 +67,7 @@ def validate(
         "version_changes": [vc.as_dict() for vc in result.version_changes],
         "node_changes": result.node_changes,
         "warnings": warnings,
-        "warning_changes": _warning_changes(result.state, rechecked, records),
+        "warning_changes": _warning_changes(result.state, rechecked, records, lineages),
         "unchecked": unchecked,
         "worms_missing": sorted(needed - records.keys()),
         "worms": "unavailable" if unchecked else "ok",
@@ -110,10 +111,10 @@ def _stale_base(reduced: list[ChangeSpec], base_rev: int, latest: int) -> dict:
     }
 
 
-def _warning_changes(final: TreeState, rechecked, records) -> list[dict]:
+def _warning_changes(final: TreeState, rechecked, records, lineages) -> list[dict]:
     """Existing nodes whose current warnings the changes would change."""
     existing = [ref for ref in rechecked if isinstance(ref, int)]
-    now = check_nodes(final, existing, records)
+    now = check_nodes(final, existing, records, lineages)
     current = current_warnings(existing)
     changes = []
     for ref in sorted(now, key=ref_sort_key):

@@ -20,7 +20,7 @@ export default () => ({
   q: '', results: [], searching: false, searchError: '',
   aphia: null, pickedName: '',
   label: '', lower: true, parentMode: 'auto', parent: null, parentQ: '', parentResults: [],
-  notes: '',
+  crossNode: false, notes: '',
   busy: false, preview: null, request: null, reason: '', error: '',
   labelError: '', parentError: '', published: null,
 
@@ -28,7 +28,7 @@ export default () => ({
   reset() {
     Object.assign(this, {
       q: '', results: [], searchError: '', aphia: null, pickedName: '', label: '', lower: true,
-      parentMode: 'auto', parent: null, parentQ: '', parentResults: [], notes: '',
+      parentMode: 'auto', parent: null, parentQ: '', parentResults: [], crossNode: false, notes: '',
       preview: null, request: null, reason: '', error: '', labelError: '', parentError: '',
       published: null,
     });
@@ -57,6 +57,8 @@ export default () => ({
     this.parentResults = r.ok ? r.data.results : [];
   },
   chooseParent(n) { this.parent = { id: n.id, label: n.label }; },
+  get movesText() { return (this.preview?.plan.moves || []).map(m => m.label).join(', '); },
+  get movedText() { return (this.published?.moved || []).map(m => m.label).join(', '); },
   get parentText() { return this.parent ? `Under ${this.parent.label || 'node ' + this.parent.id}` : ''; },
 
   /** The request the form describes. */
@@ -65,6 +67,7 @@ export default () => ({
     if (this.aphia) body.aphia_id = this.aphia;
     if (this.label.trim()) body.label = this.label.trim();
     body.lowercase_label = this.lower;
+    if (this.crossNode) body.allow_cross_node_updates = true;
     if (this.parentMode === 'top') body.parent = null;
     if (this.parentMode === 'node' && this.parent) body.parent = this.parent.id;
     return body;
@@ -118,6 +121,7 @@ export default () => ({
   async applyOption(option) {
     for (const [field, value] of Object.entries(option.set)) {
       if (field === 'aphia_id') { this.aphia = value; this.pickedName = ''; }
+      if (field === 'allow_cross_node_updates') this.crossNode = value;
       if (field === 'parent' && value === null) { this.parentMode = 'top'; this.parent = null; }
       if (field === 'parent' && value !== null) { this.parentMode = 'node'; this.parent = { id: value, label: '' }; }
     }

@@ -6,7 +6,7 @@ from playwright.sync_api import expect
 
 from core.changesets import create_changeset, latest_rev
 from core.models import Changeset
-from core.tests.helpers import add, edit, ids_by_label, publish
+from core.tests.helpers import add, deprecate, edit, ids_by_label, move, publish
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -318,3 +318,16 @@ def test_writes_work_without_any_readable_cookie(site, taxonomy, drafter):
     validate(page)
     page.click("#save-button")
     expect(page.locator("#status")).to_have_text("Draft (saved)")
+
+
+def test_misplaced_lineage_ancestor_in_validation(site, taxonomy, drafter):
+    ref = ids_by_label("taxonomy")
+    publish(taxonomy, move(ref["Chaetoceros"], ref["Chaetocerotaceae"], ref["Bacillariophyceae"]),
+            deprecate(ref["Chaetocerotaceae"]))  # fmt: skip
+    page = new_draft(site, drafter)
+    add_child(site, "Bacillariophyceae", "family", aphia=148984)
+    validate(page)
+    page.click('[data-tab="worms"]')
+    expect(page.locator("#tab-worms")).to_contain_text(
+        "Chaetoceros: misplaced_lineage_ancestor: family (Chaetocerotaceae, 148984)"
+    )

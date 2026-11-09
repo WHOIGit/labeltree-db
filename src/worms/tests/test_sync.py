@@ -34,7 +34,7 @@ def diatoms():
         add("new:3", "Chaetocerotaceae", parent="new:2", aphia_id=148984),
         add("new:4", "Chaetoceros", parent="new:3", aphia_id=148985),
         add("new:5", "Chaetoceros_didymus", parent="new:4", aphia_id=149122),
-        add("new:6", "Dinophyceae", aphia_id=19542),
+        add("new:6", "Dinophyceae", parent="new:1", aphia_id=19542),
         add("new:7", "box"),
     )
     return Tree.objects.get(id="diatoms")
@@ -84,6 +84,21 @@ def reclassify_chaetoceros(worms_http):
     worms_http.override({LINEAGE.format(148985): {"status": 200, "body": nested}})
 
 
+def put_dinophyceae_above_chaetoceros(worms_http):
+    """WoRMS puts Dinophyceae between Chaetocerotaceae and Chaetoceros (made up)."""
+    body = load()[LINEAGE.format(148985)]["body"]
+    lineage, node = [], body
+    while node:
+        lineage.append({k: v for k, v in node.items() if k != "child"})
+        node = node["child"]
+    at = next(i for i, x in enumerate(lineage) if x["AphiaID"] == 148984) + 1
+    lineage.insert(at, {"AphiaID": 19542, "rank": "Class", "scientificname": "Dinophyceae"})
+    nested = None
+    for x in reversed(lineage):
+        nested = {**x, "child": nested}
+    worms_http.override({LINEAGE.format(148985): {"status": 200, "body": nested}})
+
+
 def unaccept_bacillariophyceae(worms_http):
     record = {**load()[RECORD.format(148899)]["body"], "status": "unaccepted"}
     record["valid_AphiaID"] = 7
@@ -129,6 +144,15 @@ def test_worms_reclassified_a_family(diatoms, worms_http):
     assert status["checked"][0]["rows_added"] == 1
     assert warnings_of("Chaetoceros") == ["out_of_lineage"]
     assert WormsRecord.objects.filter(aphia_id=148985).count() == 2
+
+
+def test_sync_finds_a_misplaced_lineage_ancestor(diatoms, worms_http):
+    put_dinophyceae_above_chaetoceros(worms_http)
+    status = sync_tree()
+    assert status["checked"][0]["rows_added"] == 1
+    assert warnings_of("Chaetoceros") == ["misplaced_lineage_ancestor"]
+    (row,) = NodeWarnings.objects.filter(node_id=ids()["Chaetoceros"])
+    assert row.warnings[0]["detail"].startswith("Dinophyceae (Dinophyceae, 19542)")
 
 
 def test_sync_never_edits_the_tree(diatoms, worms_http):

@@ -390,10 +390,13 @@ Others don't see the button, and get the "not allowed" page at its URL.
 2. **Preview** shows the label and parent that would be added, the record's
    WoRMS link and the revision it would make, plus the plan's issues. Each issue's options, such
    as **Use the accepted name** or **Under Chaetoceros (node 812)**, change
-   the form and preview again.
+   the form and preview again. When existing nodes beside the new one belong
+   under it in WoRMS (`misplaced_lineage_ancestor`), the option turns on
+   **Allow updates to other nodes**: the preview then lists the nodes that will
+   move under the new node, all of them or none.
 3. **Confirm and publish** sends the previewed request with its key. On
-   success the page says which revision added the node, and links to the node,
-   its WoRMS page and the tree.
+   success the page says which revision added the node and which nodes moved
+   under it, and links to the node, its WoRMS page and the tree.
 
 Confirm always publishes what was previewed. If the form changed since the
 preview, Confirm is disabled until the next preview. If the tree changed in a
