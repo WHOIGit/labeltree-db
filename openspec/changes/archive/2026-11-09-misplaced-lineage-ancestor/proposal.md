@@ -15,7 +15,7 @@ publish.
   place: the node's WoRMS lineage, below its nearest anchored ancestor, holds an
   AphiaID another node of the tree has, so the node could sit under that node.
   It's a warning like the others: shown in the tree editor's validation, stored
-  in warning history, filled in by drift runs, never blocking.
+  in warning history, filled in by syncs, never blocking.
 - The recheck scope of an edit grows to include nodes whose cached WoRMS lineage
   holds an AphiaID the change gives or removes, so adding the ancestor warns its
   would-be children.
@@ -49,7 +49,7 @@ None.
 - `src/worms/checks.py` (new check, recheck scope, `WARNINGS`), a lineage
   lookup over cached records in `src/worms/records.py`.
 - `src/api/quick_add.py`, `src/static/app/quick_add.js`, `quick_add.html`.
-- Drift runs will add the warning to existing trees' nodes on their next run.
+- Syncs will add the warning to existing trees' nodes on their next run.
 - Docs: `design/worms.md` (warning table), `design/api.md` (Quick add),
   `design/webapp.md`, `design/diagrams/07-quick-add.mmd` if the plan shape shown
   changes.

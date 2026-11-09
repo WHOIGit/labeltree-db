@@ -56,3 +56,18 @@ changeset with no structural errors SHALL be saved and published as revision 1.
 #### Scenario: Errors abort the import
 - **WHEN** an imported file contains a duplicate or non-machine-safe label
 - **THEN** the structural errors are reported per change, and no changeset, tree or revision is stored
+
+### Requirement: Clone a revision as a new tree
+Cloning SHALL turn a published revision of an existing tree into a new-tree
+changeset (`base_rev: null`) with the new tree's id, title, description and
+organization, and one `import#1` group of `add` changes copying labels,
+descriptions, AphiaIDs, current aliases and structure. Publishing it SHALL create revision 1 of the new
+tree with new node ids.
+
+#### Scenario: Clone revision 3
+- **WHEN** an owner of `lab_a` clones revision 3 of `NES2022_taxonomy` as `lab_taxonomy` in `lab_a`
+- **THEN** a draft new-tree changeset exists whose `add`s reproduce revision 3's nodes, and publishing it creates `lab_taxonomy` in `lab_a` at revision 1
+
+#### Scenario: Clone is independent
+- **WHEN** the clone is published and the source tree later changes
+- **THEN** the clone is unaffected, and its nodes have ids different from the source nodes

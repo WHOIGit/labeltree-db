@@ -76,8 +76,9 @@ SHALL NOT get it.
 
 ### Requirement: Recheck scope of an edit
 A change SHALL recheck the node it changes, the first anchored node on each path
-below it, and every other node in the tree with an AphiaID it had or now has.
-Ancestors SHALL NOT be rechecked.
+below it, every other node in the tree with an AphiaID it had or now has, and
+every anchored node of the tree whose cached WoRMS lineage holds an AphiaID it
+had or now has. Ancestors SHALL NOT be rechecked otherwise.
 
 #### Scenario: Moving an unanchored node
 - **WHEN** an unanchored node with anchored children is moved
@@ -87,10 +88,15 @@ Ancestors SHALL NOT be rechecked.
 - **WHEN** one of two nodes sharing an AphiaID has its AphiaID cleared
 - **THEN** the other node is rechecked and loses `duplicate_aphia`
 
+#### Scenario: Adding an ancestor taxon
+- **WHEN** a change adds `Chaetocerotaceae` under `Bacillariophyceae`, beside `Chaetoceros`
+- **THEN** `Chaetoceros` is rechecked and the `add` change's `checks` hold its `misplaced_lineage_ancestor`
+
 ### Requirement: Checks run on save and publish
-Placement checks SHALL run when a changeset is saved and again when it is
-published. Each change SHALL store the warnings it would cause as `checks`, a
-list of `{warning, node, detail}`.
+Placement checks SHALL run on `validate`, when a changeset is saved and again
+when it is published, using cached WoRMS records only. Each saved change SHALL
+store the warnings it would cause as `checks`, a list of `{warning, node,
+detail}`.
 
 #### Scenario: Saved draft
 - **WHEN** a draft adds a node with an AphiaID already used in the tree
@@ -103,20 +109,23 @@ WoRMS warnings SHALL NOT block publishing and SHALL NOT change node versions.
 - **WHEN** a changeset whose changes cause `out_of_lineage` is published
 - **THEN** the revision is created and only the nodes the changes touch structurally get new versions
 
-### Requirement: WoRMS unreachable
-If WoRMS cannot be reached and the needed records are not cached, the affected
-changes SHALL record `checks: "unavailable"`, and saving and publishing SHALL
-still be allowed. A later drift run SHALL fill in the missing warnings.
+### Requirement: Records not cached
+If a record the checks need is not cached, because it was never fetched or every
+fetch of it failed, the affected changes SHALL record `checks: "unavailable"`,
+and saving and publishing SHALL still be allowed. A later fetch or sync job
+SHALL fill in the missing warnings.
 
 #### Scenario: Publish during an outage
-- **WHEN** a changeset adds a node with an uncached AphiaID while WoRMS is down
-- **THEN** the change records `unavailable`, the publish succeeds, and the node's `worms_data` is null until the record is fetched
+- **WHEN** a changeset that adds a node with an uncached AphiaID is published while WoRMS is down
+- **THEN** the change records `unavailable`, the publish succeeds, and the node's `worms_data` is null until a sync fetches the record
 
 ### Requirement: Warning history storage
 Each node SHALL have a warning history of rows `{computed_at, warnings}`. A
-publish or drift run SHALL add a row only when a node's warnings differ from its
+publish or sync SHALL add a row only when a node's warnings differ from its
 newest row, including an empty list when they clear. The newest row SHALL be the
-node's current warnings.
+node's current warnings. A node whose warnings could not be computed, because a
+record they need is not cached or failed to refresh in that sync, SHALL get
+no row.
 
 #### Scenario: Warnings clear
 - **WHEN** a node with `out_of_lineage` is moved to a correct parent and published
@@ -125,3 +134,35 @@ node's current warnings.
 #### Scenario: Quiet re-check
 - **WHEN** a node's warnings are recomputed and unchanged
 - **THEN** no row is added
+
+#### Scenario: Refresh failed
+- **WHEN** a sync fails to refresh the record of a node's AphiaID after its retries
+- **THEN** the node gets no warning-history row from that sync
+
+### Requirement: misplaced_lineage_ancestor warning
+An anchored node X SHALL get `misplaced_lineage_ancestor` for each AphiaID of its
+WoRMS lineage that lies below its nearest anchored ancestor's AphiaID (anywhere
+in the lineage if X has no anchored ancestor) and that another live node of the
+tree has. A node whose AphiaID is unaccepted SHALL match through its cached
+`valid_AphiaID`. The detail SHALL name that node. X SHALL get no such warning
+while it has `out_of_lineage`.
+
+#### Scenario: Family beside its genus
+- **WHEN** `Bacillariophyceae` has the children `Chaetoceros` and `Chaetocerotaceae`, and `Chaetocerotaceae` is in the WoRMS lineage of `Chaetoceros`
+- **THEN** `Chaetoceros` gets `misplaced_lineage_ancestor` naming `Chaetocerotaceae`, and `Chaetocerotaceae` gets no warning
+
+#### Scenario: Ancestor elsewhere in the tree
+- **WHEN** `Chaetoceros` is at the top level and `Bacillariophyceae`, in its lineage, is elsewhere in the tree
+- **THEN** `Chaetoceros` gets `misplaced_lineage_ancestor` naming `Bacillariophyceae`
+
+#### Scenario: Already under it
+- **WHEN** `Chaetoceros` is under `Chaetocerotaceae`, which is under `Bacillariophyceae`
+- **THEN** `Chaetoceros` gets no `misplaced_lineage_ancestor`
+
+#### Scenario: Synonym node
+- **WHEN** a node beside `Chaetoceros` has an unaccepted AphiaID whose cached `valid_AphiaID` is in the lineage of `Chaetoceros` below its anchored ancestor
+- **THEN** `Chaetoceros` gets `misplaced_lineage_ancestor` naming that node
+
+#### Scenario: Never blocks
+- **WHEN** a changeset causes `misplaced_lineage_ancestor` and is published
+- **THEN** the revision is created and the warning is recorded in the node's warning history
