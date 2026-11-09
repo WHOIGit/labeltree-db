@@ -72,7 +72,10 @@ test('split without replacement leaves unassigned children', () => {
 const labelCases = JSON.parse(readFileSync(join(here, '../../../worms/tests/label_cases.json'), 'utf8'));
 
 test('labels from WoRMS names', () => {
-  for (const [name, label] of labelCases) assert.equal(X.wormsLabel(name), label, name);
+  for (const [name, label, lower] of labelCases) {
+    assert.equal(X.wormsLabel(name), label, name);
+    assert.equal(X.wormsLabel(name, true), lower, name);
+  }
 });
 
 test('suggested parent is the deepest anchored lineage node', () => {

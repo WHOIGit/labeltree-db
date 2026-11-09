@@ -30,6 +30,7 @@ import time
 import httpx
 
 BASE_URL = "https://www.marinespecies.org/rest"
+PAGE_URL = "https://www.marinespecies.org/aphia.php?p=taxdetails&id={}"
 TIMEOUT = 10.0
 # Seconds to wait before each retry; the number of retries is their count.
 BACKOFF = (1.0, 2.0)
@@ -60,6 +61,11 @@ class RateLimited(WormsError):
     def __init__(self, detail: str, retry_after: float):
         super().__init__("worms_rate_limited", detail)
         self.retry_after = retry_after
+
+
+def worms_url(aphia_id: int | None) -> str | None:
+    """The WoRMS page of an AphiaID, the same link the web app shows."""
+    return None if aphia_id is None else PAGE_URL.format(aphia_id)
 
 
 def normalise_record(raw: dict) -> dict:

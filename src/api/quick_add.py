@@ -28,6 +28,7 @@ from core.engine import TreeState, load_state, specs_from_dicts
 from core.models import NodeVersion
 from core.validation import validate
 from worms.checks import nearest_anchored_ancestor
+from worms.client import worms_url
 from worms.placement import lineage_parent, worms_label
 from worms.records import get_records
 
@@ -46,6 +47,7 @@ class QuickAddIn(Schema):
     aphia_id: int | None = None
     label: str | None = None
     parent: int | None = None  # missing: work it out; null: the top level
+    lowercase_label: bool = True  # for a label derived from the WoRMS name
     description: str = ""
     aliases: list[str] = []
     notes: str | None = None
@@ -89,7 +91,10 @@ class Plan:
         if record is None and not body.label:
             raise bad_parameter("Give an `aphia_id`, a `label`, or both.")
 
-        label = body.label if body.label is not None else worms_label(record["scientificname"])
+        if body.label is not None:
+            label = body.label
+        else:
+            label = worms_label(record["scientificname"], lower=body.lowercase_label)
         lineage = (record or {}).get("lineage") or []
         suggested, candidates = lineage_parent(state, lineage, body.aphia_id)
         if "parent" in body.model_fields_set:
@@ -117,7 +122,8 @@ class Plan:
 
         self.plan = {
             "label": label, "parent": _node(state, parent),
-            "aphia_id": body.aphia_id, "description": body.description, "aliases": body.aliases,
+            "aphia_id": body.aphia_id, "worms_url": worms_url(body.aphia_id),
+            "description": body.description, "aliases": body.aliases,
         }  # fmt: skip
         self.issues = self._issues(state, record, result, parent, suggested, candidates)
         self.worms = result["worms"]
@@ -220,8 +226,8 @@ def quick_add(request, tree_id: str, body: QuickAddIn):
         return JsonResponse({
             "status": "published", "confirm_status": "accepted", "tree": tree.id,
             "rev": revision.number, "changeset": changeset.pk,
-            "node": {"id": node, "label": plan.plan["label"],
-                     "parent": plan.plan["parent"], "aphia_id": plan.plan["aphia_id"]},
+            "node": {"id": node, "label": plan.plan["label"], "parent": plan.plan["parent"],
+                     "aphia_id": plan.plan["aphia_id"], "worms_url": plan.plan["worms_url"]},
             "warnings": plan.issues,
         }, status=201, json_dumps_params={"ensure_ascii": False})  # fmt: skip
 

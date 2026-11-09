@@ -11,6 +11,7 @@ from api import quick_add
 from core.changesets import ChangesetError
 from core.models import Changeset, TreeRevision
 from core.tests.helpers import add, publish
+from worms.client import worms_url
 
 from .conftest import call
 
@@ -72,20 +73,39 @@ def test_label_only_goes_at_the_top_level(qa):
     status, body = qa({"label": "detritus"})
     assert status == 200
     assert body["plan"] == {"label": "detritus", "parent": None, "aphia_id": None,
-                            "description": "", "aliases": []}  # fmt: skip
+                            "worms_url": None, "description": "", "aliases": []}  # fmt: skip
     assert body["issues"] == [] and body["confirm_status"] == "none" and body["rev"] == 1
 
 
 def test_derived_label_and_parent(qa, ids):
     status, body = qa({"aphia_id": DEBILIS})
     assert status == 200
-    assert body["plan"]["label"] == "Chaetoceros_debilis"
+    assert body["plan"]["label"] == "chaetoceros_debilis"
     assert body["plan"]["parent"] == {"id": ids("taxonomy")["Chaetoceros"], "label": "Chaetoceros"}
+    assert body["plan"]["worms_url"] == (
+        f"https://www.marinespecies.org/aphia.php?p=taxdetails&id={DEBILIS}"
+    )
     assert body["issues"] == []
+
+
+def test_derived_label_keeping_the_case(qa):
+    body = qa({"aphia_id": DEBILIS, "lowercase_label": False})[1]
+    assert body["plan"]["label"] == "Chaetoceros_debilis"
 
 
 def test_given_label_is_used_as_is(qa):
     assert qa({"aphia_id": DEBILIS, "label": "debilis"})[1]["plan"]["label"] == "debilis"
+    given = {"aphia_id": DEBILIS, "label": "Chaetoceros_debilis"}
+    for lowercase in (True, False):
+        body = qa({**given, "lowercase_label": lowercase})[1]
+        assert body["plan"]["label"] == "Chaetoceros_debilis"
+
+
+def test_toggling_lowercase_changes_the_request(qa):
+    key = qa({"aphia_id": DEBILIS})[1]["confirm"]
+    status, body = qa({"aphia_id": DEBILIS, "lowercase_label": False, "confirm": key})
+    assert (status, body["confirm_status"]) == (200, "body_changed")
+    assert body["plan"]["label"] == "Chaetoceros_debilis"
 
 
 def test_explicit_top_level(qa):
@@ -193,17 +213,18 @@ def test_preview_stores_nothing(qa):
 def test_confirmed(qa, ids):
     status, body = confirmed(qa, {"aphia_id": DEBILIS})
     assert (status, body["status"], body["confirm_status"]) == (201, "published", "accepted")
-    new = ids("taxonomy")["Chaetoceros_debilis"]
-    assert body["node"] == {"id": new, "label": "Chaetoceros_debilis",
+    new = ids("taxonomy")["chaetoceros_debilis"]
+    assert body["node"] == {"id": new, "label": "chaetoceros_debilis",
                             "parent": {"id": ids("taxonomy")["Chaetoceros"],
                                        "label": "Chaetoceros"},
-                            "aphia_id": DEBILIS}  # fmt: skip
+                            "aphia_id": DEBILIS,
+                            "worms_url": worms_url(DEBILIS)}  # fmt: skip
     assert body["rev"] == 2
     revision = TreeRevision.objects.get(tree_id="taxonomy", number=2)
     changeset = Changeset.objects.get(pk=body["changeset"])
     assert (changeset.author, revision.published_by, revision.notes) == ("app", "app", "Quick add")
     assert [(c.op, c.payload["label"]) for c in changeset.changes.all()] == [
-        ("add", "Chaetoceros_debilis")
+        ("add", "chaetoceros_debilis")
     ]
 
 
@@ -308,7 +329,8 @@ def test_in_the_openapi_schema():
     schema = operation["requestBody"]["content"]["application/json"]["schema"]
     fields = api.get_openapi_schema()["components"]["schemas"][schema["$ref"].split("/")[-1]]
     assert set(fields["properties"]) == {
-        "aphia_id", "label", "parent", "description", "aliases", "notes", "confirm"
+        "aphia_id", "label", "parent", "lowercase_label", "description", "aliases", "notes",
+        "confirm",
     }  # fmt: skip
     assert "required" not in fields
 
@@ -319,9 +341,9 @@ def test_readme_quick_add(taxonomy, approver, token_for):
     send = lambda body: call(Client(), "post", URL, body, Authorization=f"Token {token}")  # noqa: E731
     status, preview = send({"aphia_id": DEBILIS})
     assert (status, preview["status"], preview["plan"]["label"], preview["issues"]) == (
-        200, "preview", "Chaetoceros_debilis", []
+        200, "preview", "chaetoceros_debilis", []
     )  # fmt: skip
     status, published = send({"aphia_id": DEBILIS, "confirm": preview["confirm"]})
     assert (status, published["status"], published["node"]["label"]) == (
-        201, "published", "Chaetoceros_debilis"
+        201, "published", "chaetoceros_debilis"
     )  # fmt: skip

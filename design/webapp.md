@@ -26,9 +26,12 @@ An interactive mockup of the tree browser and draft editor is in
   versions, the ordered change list grouped by macro, and the warnings that
   will change. Approvers publish from here, with notes.
 - **Add from WoRMS:** search by name, pick a record, and accept the suggested
-  parent from its lineage. The label is the scientific name with spaces turned
-  into `_` and characters that aren't machine-safe dropped
-  (`Chaetoceros (Hyalochaete) debilis` → `Chaetoceros_Hyalochaete_debilis`).
+  parent from its lineage. The picked record's WoRMS page is shown as a full
+  link. The label is the scientific name with spaces turned into `_` and
+  characters that aren't machine-safe dropped, lowercased while **Lowercase
+  label** is on, as it is by default
+  (`Chaetoceros (Hyalochaete) debilis` → `chaetoceros_hyalochaete_debilis`).
+  Once you type your own label, the toggle leaves it alone.
 - **Organization:** an organization's trees and, for its members, its members
   and their roles. Owners add users, change roles, remove members and
   [start new trees](#new-trees) here. A
@@ -379,16 +382,18 @@ The Quick add page is a proof of concept for the
 would. Approvers reach it with **Quick add…** in the tree browser's toolbar.
 Others don't see the button, and get the "not allowed" page at its URL.
 
-1. Search WoRMS and pick a record, or type a label, or both. The parent is
-   **Work it out from WoRMS** by default. It can be set to **Top level**, or
+1. Search WoRMS and pick a record, or type a label, or both. The picked
+   record's WoRMS page is shown as a full link. **Lowercase label**, on by
+   default, lowercases a label that comes from the WoRMS name; a typed label
+   is used as is. The parent is **Work it out from WoRMS** by default. It can be set to **Top level**, or
    to a node found by label or alias.
-2. **Preview** shows the label and parent that would be added and the
-   revision it would make, plus the plan's issues. Each issue's options, such
+2. **Preview** shows the label and parent that would be added, the record's
+   WoRMS link and the revision it would make, plus the plan's issues. Each issue's options, such
    as **Use the accepted name** or **Under Chaetoceros (node 812)**, change
    the form and preview again.
 3. **Confirm and publish** sends the previewed request with its key. On
-   success the page says which revision added the node, and links to the node
-   and the tree.
+   success the page says which revision added the node, and links to the node,
+   its WoRMS page and the tree.
 
 Confirm always publishes what was previewed. If the form changed since the
 preview, Confirm is disabled until the next preview. If the tree changed in a

@@ -4,6 +4,7 @@
 // shown even if the form changed since.
 
 import { api, pageData, problem } from './api.js';
+import { wormsUrl } from './model.js';
 
 // Why a confirm returned a new preview instead of publishing.
 const REASONS = {
@@ -18,7 +19,7 @@ export default () => ({
   page: {},
   q: '', results: [], searching: false, searchError: '',
   aphia: null, pickedName: '',
-  label: '', parentMode: 'auto', parent: null, parentQ: '', parentResults: [],
+  label: '', lower: true, parentMode: 'auto', parent: null, parentQ: '', parentResults: [],
   notes: '',
   busy: false, preview: null, request: null, reason: '', error: '',
   labelError: '', parentError: '', published: null,
@@ -26,7 +27,7 @@ export default () => ({
   init() { this.page = pageData(); },
   reset() {
     Object.assign(this, {
-      q: '', results: [], searchError: '', aphia: null, pickedName: '', label: '',
+      q: '', results: [], searchError: '', aphia: null, pickedName: '', label: '', lower: true,
       parentMode: 'auto', parent: null, parentQ: '', parentResults: [], notes: '',
       preview: null, request: null, reason: '', error: '', labelError: '', parentError: '',
       published: null,
@@ -35,6 +36,7 @@ export default () => ({
 
   get url() { return `/trees/${this.page.tree}/quick_add`; },
   get canSearch() { return !!this.q.trim() && !this.searching; },
+  wormsUrl(id) { return wormsUrl(id); },
   get labelPlaceholder() { return this.aphia ? 'From the WoRMS name' : 'Required without a WoRMS record'; },
 
   // ---- the form ------------------------------------------------------------------
@@ -62,6 +64,7 @@ export default () => ({
     const body = {};
     if (this.aphia) body.aphia_id = this.aphia;
     if (this.label.trim()) body.label = this.label.trim();
+    body.lowercase_label = this.lower;
     if (this.parentMode === 'top') body.parent = null;
     if (this.parentMode === 'node' && this.parent) body.parent = this.parent.id;
     return body;

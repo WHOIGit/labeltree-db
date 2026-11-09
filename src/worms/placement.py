@@ -13,12 +13,13 @@ from core.engine import NodeRef, TreeState
 from .checks import aphia_index
 
 
-def worms_label(name: str | None) -> str:
+def worms_label(name: str | None, lower: bool = False) -> str:
     """A scientific name as a label: whitespace to `_`, characters that aren't
-    machine-safe dropped, leading punctuation removed."""
+    machine-safe dropped, leading punctuation removed; lowercased if `lower`."""
     label = re.sub(r"\s+", "_", (name or "").strip())
     label = re.sub(r"[^A-Za-z0-9_.-]", "", label)
-    return re.sub(r"^[^A-Za-z0-9]+", "", label)
+    label = re.sub(r"^[^A-Za-z0-9]+", "", label)
+    return label.lower() if lower else label
 
 
 def lineage_parent(

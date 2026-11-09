@@ -146,10 +146,10 @@ the first call previews it, and sending the same body again with the preview's
 ```sh
 curl -H "Authorization: Token <key>" -H "Content-Type: application/json" \
      -d '{"aphia_id": 149219}' https://labeltree.example.org/api/v1/trees/taxonomy/quick_add
-# → 200 {"status": "preview", "plan": {"label": "Chaetoceros_debilis", ...}, "issues": [], "confirm": "<k>"}
+# → 200 {"status": "preview", "plan": {"label": "chaetoceros_debilis", ...}, "issues": [], "confirm": "<k>"}
 curl -H "Authorization: Token <key>" -H "Content-Type: application/json" \
      -d '{"aphia_id": 149219, "confirm": "<k>"}' https://labeltree.example.org/api/v1/trees/taxonomy/quick_add
-# → 201 {"status": "published", "node": {"id": ..., "label": "Chaetoceros_debilis", ...}, "rev": ...}
+# → 201 {"status": "published", "node": {"id": ..., "label": "chaetoceros_debilis", ...}, "rev": ...}
 ```
 
 ## WoRMS syncs

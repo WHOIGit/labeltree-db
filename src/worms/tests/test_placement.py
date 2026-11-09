@@ -26,9 +26,10 @@ def state(*nodes):
     return TreeState("t", 1, [NodeState(i, lb, p, a, 1) for i, lb, p, a in nodes])
 
 
-@pytest.mark.parametrize(("name", "label"), LABEL_CASES)
-def test_worms_label(name, label):
+@pytest.mark.parametrize(("name", "label", "lower"), LABEL_CASES)
+def test_worms_label(name, label, lower):
     assert worms_label(name) == label
+    assert worms_label(name, lower=True) == lower
 
 
 def test_nearest_anchored_ancestor():

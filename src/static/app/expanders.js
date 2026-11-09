@@ -56,9 +56,10 @@ export function labelProblem(label, labels, self = null, others = [], reserved =
 }
 
 /** A WoRMS scientific name as a label: spaces become `_`, other unsafe
- * characters are dropped, and so is leading punctuation. */
-export function wormsLabel(name) {
-  return (name || '').trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_.-]/g, '').replace(/^[^A-Za-z0-9]+/, '');
+ * characters are dropped, and so is leading punctuation; lowercased if `lower`. */
+export function wormsLabel(name, lower = false) {
+  const label = (name || '').trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_.-]/g, '').replace(/^[^A-Za-z0-9]+/, '');
+  return lower ? label.toLowerCase() : label;
 }
 
 /** The deepest live node anchored to an AphiaID of `lineage` (top level first), or null. */

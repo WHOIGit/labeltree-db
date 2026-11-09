@@ -329,9 +329,12 @@
         </div>
         <template x-if="f.picked">
           <div class="row g-2">
+            <div class="col-12 small">WoRMS: <a id="worms-link" :href="wormsUrl(f.picked.AphiaID)" target="_blank" rel="noopener" x-text="wormsUrl(f.picked.AphiaID)"></a></div>
             <div class="col-md-6"><label class="form-label" for="worms-label">Label</label>
-              <input class="form-control" id="worms-label" x-model="f.label" :class="{ 'is-invalid': wormsError }">
-              <div class="invalid-feedback" x-text="wormsError"></div></div>
+              <input class="form-control" id="worms-label" x-model="f.label" @input="f.typed = true" :class="{ 'is-invalid': wormsError }">
+              <div class="invalid-feedback" x-text="wormsError"></div>
+              <div class="form-check mt-1"><input class="form-check-input" type="checkbox" id="worms-lower" x-model="f.lower" @change="wormsRelabel()">
+                <label class="form-check-label small" for="worms-lower">Lowercase label</label></div></div>
             <div class="col-md-6"><label class="form-label" for="worms-parent">Parent</label>
               <select class="form-select" id="worms-parent" x-model="f.parentKey">
                 <option value="">(top level)</option>

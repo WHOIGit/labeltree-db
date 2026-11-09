@@ -206,13 +206,13 @@ def test_suggested_parent(site, taxonomy, drafter, worms_http):
     )
     new_draft(site, drafter)
     page = add_from_worms(site, "Chaetoceros debilis")
-    expect(page.locator("#worms-label")).to_have_value("Chaetoceros_debilis")
+    expect(page.locator("#worms-label")).to_have_value("chaetoceros_debilis")
     expect(page.locator("#worms-parent")).to_have_value(
         str(ids_by_label("taxonomy")["Chaetoceros"])
     )
     page.click("#worms-submit")
     assert [t for *_, t in edited(page)] == [
-        "Chaetoceros_debilis (new:1) under Chaetoceros, AphiaID 149219"
+        "chaetoceros_debilis (new:1) under Chaetoceros, AphiaID 149219"
     ]
 
 
@@ -224,7 +224,26 @@ def test_unsafe_characters(site, taxonomy, drafter, worms_http):
     search_returns(worms_http, "Hyalochaete", record)
     new_draft(site, drafter)
     page = add_from_worms(site, "Hyalochaete")
-    expect(page.locator("#worms-label")).to_have_value("Chaetoceros_Hyalochaete_debilis")
+    expect(page.locator("#worms-label")).to_have_value("chaetoceros_hyalochaete_debilis")
+
+
+def test_lowercase_toggle_and_link(site, taxonomy, drafter, worms_http):
+    search_returns(
+        worms_http, "Chaetoceros debilis", load()["/AphiaRecordByAphiaID/149219"]["body"]
+    )
+    new_draft(site, drafter)
+    page = add_from_worms(site, "Chaetoceros debilis")
+    url = "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149219"
+    link = page.locator("#worms-link")
+    expect(link).to_have_text(url)
+    expect(link).to_have_attribute("href", url)
+    expect(link).to_have_attribute("target", "_blank")
+    expect(page.locator("#worms-lower")).to_be_checked()
+    page.uncheck("#worms-lower")
+    expect(page.locator("#worms-label")).to_have_value("Chaetoceros_debilis")
+    page.fill("#worms-label", "Chaetoceros_debilis_typed")
+    page.check("#worms-lower")
+    expect(page.locator("#worms-label")).to_have_value("Chaetoceros_debilis_typed")
 
 
 # --- 7.5 aliases, descriptions, clone ---------------------------------------------------------

@@ -50,12 +50,17 @@ def test_confirming(site, taxonomy, approver, searchable):
     page = open_page(site, approver)
     find(page, "Chaetoceros debilis", 149219)
     page.click("#qa-preview")
-    expect(page.locator("#qa-plan-label")).to_have_text("Chaetoceros_debilis")
+    url = "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149219"
+    expect(page.locator("#qa-aphia-link")).to_have_text(url)
+    expect(page.locator("#qa-plan-label")).to_have_text("chaetoceros_debilis")
     expect(page.locator("#qa-plan-parent")).to_have_text("Chaetoceros")
+    expect(page.locator("#qa-plan-worms")).to_have_text(url)
+    expect(page.locator("#qa-plan-worms")).to_have_attribute("target", "_blank")
     page.click("#qa-confirm")
-    expect(page.locator("#qa-published")).to_contain_text("Added Chaetoceros_debilis in revision 2")
+    expect(page.locator("#qa-published")).to_contain_text("Added chaetoceros_debilis in revision 2")
+    expect(page.locator("#qa-published-worms")).to_have_attribute("href", url)
     page.click("#qa-node-link")
-    expect(page.locator("h1")).to_contain_text("Chaetoceros_debilis")
+    expect(page.locator("h1")).to_contain_text("chaetoceros_debilis")
     assert site.console.errors == []
 
 
@@ -69,7 +74,7 @@ def test_choosing_the_accepted_name(site, taxonomy, approver, searchable):
     expect(issue).to_be_visible()
     issue.get_by_role("button").click()
     expect(page.locator("#qa-aphia")).to_contain_text("149168")
-    expect(page.locator("#qa-plan-label")).to_have_text("Proboscia_alata")
+    expect(page.locator("#qa-plan-label")).to_have_text("proboscia_alata")
     expect(page.locator('[data-issue="unaccepted_aphia"]')).to_have_count(0)
     assert site.console.errors == []
 
@@ -95,6 +100,26 @@ def test_label_in_use(site, taxonomy, approver):
     expect(page.locator("#qa-label-error")).to_contain_text("already used")
     expect(page.locator("#qa-plan")).to_have_count(0)
     expect(page.locator("#qa-confirm")).to_have_count(0)
+
+
+def test_lowercase_off(site, taxonomy, approver, searchable):
+    searchable("Chaetoceros debilis", 149219)
+    page = open_page(site, approver)
+    find(page, "Chaetoceros debilis", 149219)
+    expect(page.locator("#qa-lower")).to_be_checked()
+    page.uncheck("#qa-lower")
+    with page.expect_request("**/quick_add") as request:
+        page.click("#qa-preview")
+    assert request.value.post_data_json["lowercase_label"] is False
+    expect(page.locator("#qa-plan-label")).to_have_text("Chaetoceros_debilis")
+
+
+def test_no_worms_link_without_aphia(site, taxonomy, approver):
+    page = open_page(site, approver)
+    page.fill("#qa-label", "detritus")
+    page.click("#qa-preview")
+    expect(page.locator("#qa-plan-label")).to_have_text("detritus")
+    expect(page.locator("#qa-plan-worms")).to_have_count(0)
 
 
 def test_editing_after_preview_needs_a_new_preview(site, taxonomy, approver):

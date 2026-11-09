@@ -13,9 +13,9 @@ sequenceDiagram
     APP->>LT: POST /trees/T/quick_add<br>{aphia_id: 149128}
     LT->>W: record + lineage of 149128
     W-->>LT: "Chaetoceros debilis" (unaccepted),<br>accepted is 149130 · lineage
-    LT->>LT: PLAN: label = wormsLabel(name)<br>parent = deepest avail. lineage node<br>issue: two nodes tie
+    LT->>LT: PLAN: label = wormsLabel(name), lowercased<br>parent = deepest avail. lineage node<br>issue: two nodes tie
     LT->>LT: confirm key K1 = signed(request hash, plan hash)<br>(confirm and notes excluded)
-    LT-->>APP: 200 {status: preview, confirm_status: none,<br>plan: {label, parent: null, aphia_id: 149128},<br>issues: [{code: unaccepted_aphia, message, options: [<POST patch>]},<br>{code: ambiguous_parent, message, options: [<POST patch>]}],<br>confirm: K1}
+    LT-->>APP: 200 {status: preview, confirm_status: none,<br>plan: {label, parent: null, aphia_id: 149128, worms_url},<br>issues: [{code: unaccepted_aphia, message, options: [<POST patch>]},<br>{code: ambiguous_parent, message, options: [<POST patch>]}],<br>confirm: K1}
     Note over APP: confirmation page shows<br>the plan and its issues<br>(would still allow submission)
     Note over APP: User chooses to<br>modify their submission
 
@@ -25,7 +25,7 @@ sequenceDiagram
     LT->>W: record + lineage of 149130
     W-->>LT: accepted record
     LT->>LT: K1's request hash doesn't match this body,<br>so K1 is ignored, new key K2
-    LT-->>APP: 200 {status: preview, confirm_status: body_changed,<br>plan: {label: Chaetoceros_debilis, parent: 812},<br>issues: [], confirm: K2}
+    LT-->>APP: 200 {status: preview, confirm_status: body_changed,<br>plan: {label: chaetoceros_debilis, parent: 812},<br>issues: [], confirm: K2}
     Note over APP: User sees no warnings,<br>confirms QuickAdd.
 
     Note over APP,W: 3 · A submission that publishes
@@ -35,7 +35,7 @@ sequenceDiagram
     LT->>LT: plan recalculated on latest rev<br>hashes inside K2 match: OK to publish
     LT->>LT: create changeset + publish
     Note over LT: tree T at rev R8
-    LT-->>APP: 201 {confirm_status: accepted,<br>node: {id, label, parent, aphia_id},<br>rev: R8, changeset, warnings}
+    LT-->>APP: 201 {confirm_status: accepted,<br>node: {id, label, parent, aphia_id, worms_url},<br>rev: R8, changeset, warnings}
 
     Note over APP,W: 4 · Accidental quick-add resubmit
     APP->>LT: POST /trees/T/quick_add<br>{aphia_id: 149130, parent: 812, confirm: K2}

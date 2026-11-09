@@ -688,7 +688,10 @@ export default () => ({
     this.addChanges(changes);
     this.toast(`${changes.length} nodes added as ${group}`);
   },
-  openWorms() { this.f = { q: '', results: [], picked: null, parentKey: '', label: '', error: '', searching: false }; this.modal = 'worms'; },
+  openWorms() {
+    this.f = { q: '', results: [], picked: null, parentKey: '', label: '', lower: true, typed: false, error: '', searching: false };
+    this.modal = 'worms';
+  },
   async searchWorms() {
     this.f.searching = true;
     this.f.error = '';
@@ -700,12 +703,15 @@ export default () => ({
   },
   async pickWorms(rec) {
     this.f.picked = rec;
-    this.f.label = X.wormsLabel(rec.scientificname);
+    this.f.typed = false;
+    this.wormsRelabel();
     const r = await api('GET', `/worms/${rec.AphiaID}/lineage`);
     const parent = r.ok ? X.suggestParent(r.data.lineage, CUR.state) : null;
     this.f.parentKey = keyOf(parent);
     this.f.suggested = parent;
   },
+  /** The label from the picked name, unless the user typed their own. */
+  wormsRelabel() { if (this.f.picked && !this.f.typed) this.f.label = X.wormsLabel(this.f.picked.scientificname, this.f.lower); },
   get wormsError() { return this.f.picked ? this.labelError(this.f.label, null) : 'Pick a record'; },
   submitWorms() {
     const node = X.placeholders(this.changes)();

@@ -539,14 +539,16 @@ organization.
 
 ```
 POST /trees/{tree}/quick_add
-{aphia_id?, label?, parent?, description?, aliases?, notes?, confirm?}
+{aphia_id?, label?, parent?, lowercase_label?, description?, aliases?, notes?, confirm?}
 ```
 
 - `aphia_id`: the WoRMS record to anchor the node to. Its record comes from the
   cache and is fetched from WoRMS on a miss.
 - `label`: when missing, derived from the record's scientific name (spaces to
   `_`, characters that aren't machine-safe dropped, leading punctuation
-  removed). Without an `aphia_id` it is required.
+  removed, then lowercased unless `lowercase_label` is `false`). A given label
+  is used as is. Without an `aphia_id` it is required.
+- `lowercase_label`: whether a derived label is lowercased; `true` when missing.
 - `parent`: a node id. When missing, it is the live node anchored to the deepest
   AphiaID of the record's lineage that the tree has. If several nodes tie for
   that AphiaID, or nothing in the lineage is in the tree, or there is no
@@ -559,14 +561,17 @@ response is `200`:
 
 ```
 {status: "preview", confirm_status: "none", tree, rev: 7,
- plan: {label: "Chaetoceros_debilis", parent: {id: 812, label: "Chaetoceros"},
-        aphia_id: 149219, description: "", aliases: []},
+ plan: {label: "chaetoceros_debilis", parent: {id: 812, label: "Chaetoceros"},
+        aphia_id: 149219,
+        worms_url: "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149219",
+        description: "", aliases: []},
  issues: [{code, message, options: [{label, set: {...}}]}],
  worms: "ok",                       # or "unavailable": placement checks couldn't run
  confirm: "<key>"}
 ```
 
-`rev` is the revision the plan was made on. Issues don't block the key:
+`rev` is the revision the plan was made on, and `worms_url` the record's WoRMS
+page (`null` without an AphiaID). Issues don't block the key:
 
 | Issue | Options (fields to change in the request) |
 |---|---|
@@ -586,8 +591,9 @@ changeset, with the caller as author and publisher, and the response is
 
 ```
 {status: "published", confirm_status: "accepted", tree, rev: 8, changeset: 412,
- node: {id: 9031, label: "Chaetoceros_debilis",
-        parent: {id: 812, label: "Chaetoceros"}, aphia_id: 149219},
+ node: {id: 9031, label: "chaetoceros_debilis",
+        parent: {id: 812, label: "Chaetoceros"}, aphia_id: 149219,
+        worms_url: "https://www.marinespecies.org/aphia.php?p=taxdetails&id=149219"},
  warnings: [...]}                   # the issues, as previewed
 ```
 
