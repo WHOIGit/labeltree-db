@@ -1,0 +1,45 @@
+---
+title: "Quick add: preview, then confirm"
+---
+sequenceDiagram
+    autonumber
+    participant APP as Client app
+    participant LT as labeltree-db API
+    participant W as WoRMS<br>(cache, fetched on a miss)
+
+    Note over LT: tree T at rev R7<br>approver token required
+
+    Note over APP,W: 1 · Preview: nothing is published
+    APP->>LT: POST /trees/T/quick_add<br>{aphia_id: 149128}
+    LT->>W: record + lineage of 149128
+    W-->>LT: "Chaetoceros debilis" (unaccepted),<br>accepted is 149130 · lineage
+    LT->>LT: PLAN: label = wormsLabel(name)<br>parent = deepest avail. lineage node<br>issue: two nodes tie
+    LT->>LT: confirm key K1 = signed(request hash, plan hash)<br>(confirm and notes excluded)
+    LT-->>APP: 200 {status: preview, confirm_status: none,<br>plan: {label, parent: null, aphia_id: 149128},<br>issues: [{code: unaccepted_aphia, message, options: [<POST patch>]},<br>{code: ambiguous_parent, message, options: [<POST patch>]}],<br>confirm: K1}
+    Note over APP: confirmation page shows<br>the plan and its issues<br>(would still allow submission)
+    Note over APP: User chooses to<br>modify their submission
+
+    Note over APP,W: 2 · Modified request submission
+    APP->>LT: POST /trees/T/quick_add<br>{aphia_id: 149130, parent: 812, confirm: K1}
+    Note over LT: "confirm: K1"<br>accidentally included in POST,<br>it will be ignored later
+    LT->>W: record + lineage of 149130
+    W-->>LT: accepted record
+    LT->>LT: K1's request hash doesn't match this body,<br>so K1 is ignored, new key K2
+    LT-->>APP: 200 {status: preview, confirm_status: body_changed,<br>plan: {label: Chaetoceros_debilis, parent: 812},<br>issues: [], confirm: K2}
+    Note over APP: User sees no warnings,<br>confirms QuickAdd.
+
+    Note over APP,W: 3 · A submission that publishes
+    APP->>LT: POST /trees/T/quick_add<br>{aphia_id: 149130, parent: 812, confirm: K2}
+    LT->>W: record + lineage of 149130
+    W-->>LT: ok
+    LT->>LT: plan recalculated on latest rev<br>hashes inside K2 match: OK to publish
+    LT->>LT: create changeset + publish
+    Note over LT: tree T at rev R8
+    LT-->>APP: 201 {confirm_status: accepted,<br>node: {id, label, parent, aphia_id},<br>rev: R8, changeset, warnings}
+
+    Note over APP,W: 4 · Accidental quick-add resubmit
+    APP->>LT: POST /trees/T/quick_add<br>{aphia_id: 149130, parent: 812, confirm: K2}
+    LT->>LT: re-plan on R8: now duplicate_aphia<br>and label taken, so plan hash differs
+    LT-->>APP: 422 {errors: [label_exists]}<br>no key, nothing published
+
+    Note over APP,W: Errors never get a key: unknown parent, bad or taken label (422),<br>no WoRMS record (404), WoRMS unreachable (503), not an approver (403)

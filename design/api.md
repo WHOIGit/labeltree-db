@@ -526,6 +526,25 @@ rebased with a `PUT` that sets `base_rev` to the latest revision. While one
 publish on a tree is running, other publishes on that tree get `409`
 `publish_in_progress` at once.
 
+### Quick add (planned)
+
+Not built yet. `POST /trees/{tree}/quick_add` will let an approver add one node
+and publish it in a single step, for other applications that have just found an
+AphiaID with `GET /worms/search`. The body is `{aphia_id?, label?, parent?,
+description?, aliases?, notes?, confirm?}`. With an `aphia_id`, a missing
+`label` is derived from the WoRMS name, and a missing `parent` is the deepest
+live node anchored to the record's lineage. Without either, the node goes at
+the top level, and so does an ambiguous parent.
+
+The first call is a preview: it publishes nothing and returns the plan, its
+issues and a signed `confirm` key. The key binds that request to that result.
+Sending the same request again with its key publishes it (`201`). A changed
+request, a result changed by later publishes, or an expired key gets a fresh
+preview and a new key instead, with `confirm_status` saying why. Errors never
+get a key.
+
+![Quick add](diagrams/07-quick-add.png)
+
 ### Example: validate
 
 `validate` checks a change list against the latest revision without saving
